@@ -1,0 +1,9 @@
+/* Admin Portal Dashboard CSS */
+.utc-admin-portal { display: flex; flex-direction: column; gap: 1.5rem; }
+.utc-metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.25rem; }
+.utc-metric-card { display: flex; align-items: center; gap: 1rem; padding: 1.25rem; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; }
+.utc-metric-icon { font-size: 2rem; padding: 0.75rem; border-radius: 12px; background: rgba(2, 132, 199, 0.1); }
+.utc-metric-info { display: flex; flex-direction: column; }
+.utc-metric-label { font-size: 0.85rem; color: #64748b; font-weight: 500; }
+.utc-metric-value { font-size: 1.6rem; font-weight: 800; color: #0f172a; }
+.utc-admin-card { background: #ffffff; padding: 1.5rem; border-radius: 12px; border: 1px solid #e2e8f0; }
