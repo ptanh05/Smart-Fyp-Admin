@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAdminAuth } from '../../auth/AdminAuthContext';
 import './AdminLoginPage.css';
 
@@ -34,7 +34,7 @@ export const AdminLoginPage: React.FC = () => {
           <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Quản trị hệ thống Đồ án Tốt nghiệp</p>
         </div>
 
-        {error && <div className="utc-error-alert" style={{ marginBottom: '1rem' }}>{error}</div>}
+        {error && <div className="utc-error-alert" style={{ marginBottom: '1rem', color: '#b91c1c', background: '#fee2e2', padding: '0.75rem', borderRadius: 8 }}>{error}</div>}
 
         <form onSubmit={handleSubmit}>
           <div className="admin-form-group">
@@ -63,7 +63,17 @@ export const AdminLoginPage: React.FC = () => {
             {loading ? 'Đang xác thực...' : 'Đăng Nhập Quản Trị'}
           </button>
         </form>
+
+        <div style={{ textAlign: 'center', marginTop: '1.5rem' }}>
+          <p style={{ color: '#64748b', fontSize: '0.9rem' }}>
+            Chưa có tài khoản Quản trị?{' '}
+            <Link to="/register" style={{ color: '#0284c7', fontWeight: 600, textDecoration: 'none' }}>
+              Đăng ký Admin
+            </Link>
+          </p>
+        </div>
       </div>
     </div>
   );
 };
+

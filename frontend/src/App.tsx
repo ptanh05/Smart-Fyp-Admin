@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AdminAuthProvider } from './auth/AdminAuthContext';
 import { ProtectedAdminRoute } from './auth/ProtectedAdminRoute';
 import { AdminLoginPage } from './pages/Login/AdminLoginPage';
+import { AdminRegisterPage } from './pages/Login/AdminRegisterPage';
 import { AdminDashboard } from './pages/Dashboard/AdminDashboard';
 import { UserManagementPage } from './pages/Users/UserManagementPage';
 import { SecurityCenterPage } from './pages/Security/SecurityCenterPage';
@@ -14,6 +15,7 @@ export const App: React.FC = () => {
       <AdminAuthProvider>
         <Routes>
           <Route path="/login" element={<AdminLoginPage />} />
+          <Route path="/register" element={<AdminRegisterPage />} />
           <Route
             path="/dashboard"
             element={

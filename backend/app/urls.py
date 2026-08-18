@@ -1,5 +1,6 @@
 from django.urls import path
 from .views import (
+    AdminRegisterAPIView,
     AdminLoginAPIView,
     AdminCookieTokenRefreshAPIView,
     AdminCookieLogoutAPIView,
@@ -16,7 +17,8 @@ urlpatterns = [
     path("health/", HealthCheckAPIView.as_view(), name="health-check"),
     path("health/database/", DatabaseHealthCheckAPIView.as_view(), name="health-db-check"),
 
-    # Admin Authentication
+    # Admin Authentication & Registration
+    path("admin/register/", AdminRegisterAPIView.as_view(), name="admin-register"),
     path("supervisor/login/", AdminLoginAPIView.as_view(), name="admin-login"),
     path("admin/login/", AdminLoginAPIView.as_view(), name="admin-login-direct"),
     path("token/refresh/", AdminCookieTokenRefreshAPIView.as_view(), name="admin-token-refresh"),

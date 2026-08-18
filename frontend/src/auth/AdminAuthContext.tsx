@@ -8,6 +8,7 @@ interface AdminAuthContextType {
   userType: UserType | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  register: (username: string, email: string, password: string, adminSecret: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -62,6 +63,15 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setUserType('admin');
   };
 
+  const register = async (username: string, email: string, password: string, adminSecret: string) => {
+    await authApi.register({
+      username,
+      email,
+      password,
+      admin_secret: adminSecret,
+    });
+  };
+
   const logout = async () => {
     await authApi.logout();
     setAccessToken(null);
@@ -70,9 +80,10 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   return (
-    <AdminAuthContext.Provider value={{ isAuthenticated, userType, loading, login, logout }}>
+    <AdminAuthContext.Provider value={{ isAuthenticated, userType, loading, login, register, logout }}>
       {children}
     </AdminAuthContext.Provider>
   );
 };
+
 

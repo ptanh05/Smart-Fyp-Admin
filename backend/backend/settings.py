@@ -1,4 +1,5 @@
 import os
+import sys
 import datetime
 from pathlib import Path
 import environ
@@ -61,15 +62,25 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'backend.wsgi.application'
 
+ADMIN_REGISTRATION_SECRET = env('ADMIN_REGISTRATION_SECRET', default='utc-smart-fyp-admin-secret-key-2026')
+
 # Shared Database Strategy (Neon PostgreSQL)
-DATABASES = {
-    'default': env.db('DATABASE_URL', default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}")
-}
-DATABASES['default']['OPTIONS'] = {'timeout': 20} if 'sqlite' in DATABASES['default']['ENGINE'] else {}
-DATABASES['default']['TEST'] = {
-    'ENGINE': 'django.db.backends.sqlite3',
-    'NAME': ':memory:',
-}
+IS_TESTING = 'test' in sys.argv
+
+if IS_TESTING:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': ':memory:',
+        }
+    }
+else:
+    DATABASES = {
+        'default': env.db('DATABASE_URL', default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}")
+    }
+    if 'sqlite' in DATABASES['default']['ENGINE']:
+        DATABASES['default']['OPTIONS'] = {'timeout': 20}
+
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator', 'OPTIONS': {'min_length': 8}},

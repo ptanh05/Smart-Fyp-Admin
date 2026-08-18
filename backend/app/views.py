@@ -9,9 +9,10 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
+from django.conf import settings
 from .models import CustomUser, AuditLog
 from .permissions import IsAdminUserRole
-from .serializers import AdminUserSerializer, AuditLogSerializer
+from .serializers import AdminUserSerializer, AdminRegisterSerializer, AdminCreateUserSerializer, AuditLogSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,58 @@ def set_refresh_cookie(response, refresh_token):
 def delete_refresh_cookie(response):
     response.delete_cookie(key="refresh_token", path="/app/")
     return response
+
+
+class AdminRegisterAPIView(APIView):
+    """
+    Admin registration endpoint.
+    Public registration must NEVER allow arbitrary users to choose admin role.
+    Requires backend validation via ADMIN_REGISTRATION_SECRET.
+    Backend explicitly sets user_type='admin' and is_staff=True.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = AdminRegisterSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        admin_secret = serializer.validated_data["admin_secret"]
+        configured_secret = getattr(settings, "ADMIN_REGISTRATION_SECRET", "")
+        if not configured_secret or admin_secret != configured_secret:
+            return Response(
+                {"detail": "Forbidden: Invalid Admin Registration Secret Key."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        username = serializer.validated_data["username"].strip()
+        email = serializer.validated_data["email"].strip().lower()
+        password = serializer.validated_data["password"]
+
+        if CustomUser.objects.filter(username=username).exists():
+            return Response({"username": ["A user with this username already exists."]}, status=status.HTTP_400_BAD_REQUEST)
+        if CustomUser.objects.filter(email=email).exists():
+            return Response({"email": ["A user with this email already exists."]}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = CustomUser.objects.create_user(
+            username=username,
+            email=email,
+            password=password,
+            user_type="admin",
+            is_staff=True,
+            is_active=True
+        )
+
+        AuditLog.objects.create(
+            user=user,
+            action_type="admin_user_update",
+            description=f"New Admin account '{user.username}' registered successfully."
+        )
+
+        return Response({
+            "message": "Admin registration successful.",
+            "user": AdminUserSerializer(user).data
+        }, status=status.HTTP_201_CREATED)
 
 
 class AdminLoginAPIView(APIView):
@@ -127,15 +180,59 @@ class AdminUserManagementAPIView(APIView):
         user_list = AdminUserSerializer(users[:100], many=True).data
         return Response({"users": user_list, "total": users.count()}, status=status.HTTP_200_OK)
 
+    def post(self, request):
+        serializer = AdminCreateUserSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        username = serializer.validated_data["username"].strip()
+        email = serializer.validated_data["email"].strip().lower()
+        password = serializer.validated_data["password"]
+        user_type = serializer.validated_data["user_type"]
+        is_active = serializer.validated_data.get("is_active", True)
+
+        if CustomUser.objects.filter(username=username).exists():
+            return Response({"username": ["A user with this username already exists."]}, status=status.HTTP_400_BAD_REQUEST)
+        if CustomUser.objects.filter(email=email).exists():
+            return Response({"email": ["A user with this email already exists."]}, status=status.HTTP_400_BAD_REQUEST)
+
+        is_staff = (user_type == "admin")
+        created_user = CustomUser.objects.create_user(
+            username=username,
+            email=email,
+            password=password,
+            user_type=user_type,
+            is_staff=is_staff,
+            is_active=is_active
+        )
+
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="admin_user_update",
+            description=f"Admin '{request.user.username}' created user '{created_user.username}' with role '{user_type}'.",
+            field_name="user_creation",
+            new_value=f"username={created_user.username}, role={user_type}, active={is_active}"
+        )
+
+        return Response({
+            "message": f"User '{created_user.username}' created successfully.",
+            "user": AdminUserSerializer(created_user).data
+        }, status=status.HTTP_201_CREATED)
+
     def patch(self, request, pk):
         target_user = get_object_or_404(CustomUser, pk=pk)
         old_status = target_user.is_active
         old_role = target_user.user_type
 
         if "is_active" in request.data:
-            target_user.is_active = bool(request.data["is_active"])
+            val = request.data["is_active"]
+            if isinstance(val, str):
+                target_user.is_active = (val.lower() in ["true", "1"])
+            else:
+                target_user.is_active = bool(val)
         if "user_type" in request.data and request.data["user_type"] in ["student", "supervisor", "committee_member", "external_examiner", "admin"]:
             target_user.user_type = request.data["user_type"]
+            target_user.is_staff = (request.data["user_type"] == "admin")
 
         target_user.save()
 
