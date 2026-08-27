@@ -10,6 +10,17 @@ from .views import (
     AdminAuditLogStatsAPIView,
     HealthCheckAPIView,
     DatabaseHealthCheckAPIView,
+    AcademicBatchListCreateAPIView,
+    AcademicBatchDetailAPIView,
+    ExcelStudentImportAPIView,
+    SupervisorQuotaListUpdateAPIView,
+    AutoSupervisorAllocationAPIView,
+    ManualSupervisorAllocationAPIView,
+    DefenseCouncilListCreateAPIView,
+    AutoReviewerAllocationAPIView,
+    GraduationProjectsAdminListAPIView,
+    ExportToTrinhWordAPIView,
+    ExportBienBanExcelAPIView
 )
 
 urlpatterns = [
@@ -34,4 +45,25 @@ urlpatterns = [
     # Admin Audit Logs
     path("audit-logs/", AdminAuditLogListAPIView.as_view(), name="admin-audit-logs-list"),
     path("audit-logs/stats/", AdminAuditLogStatsAPIView.as_view(), name="admin-audit-logs-stats"),
+
+    # Academic Batches & Course Classes
+    path("admin/batches/", AcademicBatchListCreateAPIView.as_view(), name="admin-batches-list"),
+    path("admin/batches/<int:pk>/", AcademicBatchDetailAPIView.as_view(), name="admin-batches-detail"),
+    path("admin/students/import-excel/", ExcelStudentImportAPIView.as_view(), name="admin-students-import-excel"),
+
+    # Supervisor Quotas & Allocation
+    path("admin/quotas/", SupervisorQuotaListUpdateAPIView.as_view(), name="admin-quotas"),
+    path("admin/allocations/auto-match/", AutoSupervisorAllocationAPIView.as_view(), name="admin-allocations-auto-match"),
+    path("admin/allocations/manual/", ManualSupervisorAllocationAPIView.as_view(), name="admin-allocations-manual"),
+
+    # Defense Councils & Reviewers
+    path("admin/councils/", DefenseCouncilListCreateAPIView.as_view(), name="admin-councils"),
+    path("admin/reviewers/auto-assign/", AutoReviewerAllocationAPIView.as_view(), name="admin-reviewers-auto-assign"),
+
+    # Graduation Projects Listing
+    path("admin/projects/", GraduationProjectsAdminListAPIView.as_view(), name="admin-projects-list"),
+
+    # Document Generation (Word & Excel)
+    path("admin/export/to-trinh-word/", ExportToTrinhWordAPIView.as_view(), name="admin-export-to-trinh-word"),
+    path("admin/export/bien-ban-excel/", ExportBienBanExcelAPIView.as_view(), name="admin-export-bien-ban-excel"),
 ]

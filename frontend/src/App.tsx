@@ -5,6 +5,10 @@ import { ProtectedAdminRoute } from './auth/ProtectedAdminRoute';
 import { AdminLoginPage } from './pages/Login/AdminLoginPage';
 import { AdminRegisterPage } from './pages/Login/AdminRegisterPage';
 import { AdminDashboard } from './pages/Dashboard/AdminDashboard';
+import { BatchesPage } from './pages/Batches/BatchesPage';
+import { AllocationsPage } from './pages/Allocations/AllocationsPage';
+import { CouncilsPage } from './pages/Councils/CouncilsPage';
+import { DefenseManagementPage } from './pages/Defense/DefenseManagementPage';
 import { UserManagementPage } from './pages/Users/UserManagementPage';
 import { SecurityCenterPage } from './pages/Security/SecurityCenterPage';
 import { AuditLogsPage } from './pages/AuditLogs/AuditLogsPage';
@@ -16,6 +20,7 @@ export const App: React.FC = () => {
         <Routes>
           <Route path="/login" element={<AdminLoginPage />} />
           <Route path="/register" element={<AdminRegisterPage />} />
+          
           <Route
             path="/dashboard"
             element={
@@ -24,6 +29,43 @@ export const App: React.FC = () => {
               </ProtectedAdminRoute>
             }
           />
+
+          <Route
+            path="/batches"
+            element={
+              <ProtectedAdminRoute>
+                <BatchesPage />
+              </ProtectedAdminRoute>
+            }
+          />
+
+          <Route
+            path="/allocations"
+            element={
+              <ProtectedAdminRoute>
+                <AllocationsPage />
+              </ProtectedAdminRoute>
+            }
+          />
+
+          <Route
+            path="/councils"
+            element={
+              <ProtectedAdminRoute>
+                <CouncilsPage />
+              </ProtectedAdminRoute>
+            }
+          />
+
+          <Route
+            path="/defense"
+            element={
+              <ProtectedAdminRoute>
+                <DefenseManagementPage />
+              </ProtectedAdminRoute>
+            }
+          />
+
           <Route
             path="/users"
             element={
@@ -32,6 +74,7 @@ export const App: React.FC = () => {
               </ProtectedAdminRoute>
             }
           />
+
           <Route
             path="/security"
             element={
@@ -40,6 +83,7 @@ export const App: React.FC = () => {
               </ProtectedAdminRoute>
             }
           />
+
           <Route
             path="/audit-logs"
             element={
@@ -48,6 +92,7 @@ export const App: React.FC = () => {
               </ProtectedAdminRoute>
             }
           />
+
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
@@ -55,4 +100,5 @@ export const App: React.FC = () => {
     </Router>
   );
 };
+
 export default App;
