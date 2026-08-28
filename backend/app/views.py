@@ -118,13 +118,13 @@ class AdminLoginAPIView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        username = request.data.get("username", "").strip()
+        identifier = (request.data.get("username") or request.data.get("email") or "").strip()
         password = request.data.get("password", "")
 
-        if not username or not password:
-            return Response({"detail": "Username and password are required."}, status=status.HTTP_400_BAD_REQUEST)
+        if not identifier or not password:
+            return Response({"detail": "Username/email and password are required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        user = CustomUser.objects.filter(username=username).first()
+        user = CustomUser.objects.filter(Q(username__iexact=identifier) | Q(email__iexact=identifier)).first()
         if not user or not user.check_password(password):
             return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
 
@@ -140,15 +140,17 @@ class AdminLoginAPIView(APIView):
         AuditLog.objects.create(
             user=user,
             action_type="admin_user_update",
-            description=f"Admin '{username}' logged in successfully."
+            description=f"Admin '{user.username}' logged in successfully."
         )
 
         response = Response({
             "access": access_token,
+            "user_type": user.user_type,
             "user": AdminUserSerializer(user).data
         }, status=status.HTTP_200_OK)
 
         return set_refresh_cookie(response, refresh)
+
 
 
 class AdminCookieTokenRefreshAPIView(APIView):
@@ -229,6 +231,34 @@ class AdminUserManagementAPIView(APIView):
         )
 
         return Response(AdminUserSerializer(user).data, status=status.HTTP_201_CREATED)
+
+    def patch(self, request, pk=None):
+        if not pk:
+            return Response({"detail": "User ID is required."}, status=status.HTTP_400_BAD_REQUEST)
+        user = get_object_or_404(CustomUser, pk=pk)
+
+        is_active = request.data.get("is_active")
+        user_type = request.data.get("user_type")
+
+        if is_active is not None:
+            user.is_active = bool(is_active)
+        if user_type:
+            user.user_type = user_type
+            if user_type == "admin":
+                user.is_staff = True
+            elif user.id != request.user.id:
+                user.is_staff = False
+        user.save()
+
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="admin_user_update",
+            description=f"Admin updated user '{user.username}' status/role."
+        )
+        return Response({
+            "message": "User updated successfully.",
+            "user": AdminUserSerializer(user).data
+        }, status=status.HTTP_200_OK)
 
 
 class AdminSecurityCenterAPIView(APIView):
@@ -574,7 +604,8 @@ class HealthCheckAPIView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        return Response({"status": "healthy", "service": "Smart-Fyp-Admin API"}, status=status.HTTP_200_OK)
+        return Response({"status": "ok", "service": "Smart-Fyp-Admin API"}, status=status.HTTP_200_OK)
+
 
 
 class DatabaseHealthCheckAPIView(APIView):
