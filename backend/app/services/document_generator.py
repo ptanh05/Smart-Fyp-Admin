@@ -6,7 +6,7 @@ from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ALIGN_VERTICAL
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from django.utils import timezone
-from app.models import DefenseCouncil, CouncilMember, GraduationProject, FinalGradeSummary
+from app.models import DefenseCouncil, CouncilMember, GraduationProject, FinalGradeSummary, CouncilLiveScore
 
 class DocumentGenerationService:
 
@@ -16,8 +16,12 @@ class DocumentGenerationService:
         Sinh file Word .docx Tờ trình thành lập Hội đồng chấm đồ án tốt nghiệp
         theo thể thức văn bản hành chính chuẩn của Trường ĐH Giao thông Vận tải (UTC).
         """
-        council = DefenseCouncil.objects.select_related('batch').prefetch_related('members__user', 'members__supervisor').get(id=council_id)
-        members = list(council.members.all().order_by('id'))
+        council = DefenseCouncil.objects.select_related('batch').get(id=council_id)
+        members = list(
+            CouncilMember.objects.filter(council=council)
+            .select_related('user', 'supervisor')
+            .order_by('id')
+        )
 
         doc = Document()
 
@@ -189,6 +193,8 @@ class DocumentGenerationService:
 
         wb = openpyxl.Workbook()
         ws = wb.active
+        if ws is None:
+            ws = wb.create_sheet()
         ws.title = f"Hội đồng {council.council_number}"
 
         # Styles
@@ -269,7 +275,10 @@ class DocumentGenerationService:
                 summary.supervisor_score = proj.supervisor_score
                 summary.reviewer_score = proj.reviewer_score
                 # average council score
-                scores = list(proj.council_scores.all())
+                if hasattr(proj, 'council_scores'):
+                    scores = list(proj.council_scores.all())
+                else:
+                    scores = list(CouncilLiveScore.objects.filter(project=proj))
                 if scores:
                     summary.council_avg_score = round(sum(s.total_score for s in scores) / len(scores), 2)
                 summary.calculate_and_save()
