@@ -176,6 +176,26 @@ export const UserManagementPage: React.FC = () => {
     return classesList;
   }, [batches, batchFilter, programFilter]);
 
+  const hasActiveFilters = Boolean(
+    searchQuery ||
+    isActiveFilter ||
+    programFilter ||
+    classFilter ||
+    supervisorFilter ||
+    batchFilter ||
+    (activeTab === 'student' && majorFilter !== 'ALL')
+  );
+
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    setIsActiveFilter('');
+    setProgramFilter('');
+    setClassFilter('');
+    setSupervisorFilter('');
+    setBatchFilter('');
+    setMajorFilter('ALL');
+  };
+
   // Handle Tab Switch
   const handleTabSwitch = (role: UserType) => {
     setActiveTab(role);
@@ -183,6 +203,9 @@ export const UserManagementPage: React.FC = () => {
     setProgramFilter('');
     setClassFilter('');
     setSupervisorFilter('');
+    setIsActiveFilter('');
+    setBatchFilter('');
+    setMajorFilter('ALL');
   };
 
   // Handle Create User
@@ -581,14 +604,39 @@ export const UserManagementPage: React.FC = () => {
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
+
+              {hasActiveFilters && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={handleResetFilters}
+                    className="filter-reset-btn"
+                    style={{
+                      padding: '0.6rem 1rem',
+                      background: '#f1f5f9',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '8px',
+                      color: '#475569',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    ✕ Xóa bộ lọc
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
 
         {/* General Filter for Non-Student Tabs */}
         {activeTab !== 'student' && (
-          <div className="student-sub-filter-card" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-            <div style={{ flex: 1 }}>
+          <div className="student-sub-filter-card" style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 260 }}>
               <input
                 type="text"
                 className="filter-input"
@@ -609,6 +657,27 @@ export const UserManagementPage: React.FC = () => {
                 <option value="false">Bị vô hiệu hóa</option>
               </select>
             </div>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="filter-reset-btn"
+                style={{
+                  padding: '0.6rem 1rem',
+                  background: '#f1f5f9',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '8px',
+                  color: '#475569',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem'
+                }}
+              >
+                ✕ Xóa bộ lọc
+              </button>
+            )}
           </div>
         )}
 
@@ -619,8 +688,33 @@ export const UserManagementPage: React.FC = () => {
           ) : users.length === 0 ? (
             <div style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>
               <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📭</div>
-              <p style={{ margin: 0, fontWeight: 600 }}>Không tìm thấy người dùng nào phù hợp với bộ lọc hiện tại.</p>
-              <small>Bạn có thể nhấn nút "Tạo Tài Khoản Mới" hoặc "Import Excel Hàng Loạt" để thêm tài khoản vào hệ thống.</small>
+              <p style={{ margin: '0 0 0.5rem 0', fontWeight: 700, fontSize: '1.05rem', color: '#1e293b' }}>
+                Không tìm thấy người dùng nào phù hợp với bộ lọc hiện tại.
+              </p>
+              {hasActiveFilters ? (
+                <div style={{ marginTop: '1rem' }}>
+                  <button
+                    onClick={handleResetFilters}
+                    style={{
+                      background: '#0284c7',
+                      color: '#ffffff',
+                      border: 'none',
+                      padding: '0.6rem 1.3rem',
+                      borderRadius: '8px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      boxShadow: '0 4px 12px rgba(2, 132, 199, 0.25)'
+                    }}
+                  >
+                    🔄 Đặt lại bộ lọc để xem toàn bộ danh sách ({activeTab === 'student' ? counts.students : activeTab === 'supervisor' ? counts.supervisors : activeTab === 'committee_member' ? counts.committee : activeTab === 'external_examiner' ? counts.external : counts.admins} tài khoản)
+                  </button>
+                </div>
+              ) : (
+                <small>Bạn có thể nhấn nút "Tạo Tài Khoản Mới" hoặc "Import Excel Hàng Loạt" để thêm tài khoản vào hệ thống.</small>
+              )}
             </div>
           ) : (
             <table className="user-table">

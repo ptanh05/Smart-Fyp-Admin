@@ -288,7 +288,10 @@ class AdminUserManagementAPIView(APIView):
                 Q(admin_student_profile__department__icontains=search) |
                 Q(admin_student_profile__phone_number__icontains=search) |
                 Q(admin_supervisor_profile__supervisor_id__icontains=search) |
-                Q(admin_supervisor_profile__department_name__icontains=search)
+                Q(admin_supervisor_profile__department_name__icontains=search) |
+                Q(admin_supervisor_profile__academic_title__icontains=search) |
+                Q(council_roles__external_institution__icontains=search) |
+                Q(council_roles__council__council_name__icontains=search)
             ).distinct()
 
         total_matched = users.count()
