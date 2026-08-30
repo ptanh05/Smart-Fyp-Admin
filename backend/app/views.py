@@ -1,4 +1,5 @@
 import logging
+from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
@@ -31,6 +32,7 @@ from .serializers import (
     AdminUserSerializer,
     AdminRegisterSerializer,
     AdminCreateUserSerializer,
+    AdminResetPasswordSerializer,
     AuditLogSerializer,
     AcademicBatchSerializer,
     CourseClassSerializer,
@@ -38,7 +40,7 @@ from .serializers import (
     DefenseCouncilSerializer,
     GraduationProjectAdminSerializer
 )
-from .services.excel_importer import ExcelImportService
+from .services.excel_importer import ExcelImportService, generate_random_password
 from .services.allocation_engine import MinCostMaxFlowAllocationEngine
 from .services.reviewer_engine import ReviewerAndCouncilAllocationEngine
 from .services.document_generator import DocumentGenerationService
@@ -192,45 +194,247 @@ class AdminUserManagementAPIView(APIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
 
     def get(self, request):
-        users = CustomUser.objects.all().order_by("-id")
-        user_type = request.query_params.get("user_type")
-        search = request.query_params.get("search")
+        users = CustomUser.objects.all().select_related(
+            "admin_student_profile",
+            "admin_student_profile__course_class",
+            "admin_student_profile__academic_batch",
+            "admin_student_profile__graduation_project",
+            "admin_student_profile__graduation_project__supervisor",
+            "admin_student_profile__graduation_project__supervisor__user",
+            "admin_supervisor_profile"
+        ).prefetch_related(
+            "council_roles",
+            "admin_supervisor_profile__quotas"
+        ).order_by("-id")
+
+        # Counts
+        total_students = CustomUser.objects.filter(user_type="student").count()
+        total_supervisors = CustomUser.objects.filter(user_type="supervisor").count()
+        total_committee = CustomUser.objects.filter(user_type="committee_member").count()
+        total_external = CustomUser.objects.filter(user_type="external_examiner").count()
+        total_admins = CustomUser.objects.filter(user_type="admin").count()
+
+        # Major counts
+        khmt_students_count = Student.objects.filter(
+            Q(course_class__program_type="KHMT") | Q(department__icontains="Khoa học máy tính") | Q(department__icontains="KHMT")
+        ).count()
+        cntt_students_count = max(0, total_students - khmt_students_count)
+
+        # Filters
+        user_type = request.query_params.get("user_type") or request.query_params.get("role")
+        major = request.query_params.get("major")
+        program_type = request.query_params.get("program_type")
+        class_id = request.query_params.get("class_id")
+        batch_id = request.query_params.get("batch_id")
+        supervisor_id = request.query_params.get("supervisor_id")
+        has_supervisor = request.query_params.get("has_supervisor")
+        is_active = request.query_params.get("is_active")
+        search = (request.query_params.get("search") or request.query_params.get("q") or "").strip()
 
         if user_type:
             users = users.filter(user_type=user_type)
-        if search:
-            users = users.filter(Q(username__icontains=search) | Q(email__icontains=search) | Q(first_name__icontains=search) | Q(last_name__icontains=search))
 
+        if major:
+            if major.upper() == "KHMT":
+                users = users.filter(
+                    Q(admin_student_profile__course_class__program_type="KHMT") |
+                    Q(admin_student_profile__department__icontains="Khoa học máy tính") |
+                    Q(admin_student_profile__department__icontains="KHMT")
+                )
+            elif major.upper() == "CNTT":
+                users = users.exclude(
+                    Q(admin_student_profile__course_class__program_type="KHMT") |
+                    Q(admin_student_profile__department__icontains="Khoa học máy tính") |
+                    Q(admin_student_profile__department__icontains="KHMT")
+                )
+
+        if program_type:
+            users = users.filter(admin_student_profile__course_class__program_type=program_type)
+
+        if class_id:
+            users = users.filter(admin_student_profile__course_class_id=class_id)
+
+        if batch_id:
+            users = users.filter(
+                Q(admin_student_profile__academic_batch_id=batch_id) |
+                Q(admin_supervisor_profile__quotas__batch_id=batch_id)
+            ).distinct()
+
+        if supervisor_id:
+            if supervisor_id == "unassigned":
+                users = users.filter(admin_student_profile__graduation_project__supervisor__isnull=True)
+            else:
+                users = users.filter(admin_student_profile__graduation_project__supervisor_id=supervisor_id)
+
+        if has_supervisor is not None and has_supervisor != "":
+            if str(has_supervisor).lower() in ["true", "1"]:
+                users = users.filter(admin_student_profile__graduation_project__supervisor__isnull=False)
+            elif str(has_supervisor).lower() in ["false", "0"]:
+                users = users.filter(admin_student_profile__graduation_project__supervisor__isnull=True)
+
+        if is_active is not None and is_active != "":
+            if str(is_active).lower() in ["true", "1"]:
+                users = users.filter(is_active=True)
+            elif str(is_active).lower() in ["false", "0"]:
+                users = users.filter(is_active=False)
+
+        if search:
+            users = users.filter(
+                Q(username__icontains=search) |
+                Q(email__icontains=search) |
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(admin_student_profile__registration_no__icontains=search) |
+                Q(admin_student_profile__department__icontains=search) |
+                Q(admin_student_profile__phone_number__icontains=search) |
+                Q(admin_supervisor_profile__supervisor_id__icontains=search) |
+                Q(admin_supervisor_profile__department_name__icontains=search)
+            ).distinct()
+
+        total_matched = users.count()
         serializer = AdminUserSerializer(users, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response({
+            "users": serializer.data,
+            "total": total_matched,
+            "counts": {
+                "total": total_students + total_supervisors + total_committee + total_external + total_admins,
+                "students": total_students,
+                "supervisors": total_supervisors,
+                "committee": total_committee,
+                "external": total_external,
+                "admins": total_admins,
+                "cntt_students": cntt_students_count,
+                "khmt_students": khmt_students_count,
+            }
+        }, status=status.HTTP_200_OK)
 
     def post(self, request):
         serializer = AdminCreateUserSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        username = serializer.validated_data["username"]
-        email = serializer.validated_data["email"]
+        data = serializer.validated_data
+        user_type = data["user_type"]
+        username = data["username"].strip()
+        first_name = data.get("first_name", "").strip()
+        last_name = data.get("last_name", "").strip()
+        phone_number = data.get("phone_number", "").strip()
+        is_active = data.get("is_active", True)
+        password_strategy = data.get("password_strategy", "MSSV")
+        custom_password = data.get("custom_password", "").strip()
 
+        # Check duplicate username
         if CustomUser.objects.filter(username=username).exists():
-            return Response({"username": ["A user with that username already exists."]}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"username": ["Tên đăng nhập này đã tồn tại."]}, status=status.HTTP_400_BAD_REQUEST)
 
-        user = CustomUser.objects.create_user(
-            username=username,
-            email=email,
-            password=serializer.validated_data["password"],
-            user_type=serializer.validated_data["user_type"],
-            is_active=serializer.validated_data.get("is_active", True),
-            is_staff=True if serializer.validated_data["user_type"] == "admin" else False
-        )
+        # Determine password
+        if password_strategy == "FIXED" and custom_password:
+            plain_password = custom_password
+        elif password_strategy == "CUSTOM" and custom_password:
+            plain_password = custom_password
+        elif password_strategy == "RANDOM":
+            plain_password = generate_random_password(8)
+        elif data.get("password"):
+            plain_password = data["password"]
+        else:
+            # Default MSSV or username
+            plain_password = data.get("registration_no") or username
 
-        AuditLog.objects.create(
-            user=request.user,
-            action_type="admin_user_update",
-            description=f"Admin created user '{username}' with role '{user.user_type}'."
-        )
+        # Determine email
+        email = data.get("email", "").strip().lower()
+        if not email:
+            if user_type == "student":
+                reg_no = data.get("registration_no") or username
+                email = f"{reg_no.lower()}@lms.utc.edu.vn"
+            else:
+                email = f"{username.lower()}@utc.edu.vn"
 
-        return Response(AdminUserSerializer(user).data, status=status.HTTP_201_CREATED)
+        if CustomUser.objects.filter(email=email).exists():
+            return Response({"email": ["Email này đã được sử dụng bởi tài khoản khác."]}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            user = CustomUser.objects.create_user(
+                username=username,
+                email=email,
+                password=plain_password,
+                first_name=first_name,
+                last_name=last_name,
+                user_type=user_type,
+                is_active=is_active,
+                is_staff=True if user_type == "admin" else False
+            )
+
+            # Handle Student Profile
+            if user_type == "student":
+                reg_no = data.get("registration_no") or username
+                class_name = data.get("class_name", "").strip()
+                program_type = data.get("program_type", "DAI_TRA")
+                course_class_id = data.get("course_class_id")
+                academic_batch_id = data.get("academic_batch_id")
+
+                course_class = None
+                if course_class_id:
+                    course_class = CourseClass.objects.filter(id=course_class_id).first()
+
+                batch = None
+                if academic_batch_id:
+                    batch = AcademicBatch.objects.filter(id=academic_batch_id).first()
+                elif course_class:
+                    batch = course_class.batch
+                else:
+                    batch = AcademicBatch.objects.filter(is_active=True).first()
+
+                Student.objects.create(
+                    user=user,
+                    registration_no=reg_no,
+                    department=class_name or (course_class.class_name if course_class else ""),
+                    course_class=course_class,
+                    academic_batch=batch,
+                    batch_no=class_name,
+                    phone_number=phone_number
+                )
+
+            # Handle Supervisor Profile
+            elif user_type == "supervisor":
+                spv_id = data.get("supervisor_id") or username
+                academic_title = data.get("academic_title", "").strip()
+                department_name = data.get("department_name", "Khoa CNTT - ĐHGTVT").strip()
+                is_external = data.get("is_external", False)
+
+                spv = Supervisor.objects.create(
+                    user=user,
+                    supervisor_id=spv_id,
+                    academic_title=academic_title,
+                    department_name=department_name,
+                    phone_number=phone_number,
+                    is_external=is_external
+                )
+
+                # Initialize Quota for active batch
+                active_batch = AcademicBatch.objects.filter(is_active=True).first()
+                if active_batch:
+                    SupervisorQuota.objects.create(
+                        supervisor=spv,
+                        batch=active_batch,
+                        department=department_name,
+                        viet_anh_quota=data.get("viet_anh_quota", 2),
+                        general_cntt_quota=data.get("general_cntt_quota", 3),
+                        max_total_quota=data.get("max_total_quota", 5),
+                        current_assigned=0
+                    )
+
+            AuditLog.objects.create(
+                user=request.user,
+                action_type="admin_user_update",
+                description=f"Admin created {user_type} account '{username}' ({last_name} {first_name})."
+            )
+
+        serialized_user = AdminUserSerializer(user).data
+        return Response({
+            "message": f"Tạo tài khoản {user_type} thành công.",
+            "user": serialized_user,
+            "plain_password": plain_password
+        }, status=status.HTTP_201_CREATED)
 
     def patch(self, request, pk=None):
         if not pk:
@@ -239,6 +443,9 @@ class AdminUserManagementAPIView(APIView):
 
         is_active = request.data.get("is_active")
         user_type = request.data.get("user_type")
+        first_name = request.data.get("first_name")
+        last_name = request.data.get("last_name")
+        email = request.data.get("email")
 
         if is_active is not None:
             user.is_active = bool(is_active)
@@ -248,16 +455,245 @@ class AdminUserManagementAPIView(APIView):
                 user.is_staff = True
             elif user.id != request.user.id:
                 user.is_staff = False
+        if first_name is not None:
+            user.first_name = first_name.strip()
+        if last_name is not None:
+            user.last_name = last_name.strip()
+        if email:
+            user.email = email.strip().lower()
+
+        user.save()
+
+        # Update associated Student profile if any
+        if hasattr(user, "admin_student_profile"):
+            std = user.admin_student_profile
+            phone_number = request.data.get("phone_number")
+            class_name = request.data.get("class_name")
+            course_class_id = request.data.get("course_class_id")
+            academic_batch_id = request.data.get("academic_batch_id")
+
+            if phone_number is not None:
+                std.phone_number = phone_number.strip()
+            if class_name is not None:
+                std.department = class_name.strip()
+                std.batch_no = class_name.strip()
+            if course_class_id:
+                std.course_class_id = course_class_id
+            if academic_batch_id:
+                std.academic_batch_id = academic_batch_id
+            std.save()
+
+        # Update associated Supervisor profile if any
+        if hasattr(user, "admin_supervisor_profile"):
+            spv = user.admin_supervisor_profile
+            academic_title = request.data.get("academic_title")
+            department_name = request.data.get("department_name")
+            phone_number = request.data.get("phone_number")
+            is_external = request.data.get("is_external")
+
+            if academic_title is not None:
+                spv.academic_title = academic_title.strip()
+            if department_name is not None:
+                spv.department_name = department_name.strip()
+            if phone_number is not None:
+                spv.phone_number = phone_number.strip()
+            if is_external is not None:
+                spv.is_external = bool(is_external)
+            spv.save()
+
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="admin_user_update",
+            description=f"Admin updated user '{user.username}' status/profile."
+        )
+        return Response({
+            "message": "Cập nhật người dùng thành công.",
+            "user": AdminUserSerializer(user).data
+        }, status=status.HTTP_200_OK)
+
+    def delete(self, request, pk=None):
+        if not pk:
+            return Response({"detail": "User ID is required."}, status=status.HTTP_400_BAD_REQUEST)
+        user = get_object_or_404(CustomUser, pk=pk)
+
+        if user.id == request.user.id:
+            return Response({"detail": "Không thể xóa tài khoản Admin đang đăng nhập."}, status=status.HTTP_400_BAD_REQUEST)
+
+        username = user.username
+        user.delete()
+
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="admin_user_update",
+            description=f"Admin deleted user '{username}'."
+        )
+        return Response({"message": f"Đã xóa người dùng {username}."}, status=status.HTTP_200_OK)
+
+
+class AdminImportExcelAPIView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        file_obj = request.FILES.get("file")
+        batch_id = request.data.get("batch_id")
+        password_strategy = request.data.get("password_strategy", "MSSV")
+        custom_fixed_password = request.data.get("custom_fixed_password", "")
+        default_major = request.data.get("default_major", "CNTT")
+
+        if not file_obj:
+            return Response({"detail": "Vui lòng chọn file Excel để import."}, status=status.HTTP_400_BAD_REQUEST)
+        if not batch_id:
+            # Fallback to active batch
+            active_batch = AcademicBatch.objects.filter(is_active=True).first()
+            if active_batch:
+                batch_id = active_batch.id
+            else:
+                return Response({"detail": "Vui lòng chọn Kỳ học / Đợt ĐATN (batch_id)."}, status=status.HTTP_400_BAD_REQUEST)
+
+        res = ExcelImportService.import_students_from_excel(
+            file_obj=file_obj,
+            batch_id=batch_id,
+            password_strategy=password_strategy,
+            custom_fixed_password=custom_fixed_password,
+            default_major=default_major
+        )
+
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="admin_user_update",
+            description=f"Imported Excel students for Batch #{batch_id}: Total={res.get('total')}, Created={res.get('created')}, Strategy={password_strategy}"
+        )
+
+        return Response(res, status=status.HTTP_200_OK if res.get("success") else status.HTTP_400_BAD_REQUEST)
+
+
+class AdminDownloadTemplateAPIView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def get(self, request):
+        buffer = ExcelImportService.generate_student_template()
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response["Content-Disposition"] = 'attachment; filename="Mau_Import_Sinh_Vien_UTC.xlsx"'
+        return response
+
+
+class AdminExportUsersExcelAPIView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def get(self, request):
+        users = CustomUser.objects.all().select_related(
+            "admin_student_profile",
+            "admin_student_profile__course_class",
+            "admin_student_profile__academic_batch",
+            "admin_student_profile__graduation_project",
+            "admin_student_profile__graduation_project__supervisor",
+            "admin_student_profile__graduation_project__supervisor__user",
+            "admin_supervisor_profile"
+        ).order_by("-id")
+
+        user_type = request.query_params.get("user_type") or request.query_params.get("role")
+        major = request.query_params.get("major")
+        program_type = request.query_params.get("program_type")
+        class_id = request.query_params.get("class_id")
+        batch_id = request.query_params.get("batch_id")
+        supervisor_id = request.query_params.get("supervisor_id")
+        search = (request.query_params.get("search") or request.query_params.get("q") or "").strip()
+
+        if user_type:
+            users = users.filter(user_type=user_type)
+        if major:
+            if major.upper() == "KHMT":
+                users = users.filter(
+                    Q(admin_student_profile__course_class__program_type="KHMT") |
+                    Q(admin_student_profile__department__icontains="Khoa học máy tính") |
+                    Q(admin_student_profile__department__icontains="KHMT")
+                )
+            elif major.upper() == "CNTT":
+                users = users.exclude(
+                    Q(admin_student_profile__course_class__program_type="KHMT") |
+                    Q(admin_student_profile__department__icontains="Khoa học máy tính") |
+                    Q(admin_student_profile__department__icontains="KHMT")
+                )
+        if program_type:
+            users = users.filter(admin_student_profile__course_class__program_type=program_type)
+        if class_id:
+            users = users.filter(admin_student_profile__course_class_id=class_id)
+        if batch_id:
+            users = users.filter(
+                Q(admin_student_profile__academic_batch_id=batch_id) |
+                Q(admin_supervisor_profile__quotas__batch_id=batch_id)
+            ).distinct()
+        if supervisor_id:
+            if supervisor_id == "unassigned":
+                users = users.filter(admin_student_profile__graduation_project__supervisor__isnull=True)
+            else:
+                users = users.filter(admin_student_profile__graduation_project__supervisor_id=supervisor_id)
+        if search:
+            users = users.filter(
+                Q(username__icontains=search) |
+                Q(email__icontains=search) |
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(admin_student_profile__registration_no__icontains=search) |
+                Q(admin_student_profile__department__icontains=search) |
+                Q(admin_supervisor_profile__supervisor_id__icontains=search)
+            ).distinct()
+
+        buffer = ExcelImportService.export_users_to_excel(users, role=user_type or "all")
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response["Content-Disposition"] = 'attachment; filename="Danh_Sach_Nguoi_Dung_UTC.xlsx"'
+        return response
+
+
+class AdminResetUserPasswordAPIView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def post(self, request, pk=None):
+        if not pk:
+            return Response({"detail": "User ID is required."}, status=status.HTTP_400_BAD_REQUEST)
+        user = get_object_or_404(CustomUser, pk=pk)
+
+        serializer = AdminResetPasswordSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        strategy = serializer.validated_data.get("password_strategy", "MSSV")
+        custom_pwd = serializer.validated_data.get("custom_password", "").strip()
+
+        if strategy == "MSSV":
+            if hasattr(user, "admin_student_profile") and user.admin_student_profile.registration_no:
+                new_pwd = user.admin_student_profile.registration_no
+            elif hasattr(user, "admin_supervisor_profile") and user.admin_supervisor_profile.supervisor_id:
+                new_pwd = user.admin_supervisor_profile.supervisor_id
+            else:
+                new_pwd = user.username
+        elif strategy in ["FIXED", "CUSTOM"] and custom_pwd:
+            new_pwd = custom_pwd
+        elif strategy == "RANDOM":
+            new_pwd = generate_random_password(8)
+        else:
+            new_pwd = user.username
+
+        user.set_password(new_pwd)
         user.save()
 
         AuditLog.objects.create(
             user=request.user,
             action_type="admin_user_update",
-            description=f"Admin updated user '{user.username}' status/role."
+            description=f"Admin reset password for user '{user.username}' (Strategy: {strategy})."
         )
+
         return Response({
-            "message": "User updated successfully.",
-            "user": AdminUserSerializer(user).data
+            "message": f"Đặt lại mật khẩu thành công cho tài khoản '{user.username}'.",
+            "username": user.username,
+            "new_password": new_pwd
         }, status=status.HTTP_200_OK)
 
 

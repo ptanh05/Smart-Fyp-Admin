@@ -28,7 +28,19 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
             <span>📊</span> Tổng Quan Dashboard
           </NavLink>
           <NavLink to="/users" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>👥</span> Quản Lý Người Dùng
+            <span>👥</span> Quản Lý Tài Khoản
+          </NavLink>
+          <NavLink to="/batches" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
+            <span>📅</span> Kỳ Học & Lớp HP
+          </NavLink>
+          <NavLink to="/allocations" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
+            <span>🤝</span> Phân Công GVHD
+          </NavLink>
+          <NavLink to="/councils" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
+            <span>⚖️</span> Hội Đồng & Phản Biện
+          </NavLink>
+          <NavLink to="/defense" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
+            <span>📝</span> Điểm & Biên Bản
           </NavLink>
           <NavLink to="/security" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
             <span>🛡️</span> Trung Tâm Bảo Mật

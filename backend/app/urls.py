@@ -5,6 +5,10 @@ from .views import (
     AdminCookieTokenRefreshAPIView,
     AdminCookieLogoutAPIView,
     AdminUserManagementAPIView,
+    AdminImportExcelAPIView,
+    AdminDownloadTemplateAPIView,
+    AdminExportUsersExcelAPIView,
+    AdminResetUserPasswordAPIView,
     AdminSecurityCenterAPIView,
     AdminAuditLogListAPIView,
     AdminAuditLogStatsAPIView,
@@ -35,9 +39,13 @@ urlpatterns = [
     path("token/refresh/", AdminCookieTokenRefreshAPIView.as_view(), name="admin-token-refresh"),
     path("token/logout/", AdminCookieLogoutAPIView.as_view(), name="admin-token-logout"),
 
-    # Admin User Management
+    # Admin User Management & Advanced Credentials
     path("admin/users/", AdminUserManagementAPIView.as_view(), name="admin-users-list"),
+    path("admin/users/import-excel/", AdminImportExcelAPIView.as_view(), name="admin-users-import-excel"),
+    path("admin/users/template/", AdminDownloadTemplateAPIView.as_view(), name="admin-users-template"),
+    path("admin/users/export/", AdminExportUsersExcelAPIView.as_view(), name="admin-users-export"),
     path("admin/users/<int:pk>/", AdminUserManagementAPIView.as_view(), name="admin-user-detail"),
+    path("admin/users/<int:pk>/reset-password/", AdminResetUserPasswordAPIView.as_view(), name="admin-users-reset-password"),
 
     # Admin Security Center
     path("admin/security-center/", AdminSecurityCenterAPIView.as_view(), name="admin-security-center"),
