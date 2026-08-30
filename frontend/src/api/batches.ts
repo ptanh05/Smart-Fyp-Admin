@@ -24,8 +24,14 @@ export interface AcademicBatch {
 
 export const batchesApi = {
   async getBatches(): Promise<AcademicBatch[]> {
-    const response = await apiClient.get<AcademicBatch[]>('/admin/batches/');
-    return response.data;
+    const response = await apiClient.get<any>('/admin/batches/');
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
+    if (response.data && Array.isArray(response.data.results)) {
+      return response.data.results;
+    }
+    return [];
   },
 
   async createBatch(data: Partial<AcademicBatch>): Promise<AcademicBatch> {

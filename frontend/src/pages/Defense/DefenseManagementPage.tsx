@@ -33,12 +33,14 @@ export const DefenseManagementPage: React.FC = () => {
   const fetchBatches = async () => {
     try {
       const res = await apiClient.get('/admin/batches/');
-      setBatches(res.data);
-      if (res.data.length > 0 && !selectedBatchId) {
-        setSelectedBatchId(res.data[0].id);
+      const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+      setBatches(list);
+      if (list.length > 0 && !selectedBatchId) {
+        setSelectedBatchId(list[0].id);
       }
     } catch (err) {
       console.error(err);
+      setBatches([]);
     }
   };
 
@@ -58,10 +60,12 @@ export const DefenseManagementPage: React.FC = () => {
         apiClient.get(`/admin/councils/?batch_id=${selectedBatchId}`),
         apiClient.get(url),
       ]);
-      setCouncils(counRes.data);
-      setProjects(projRes.data);
+      setCouncils(Array.isArray(counRes.data) ? counRes.data : (counRes.data?.results || []));
+      setProjects(Array.isArray(projRes.data) ? projRes.data : (projRes.data?.results || []));
     } catch (err) {
       console.error(err);
+      setCouncils([]);
+      setProjects([]);
     } finally {
       setLoading(false);
     }

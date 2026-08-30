@@ -46,12 +46,14 @@ export const AllocationsPage: React.FC = () => {
   const fetchBatches = async () => {
     try {
       const res = await apiClient.get('/admin/batches/');
-      setBatches(res.data);
-      if (res.data.length > 0 && !selectedBatchId) {
-        setSelectedBatchId(res.data[0].id);
+      const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+      setBatches(list);
+      if (list.length > 0 && !selectedBatchId) {
+        setSelectedBatchId(list[0].id);
       }
     } catch (err) {
       console.error(err);
+      setBatches([]);
     }
   };
 
@@ -63,10 +65,12 @@ export const AllocationsPage: React.FC = () => {
         apiClient.get(`/admin/quotas/?batch_id=${selectedBatchId}`),
         apiClient.get(`/admin/projects/?batch_id=${selectedBatchId}`),
       ]);
-      setQuotas(quotaRes.data);
-      setProjects(projRes.data);
+      setQuotas(Array.isArray(quotaRes.data) ? quotaRes.data : (quotaRes.data?.results || []));
+      setProjects(Array.isArray(projRes.data) ? projRes.data : (projRes.data?.results || []));
     } catch (err) {
       console.error(err);
+      setQuotas([]);
+      setProjects([]);
     } finally {
       setLoading(false);
     }

@@ -41,12 +41,14 @@ export const BatchesPage: React.FC = () => {
     try {
       setLoading(true);
       const res = await apiClient.get('/admin/batches/');
-      setBatches(res.data);
-      if (res.data.length > 0 && !selectedBatchId) {
-        setSelectedBatchId(res.data[0].id);
+      const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+      setBatches(list);
+      if (list.length > 0 && !selectedBatchId) {
+        setSelectedBatchId(list[0].id);
       }
     } catch (err) {
       console.error('Error fetching batches:', err);
+      setBatches([]);
     } finally {
       setLoading(false);
     }

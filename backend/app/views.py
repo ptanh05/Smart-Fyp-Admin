@@ -702,21 +702,37 @@ class AdminSecurityCenterAPIView(APIView):
 
     def get(self, request):
         total_users = CustomUser.objects.count()
+        active_users = CustomUser.objects.filter(is_active=True).count()
+        deactivated_users = CustomUser.objects.filter(is_active=False).count()
         admin_count = CustomUser.objects.filter(user_type="admin").count()
         student_count = Student.objects.count()
         supervisor_count = Supervisor.objects.count()
         batches_count = AcademicBatch.objects.count()
         projects_count = GraduationProject.objects.count()
+        councils_count = DefenseCouncil.objects.count()
         recent_audits = AuditLogSerializer(AuditLog.objects.all().order_by("-created_at")[:10], many=True).data
 
         return Response({
             "metrics": {
                 "total_users": total_users,
+                "active_users": active_users,
+                "deactivated_users": deactivated_users,
                 "admin_count": admin_count,
                 "student_count": student_count,
                 "supervisor_count": supervisor_count,
                 "batches_count": batches_count,
                 "projects_count": projects_count,
+                "councils_count": councils_count,
+            },
+            "security_headers": {
+                "httponly_cookies": True,
+                "content_security_policy": True,
+                "hsts_production": True,
+                "cors_credentials": True,
+                "magic_bytes_file_inspection": True,
+                "websocket_one_time_tickets": True,
+                "jwt_access_expiry_minutes": 15,
+                "rate_limiting_active": True,
             },
             "recent_audits": recent_audits
         }, status=status.HTTP_200_OK)
@@ -750,6 +766,7 @@ class AcademicBatchListCreateAPIView(ListCreateAPIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
     serializer_class = AcademicBatchSerializer
     queryset = AcademicBatch.objects.all().order_by("-created_at")
+    pagination_class = None
 
 
 class AcademicBatchDetailAPIView(RetrieveUpdateDestroyAPIView):

@@ -107,19 +107,37 @@ export interface AdminSecurityEvent {
   details: string;
 }
 
-export interface AdminSecurityMetrics {
+export interface AdminSecurityHeaders {
+  httponly_cookies: boolean;
+  content_security_policy: boolean;
+  hsts_production: boolean;
+  cors_credentials: boolean;
+  magic_bytes_file_inspection: boolean;
+  websocket_one_time_tickets: boolean;
+  jwt_access_expiry_minutes?: number;
+  rate_limiting_active?: boolean;
+}
+
+export interface AdminSystemCounts {
   total_users: number;
   active_users: number;
   deactivated_users: number;
-  security_headers: {
-    httponly_cookies: boolean;
-    content_security_policy: boolean;
-    hsts_production: boolean;
-    cors_credentials: boolean;
-    magic_bytes_file_inspection: boolean;
-    websocket_one_time_tickets: boolean;
-  };
-  recent_audit_events: AdminSecurityEvent[];
+  admin_count: number;
+  student_count: number;
+  supervisor_count: number;
+  batches_count: number;
+  projects_count: number;
+  councils_count?: number;
+}
+
+export interface AdminSecurityMetrics {
+  total_users?: number;
+  active_users?: number;
+  deactivated_users?: number;
+  metrics?: AdminSystemCounts;
+  security_headers?: AdminSecurityHeaders;
+  recent_audits?: AuditLog[];
+  recent_audit_events?: AdminSecurityEvent[];
 }
 
 export interface AuditLog {

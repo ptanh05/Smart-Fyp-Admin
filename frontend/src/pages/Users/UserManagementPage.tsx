@@ -99,14 +99,18 @@ export const UserManagementPage: React.FC = () => {
   useEffect(() => {
     batchesApi.getBatches()
       .then((res) => {
-        setBatches(res || []);
-        const active = res.find((b) => b.is_active);
+        const batchList: AcademicBatch[] = Array.isArray(res) ? res : ((res as any)?.results || []);
+        setBatches(batchList);
+        const active = batchList.find((b) => b.is_active);
         if (active) {
           setCreateBatchId(active.id);
           setImportBatchId(active.id);
         }
       })
-      .catch((err) => console.error('Failed to load batches:', err));
+      .catch((err) => {
+        console.error('Failed to load batches:', err);
+        setBatches([]);
+      });
   }, []);
 
   // Fetch Users
@@ -156,17 +160,19 @@ export const UserManagementPage: React.FC = () => {
   // Extract available classes for current filter
   const availableClasses = useMemo(() => {
     const classesList: CourseClass[] = [];
-    batches.forEach((b) => {
-      if (!batchFilter || b.id.toString() === batchFilter) {
-        if (b.classes) {
-          b.classes.forEach((c) => {
-            if (!programFilter || c.program_type === programFilter) {
-              classesList.push(c);
-            }
-          });
+    if (Array.isArray(batches)) {
+      batches.forEach((b) => {
+        if (!batchFilter || b.id?.toString() === batchFilter) {
+          if (b.classes && Array.isArray(b.classes)) {
+            b.classes.forEach((c) => {
+              if (!programFilter || c.program_type === programFilter) {
+                classesList.push(c);
+              }
+            });
+          }
         }
-      }
-    });
+      });
+    }
     return classesList;
   }, [batches, batchFilter, programFilter]);
 

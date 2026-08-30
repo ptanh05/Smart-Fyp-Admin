@@ -44,12 +44,14 @@ export const CouncilsPage: React.FC = () => {
   const fetchBatches = async () => {
     try {
       const res = await apiClient.get('/admin/batches/');
-      setBatches(res.data);
-      if (res.data.length > 0 && !selectedBatchId) {
-        setSelectedBatchId(res.data[0].id);
+      const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+      setBatches(list);
+      if (list.length > 0 && !selectedBatchId) {
+        setSelectedBatchId(list[0].id);
       }
     } catch (err) {
       console.error(err);
+      setBatches([]);
     }
   };
 
@@ -61,10 +63,13 @@ export const CouncilsPage: React.FC = () => {
         apiClient.get(`/admin/councils/?batch_id=${selectedBatchId}`),
         apiClient.get('/admin/users/?user_type=supervisor'),
       ]);
-      setCouncils(counRes.data);
-      setUsers(userRes.data);
+      setCouncils(Array.isArray(counRes.data) ? counRes.data : (counRes.data?.results || []));
+      const userList = Array.isArray(userRes.data) ? userRes.data : (userRes.data?.users || userRes.data?.results || []);
+      setUsers(userList);
     } catch (err) {
       console.error(err);
+      setCouncils([]);
+      setUsers([]);
     } finally {
       setLoading(false);
     }
