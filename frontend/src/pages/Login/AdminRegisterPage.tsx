@@ -3,6 +3,22 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAdminAuth } from '../../auth/AdminAuthContext';
 import './AdminLoginPage.css';
 
+const EyeIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
+const EyeOffIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+    <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+    <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+    <line x1="2" y1="2" x2="22" y2="22" />
+  </svg>
+);
+
 export const AdminRegisterPage: React.FC = () => {
   const navigate = useNavigate();
   const { register } = useAdminAuth();
@@ -11,6 +27,9 @@ export const AdminRegisterPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [adminSecret, setAdminSecret] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showAdminSecret, setShowAdminSecret] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -87,35 +106,68 @@ export const AdminRegisterPage: React.FC = () => {
 
           <div className="admin-form-group">
             <label>Mật khẩu (Tối thiểu 8 ký tự)</label>
-            <input
-              type="password"
-              required
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <div className="password-input-wrapper">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <button
+                type="button"
+                className="password-toggle-btn"
+                onClick={() => setShowPassword(!showPassword)}
+                title={showPassword ? 'Ẩn mật khẩu' : 'Xem mật khẩu'}
+                aria-label="Toggle password visibility"
+              >
+                {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+              </button>
+            </div>
           </div>
 
           <div className="admin-form-group">
             <label>Xác nhận mật khẩu</label>
-            <input
-              type="password"
-              required
-              placeholder="••••••••"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-            />
+            <div className="password-input-wrapper">
+              <input
+                type={showConfirmPassword ? 'text' : 'password'}
+                required
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+              />
+              <button
+                type="button"
+                className="password-toggle-btn"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                title={showConfirmPassword ? 'Ẩn mật khẩu' : 'Xem mật khẩu'}
+                aria-label="Toggle confirm password visibility"
+              >
+                {showConfirmPassword ? <EyeOffIcon /> : <EyeIcon />}
+              </button>
+            </div>
           </div>
 
           <div className="admin-form-group">
             <label>Mã bí mật Quản trị (Admin Secret Key)</label>
-            <input
-              type="password"
-              required
-              placeholder="Nhập khóa bảo mật Backend Admin"
-              value={adminSecret}
-              onChange={(e) => setAdminSecret(e.target.value)}
-            />
+            <div className="password-input-wrapper">
+              <input
+                type={showAdminSecret ? 'text' : 'password'}
+                required
+                placeholder="Nhập khóa bảo mật Backend Admin"
+                value={adminSecret}
+                onChange={(e) => setAdminSecret(e.target.value)}
+              />
+              <button
+                type="button"
+                className="password-toggle-btn"
+                onClick={() => setShowAdminSecret(!showAdminSecret)}
+                title={showAdminSecret ? 'Ẩn mã bí mật' : 'Xem mã bí mật'}
+                aria-label="Toggle admin secret visibility"
+              >
+                {showAdminSecret ? <EyeOffIcon /> : <EyeIcon />}
+              </button>
+            </div>
             <small style={{ color: '#64748b', fontSize: '0.8rem', display: 'block', marginTop: 4 }}>
               * Yêu cầu khóa bảo mật được cấp bởi Quản trị viên hệ thống UTC
             </small>

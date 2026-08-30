@@ -135,11 +135,47 @@ SIMPLE_JWT = {
     'USER_ID_CLAIM': 'user_id',
 }
 
-raw_cors = env.list('CORS_ALLOWED_ORIGINS', default=['http://localhost:5174', 'http://127.0.0.1:5174', 'http://localhost:3000', 'http://127.0.0.1:3000'])
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = env.bool('CORS_ALLOW_ALL_ORIGINS', default=False)
+raw_cors = env.list('CORS_ALLOWED_ORIGINS', default=['http://localhost:5174', 'http://127.0.0.1:5174', 'http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:5173', 'http://127.0.0.1:5173'])
 CORS_ALLOWED_ORIGINS = [origin.rstrip('/').strip() for origin in raw_cors if origin.strip()]
 
-raw_csrf = env.list('CSRF_TRUSTED_ORIGINS', default=['http://localhost:5174', 'http://127.0.0.1:5174', 'http://localhost:3000', 'http://127.0.0.1:3000'])
+raw_csrf = env.list('CSRF_TRUSTED_ORIGINS', default=['http://localhost:5174', 'http://127.0.0.1:5174', 'http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:5173', 'http://127.0.0.1:5173'])
 CSRF_TRUSTED_ORIGINS = [origin.rstrip('/').strip() for origin in raw_csrf if origin.strip()]
+CSRF_TRUSTED_ORIGINS.extend([
+    'https://*.vercel.app',
+    'https://*.onrender.com',
+])
+
+# Automatically allow all Vercel domains (including preview deployments) and Render
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.vercel\.app$",
+    r"^https://.*\.onrender\.com$",
+    r"^http://localhost:[0-9]+$",
+    r"^http://127\.0\.0\.1:[0-9]+$",
+]
+
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "content-type",
+    "dnt",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+    "x-authorization",
+]
+
+CORS_ALLOW_METHODS = [
+    "DELETE",
+    "GET",
+    "OPTIONS",
+    "PATCH",
+    "POST",
+    "PUT",
+]
 
 # Reverse Proxy & SSL Configuration (Crucial for Render/Heroku/AWS reverse proxies)
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

@@ -4,13 +4,14 @@
   justify-content: center;
   min-height: 100vh;
   background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  padding: 1.5rem;
 }
 
 .admin-login-card {
   background: #ffffff;
   border-radius: 16px;
   width: 100%;
-  max-width: 420px;
+  max-width: 440px;
   padding: 2.5rem;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
 }
@@ -45,6 +46,47 @@
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   font-size: 0.95rem;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.admin-form-group input:focus {
+  border-color: #0284c7;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
+}
+
+.password-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.password-input-wrapper input {
+  padding-right: 2.75rem !important;
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  border-radius: 4px;
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.password-toggle-btn:hover {
+  color: #0284c7;
+  background-color: #f1f5f9;
 }
 
 .admin-login-submit {
@@ -58,4 +100,14 @@
   font-size: 1rem;
   cursor: pointer;
   margin-top: 1rem;
+  transition: background 0.2s ease;
+}
+
+.admin-login-submit:hover:not(:disabled) {
+  background: #0369a1;
+}
+
+.admin-login-submit:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }

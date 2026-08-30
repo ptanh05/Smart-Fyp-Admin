@@ -5,7 +5,7 @@ from app.views import HealthCheckAPIView
 urlpatterns = [
     path('', HealthCheckAPIView.as_view(), name='root-health-check'),
     path('health/', HealthCheckAPIView.as_view(), name='health-check'),
-    path('admin/', admin.site.urls),
+    path('django-admin/', admin.site.urls),
     path('app/', include('app.urls')),
+    path('', include('app.urls')),
 ]
-
