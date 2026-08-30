@@ -260,6 +260,8 @@ class ExcelImportService:
         """
         wb = openpyxl.Workbook()
         ws = wb.active
+        if ws is None:
+            ws = wb.create_sheet()
         ws.title = "DS_Sinh_Vien"
 
         header_fill = PatternFill(start_color="0284C7", end_color="0284C7", fill_type="solid")
@@ -327,6 +329,8 @@ class ExcelImportService:
         """
         wb = openpyxl.Workbook()
         ws = wb.active
+        if ws is None:
+            ws = wb.create_sheet()
         ws.title = "Danh_Sach_Tai_Khoan"
 
         header_fill = PatternFill(start_color="1E3A8A", end_color="1E3A8A", fill_type="solid")

@@ -1,12 +1,11 @@
 import io
 import openpyxl
-from django.test import TestCase
 from django.urls import reverse
-from rest_framework.test import APIClient
+from rest_framework.test import APIClient, APITestCase
 from rest_framework import status
 from app.models import CustomUser, Student, Supervisor, SupervisorQuota, AcademicBatch, CourseClass
 
-class AdvancedUserManagementTests(TestCase):
+class AdvancedUserManagementTests(APITestCase):
     def setUp(self):
         self.client = APIClient()
         self.admin_user = CustomUser.objects.create_user(
@@ -154,6 +153,7 @@ class AdvancedUserManagementTests(TestCase):
         # Create in-memory excel file
         wb = openpyxl.Workbook()
         ws = wb.active
+        assert ws is not None
         ws.title = "CNTT_1_K62"
 
         ws.append(["Học phần: Đồ án tốt nghiệp CNTT (N01)"])

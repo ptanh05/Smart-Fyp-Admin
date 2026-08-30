@@ -178,7 +178,7 @@ class AuditDeepVerificationTests(TestCase):
         Student.objects.create(user=u, registration_no="2112000E1", academic_batch=new_batch)
         res = MinCostMaxFlowAllocationEngine.allocate_supervisors_for_batch(new_batch.id)
         self.assertFalse(res["success"])
-        self.assertIn("Chưa thiết lập định mức Quota", res["error"])
+        self.assertIn("Chưa thiết lập định mức Quota", str(res["error"]))
 
     def test_mcmf_scenario_f_second_run_idempotency(self):
         """Scenario F: Running auto-match a 2nd time preserves project IDs and updates quota stats cleanly"""
@@ -236,6 +236,7 @@ class AuditDeepVerificationTests(TestCase):
         """Importing the same roster twice does not duplicate students/users"""
         wb = openpyxl.Workbook()
         ws = wb.active
+        assert ws is not None
         ws.title = "IT1.659.103"
         ws.cell(row=6, column=1, value="Học phần: Đồ án tốt nghiệp Kỹ sư CNTT")
         ws.cell(row=9, column=1, value="STT")
@@ -343,7 +344,7 @@ class AuditDeepVerificationTests(TestCase):
                 project=proj, week_number=w, summary_content=f"Hoàn thành công việc tuần {w}",
                 supervisor_rating="GOOD", supervisor_feedback="Tiến độ tốt"
             )
-        self.assertEqual(proj.weekly_reports.count(), 15)
+        self.assertEqual(WeeklyProgressReport.objects.filter(project=proj).count(), 15)
 
         # Step 11: Supervisor evaluates (Score = 8.0)
         proj.supervisor_score = 8.0

@@ -15,7 +15,7 @@ SECRET_KEY = env('SECRET_KEY', default='django-insecure-smart-fyp-admin-backend-
 
 DEBUG = env('DEBUG', default=True)
 
-raw_allowed_hosts = env.list('ALLOWED_HOSTS', default=['127.0.0.1', 'localhost', 'fyp-admin.utc.edu.vn'])
+raw_allowed_hosts = env.list('ALLOWED_HOSTS', default=['127.0.0.1', 'localhost', 'fyp-admin.utc.edu.vn']) or []
 ALLOWED_HOSTS = [h.replace("https://", "").replace("http://", "").rstrip("/") for h in raw_allowed_hosts if h]
 
 render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
@@ -137,10 +137,10 @@ SIMPLE_JWT = {
 
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = env.bool('CORS_ALLOW_ALL_ORIGINS', default=False)
-raw_cors = env.list('CORS_ALLOWED_ORIGINS', default=['http://localhost:5174', 'http://127.0.0.1:5174', 'http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:5173', 'http://127.0.0.1:5173'])
+raw_cors = env.list('CORS_ALLOWED_ORIGINS', default=['http://localhost:5174', 'http://127.0.0.1:5174', 'http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:5173', 'http://127.0.0.1:5173']) or []
 CORS_ALLOWED_ORIGINS = [origin.rstrip('/').strip() for origin in raw_cors if origin.strip()]
 
-raw_csrf = env.list('CSRF_TRUSTED_ORIGINS', default=['http://localhost:5174', 'http://127.0.0.1:5174', 'http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:5173', 'http://127.0.0.1:5173'])
+raw_csrf = env.list('CSRF_TRUSTED_ORIGINS', default=['http://localhost:5174', 'http://127.0.0.1:5174', 'http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:5173', 'http://127.0.0.1:5173']) or []
 CSRF_TRUSTED_ORIGINS = [origin.rstrip('/').strip() for origin in raw_csrf if origin.strip()]
 CSRF_TRUSTED_ORIGINS.extend([
     'https://*.vercel.app',

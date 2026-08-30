@@ -101,6 +101,7 @@ class AdminGraduationSystemTests(TestCase):
         """Test importing students from Excel roster"""
         wb = openpyxl.Workbook()
         ws = wb.active
+        assert ws is not None
         ws.title = "IT1.659.103"
 
         # Headers
@@ -138,6 +139,8 @@ class AdminGraduationSystemTests(TestCase):
         student1 = Student.objects.get(registration_no="211200001")
         self.assertEqual(student1.user.first_name, "An")
         self.assertEqual(student1.user.last_name, "Nguyễn Văn")
+        self.assertIsNotNone(student1.course_class)
+        assert student1.course_class is not None
         self.assertEqual(student1.course_class.class_code, "IT1.659.103")
 
     def test_mcmf_supervisor_allocation_engine(self):

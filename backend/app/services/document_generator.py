@@ -4,6 +4,7 @@ from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ALIGN_VERTICAL
 import openpyxl
+from openpyxl.utils import get_column_letter
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from django.utils import timezone
 from app.models import DefenseCouncil, CouncilMember, GraduationProject, FinalGradeSummary, CouncilLiveScore
@@ -256,7 +257,7 @@ class DocumentGenerationService:
             cell.font = font_header
             cell.fill = fill_header
             cell.alignment = align_center
-            col_letter = openpyxl.utils.get_column_letter(col_idx)
+            col_letter = get_column_letter(col_idx)
             ws.column_dimensions[col_letter].width = col_width
 
         # 3. Table Data

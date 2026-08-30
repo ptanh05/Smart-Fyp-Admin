@@ -60,7 +60,7 @@ class AuditLog(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"AuditLog #{self.id} - {self.action_type}"
+        return f"AuditLog #{self.pk} - {self.action_type}"
 
 
 class AcademicBatch(models.Model):
