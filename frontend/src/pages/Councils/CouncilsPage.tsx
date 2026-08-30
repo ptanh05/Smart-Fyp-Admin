@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { AdminLayout } from '../../components/AdminLayout';
+import { AdminLayout } from '../../components/layout/AdminLayout';
 import { apiClient } from '../../api/client';
+import './CouncilsPage.css';
 
 interface CouncilMember {
   id: number;
@@ -133,17 +134,25 @@ export const CouncilsPage: React.FC = () => {
     }
   };
 
+  const getRoleBadgeClass = (role: string) => {
+    if (role === 'CHỦ TỊCH' || role === 'PRESIDENT') return 'utc-role-president';
+    if (role === 'THƯ KÝ' || role === 'SECRETARY') return 'utc-role-secretary';
+    if (role === 'PHẢN BIỆN' || role === 'REVIEWER') return 'utc-role-reviewer';
+    return 'utc-role-member';
+  };
+
   return (
-    <AdminLayout title="Quản lý Hội đồng bảo vệ & Phân Giảng viên phản biện">
-      <div className="space-y-6 max-w-7xl mx-auto">
+    <AdminLayout>
+      <div className="utc-councils-portal">
         {/* Header Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-950/60 p-4 rounded-xl border border-slate-800">
-          <div className="flex items-center gap-3">
-            <label className="text-xs font-semibold text-slate-400">Đợt ĐATN:</label>
+        <div className="utc-councils-header-bar">
+          <div className="utc-batch-select-group">
+            <label>⚖️ Chọn Đợt ĐATN:</label>
             <select
               value={selectedBatchId || ''}
               onChange={(e) => setSelectedBatchId(Number(e.target.value))}
-              className="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 text-sm focus:outline-none focus:border-blue-500"
+              className="utc-form-select"
+              style={{ minWidth: '240px' }}
             >
               {batches.map((b) => (
                 <option key={b.id} value={b.id}>
@@ -153,21 +162,21 @@ export const CouncilsPage: React.FC = () => {
             </select>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
             <button
               onClick={() => {
                 setCouncilNumber(councils.length + 1);
                 setCouncilName(`Hội đồng ${councils.length + 1} - Kỹ sư CNTT`);
                 setShowCreateModal(true);
               }}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-semibold transition shadow-lg shadow-blue-600/30 flex items-center gap-2"
+              className="utc-btn-primary"
             >
               <span>➕</span> Thành lập Hội đồng mới
             </button>
             <button
               onClick={handleAutoAssignReviewers}
               disabled={assigning}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold transition shadow-lg shadow-emerald-600/30 disabled:opacity-50 flex items-center gap-2"
+              className="utc-btn-emerald"
             >
               <span>⚖️</span> {assigning ? 'Đang phân bổ...' : 'Auto Gán HĐ & Phản biện (No-Conflict)'}
             </button>
@@ -176,13 +185,13 @@ export const CouncilsPage: React.FC = () => {
 
         {/* Conflict & Assignment Result Banner */}
         {assignResult && (
-          <div className="p-4 rounded-xl bg-slate-950 border border-emerald-500/30 text-sm space-y-2">
-            <div className="flex items-center gap-2 text-emerald-400 font-bold">
+          <div className="utc-match-banner">
+            <div className="utc-match-banner-title">
               <span>✅</span> Đã phân công thành công {assignResult.assigned_count} đề tài vào các Hội đồng & Giảng viên phản biện!
             </div>
             {assignResult.conflicts?.length > 0 && (
-              <div className="mt-2 text-amber-400 text-xs space-y-1">
-                <p className="font-semibold">Cảnh báo xung đột lợi ích ({assignResult.conflicts.length}):</p>
+              <div style={{ marginTop: '0.5rem', color: '#d97706', fontSize: '0.82rem' }}>
+                <p style={{ fontWeight: 700, margin: '0 0 0.25rem 0' }}>Cảnh báo xung đột lợi ích ({assignResult.conflicts.length}):</p>
                 {assignResult.conflicts.map((c: any, i: number) => (
                   <div key={i}>• SV {c.registration_no} ({c.student_name}): {c.reason}</div>
                 ))}
@@ -193,53 +202,52 @@ export const CouncilsPage: React.FC = () => {
 
         {/* Councils Grid */}
         {loading ? (
-          <div className="text-center py-12 text-slate-400">Đang tải danh sách Hội đồng bảo vệ...</div>
+          <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>Đang tải danh sách Hội đồng bảo vệ...</div>
         ) : councils.length === 0 ? (
-          <div className="text-center py-12 text-slate-400">Chưa có Hội đồng nào được thành lập cho đợt này.</div>
+          <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b', background: '#fff', borderRadius: '12px' }}>
+            Chưa có Hội đồng nào được thành lập cho đợt này. Hãy nhấn nút "Thành lập Hội đồng mới".
+          </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="utc-councils-grid">
             {councils.map((c) => (
-              <div key={c.id} className="bg-slate-950/50 rounded-xl border border-slate-800 p-5 space-y-4 shadow-lg">
-                <div className="flex items-start justify-between">
+              <div key={c.id} className="utc-council-card">
+                <div className="utc-council-card-head">
                   <div>
-                    <span className="text-xs font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                      Hội đồng #{c.council_number}
-                    </span>
-                    <h4 className="font-bold text-base text-slate-100 mt-1">{c.council_name}</h4>
+                    <span className="utc-council-tag">Hội đồng #{c.council_number}</span>
+                    <h4 className="utc-council-title">{c.council_name}</h4>
                   </div>
-                  <span className="text-xs px-2.5 py-1 rounded bg-slate-900 text-slate-300 border border-slate-800">
-                    Phòng: {c.defense_room || 'TBA'}
+                  <span className="utc-council-room-tag">
+                    Phòng: {c.defense_room || 'Chưa xếp'}
                   </span>
                 </div>
 
-                <div className="text-xs text-slate-400 flex items-center gap-4">
+                <div className="utc-council-meta-row">
                   <span>📅 Ngày: {c.session_date || 'Chưa định ngày'}</span>
-                  <span>⏰ Ca: {c.session_time === 'MORNING' ? 'Buổi sáng' : 'Buổi chiều'}</span>
-                  <span className="text-emerald-400 font-semibold">📁 {c.project_count} Đồ án</span>
+                  <span>⏰ Ca: {c.session_time === 'MORNING' ? 'Sáng' : 'Chiều'}</span>
+                  <span style={{ color: '#16a34a', fontWeight: 700 }}>📁 {c.project_count} Đồ án</span>
                 </div>
 
                 {/* Members list */}
-                <div className="space-y-2 pt-2 border-t border-slate-800/60">
-                  <p className="text-xs font-semibold text-slate-300">Thành viên Hội đồng ({c.members?.length || 0}):</p>
-                  <div className="space-y-1.5">
-                    {c.members?.map((m) => (
-                      <div key={m.id} className="flex items-center justify-between p-2 rounded bg-slate-900/60 border border-slate-800 text-xs">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-slate-200">{m.lecturer_name}</span>
-                          {m.external_institution && (
-                            <span className="text-slate-400 italic">({m.external_institution})</span>
-                          )}
+                <div className="utc-council-members-list">
+                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569' }}>
+                    Thành viên Hội đồng ({c.members?.length || 0}):
+                  </span>
+                  {c.members && c.members.length > 0 ? (
+                    c.members.map((m) => (
+                      <div key={m.id} className="utc-council-member-item">
+                        <div>
+                          <strong style={{ color: '#0f172a' }}>{m.lecturer_name}</strong>
+                          {m.academic_title && <span style={{ color: '#64748b', fontSize: '0.78rem', marginLeft: '0.35rem' }}>({m.academic_title})</span>}
+                          {m.external_institution && <span style={{ color: '#0284c7', fontSize: '0.75rem', display: 'block' }}>{m.external_institution}</span>}
                         </div>
-                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                          m.role === 'CHAIR' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                          m.role === 'SECRETARY' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
-                          'bg-slate-800 text-slate-300'
-                        }`}>
-                          {m.role === 'CHAIR' ? 'Chủ tịch' : m.role === 'SECRETARY' ? 'Thư ký' : m.role === 'EXTERNAL_MEMBER' ? 'UV Ngoài trường' : 'Ủy viên'}
+                        <span className={`utc-member-role-badge ${getRoleBadgeClass(m.role)}`}>
+                          {m.role}
                         </span>
                       </div>
-                    ))}
-                  </div>
+                    ))
+                  ) : (
+                    <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Chưa có thành viên nào</span>
+                  )}
                 </div>
               </div>
             ))}
@@ -248,95 +256,98 @@ export const CouncilsPage: React.FC = () => {
 
         {/* Modal Create Council */}
         {showCreateModal && (
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl max-w-2xl w-full shadow-2xl max-h-[90vh] overflow-y-auto">
-              <h3 className="text-lg font-bold text-slate-100 mb-4">Thành lập Hội đồng Chấm ĐATN</h3>
-              <form onSubmit={handleCreateCouncil} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1">Số thứ tự HĐ</label>
+          <div className="utc-modal-backdrop">
+            <div className="utc-modal-box" style={{ maxWidth: '580px' }}>
+              <h3>Thành Lập Hội Đồng Bảo Vệ Mới</h3>
+              <p>Điền thông tin phòng bảo vệ, thời gian và chỉ định các thành viên.</p>
+
+              <form onSubmit={handleCreateCouncil}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1rem' }}>
+                  <div className="utc-form-group">
+                    <label>Số thứ tự HĐ</label>
                     <input
                       type="number"
                       required
                       value={councilNumber}
                       onChange={(e) => setCouncilNumber(Number(e.target.value))}
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 text-sm focus:outline-none focus:border-blue-500"
+                      className="utc-form-input"
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1">Phòng bảo vệ</label>
+                  <div className="utc-form-group">
+                    <label>Tên Hội đồng</label>
                     <input
                       type="text"
-                      placeholder="VD: 502-A9, 401-A9"
-                      value={defenseRoom}
-                      onChange={(e) => setDefenseRoom(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 text-sm focus:outline-none focus:border-blue-500"
+                      required
+                      value={councilName}
+                      onChange={(e) => setCouncilName(e.target.value)}
+                      className="utc-form-input"
                     />
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">Tên Hội đồng</label>
-                  <input
-                    type="text"
-                    required
-                    value={councilName}
-                    onChange={(e) => setCouncilName(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 text-sm focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1">Ngày bảo vệ</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+                  <div className="utc-form-group">
+                    <label>Phòng bảo vệ</label>
+                    <input
+                      type="text"
+                      placeholder="VD: P.402-A9"
+                      value={defenseRoom}
+                      onChange={(e) => setDefenseRoom(e.target.value)}
+                      className="utc-form-input"
+                    />
+                  </div>
+                  <div className="utc-form-group">
+                    <label>Ngày bảo vệ</label>
                     <input
                       type="date"
                       value={sessionDate}
                       onChange={(e) => setSessionDate(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 text-sm focus:outline-none focus:border-blue-500"
+                      className="utc-form-input"
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1">Ca bảo vệ</label>
+                  <div className="utc-form-group">
+                    <label>Ca bảo vệ</label>
                     <select
                       value={sessionTime}
                       onChange={(e) => setSessionTime(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 text-sm focus:outline-none focus:border-blue-500"
+                      className="utc-form-select"
                     >
-                      <option value="MORNING">Ca sáng (07h30 - 11h30)</option>
-                      <option value="AFTERNOON">Ca chiều (13h30 - 17h30)</option>
+                      <option value="MORNING">Buổi sáng</option>
+                      <option value="AFTERNOON">Buổi chiều</option>
                     </select>
                   </div>
                 </div>
 
-                {/* Member selection */}
-                <div className="space-y-3 pt-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-300">Danh sách thành viên (3-5 Thầy/Cô):</label>
+                {/* Members assignment */}
+                <div style={{ margin: '1rem 0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>Thành viên & Vai trò:</label>
                     <button
                       type="button"
                       onClick={addMemberRow}
-                      className="text-xs px-2.5 py-1 rounded bg-blue-600/20 text-blue-400 border border-blue-500/30 hover:bg-blue-600/30"
+                      className="utc-btn-primary"
+                      style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem' }}
                     >
-                      ➕ Thêm thành viên
+                      + Thêm thành viên
                     </button>
                   </div>
 
-                  <div className="space-y-2">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '180px', overflowY: 'auto' }}>
                     {selectedMembers.map((m, idx) => (
-                      <div key={idx} className="flex items-center gap-2 bg-slate-950 p-2 rounded-lg border border-slate-800">
+                      <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                         <select
                           value={m.user_id}
                           onChange={(e) => {
-                            const newM = [...selectedMembers];
-                            newM[idx].user_id = Number(e.target.value);
-                            setSelectedMembers(newM);
+                            const updated = [...selectedMembers];
+                            updated[idx].user_id = Number(e.target.value);
+                            setSelectedMembers(updated);
                           }}
-                          className="flex-1 px-2 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 text-xs"
+                          className="utc-form-select"
+                          style={{ flex: 2 }}
                         >
                           {users.map((u) => (
                             <option key={u.id} value={u.id}>
-                              {u.first_name} {u.last_name} ({u.username})
+                              {u.full_name || u.username} ({u.email})
                             </option>
                           ))}
                         </select>
@@ -344,24 +355,23 @@ export const CouncilsPage: React.FC = () => {
                         <select
                           value={m.role}
                           onChange={(e) => {
-                            const newM = [...selectedMembers];
-                            newM[idx].role = e.target.value;
-                            setSelectedMembers(newM);
+                            const updated = [...selectedMembers];
+                            updated[idx].role = e.target.value;
+                            setSelectedMembers(updated);
                           }}
-                          className="w-36 px-2 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 text-xs"
+                          className="utc-form-select"
+                          style={{ flex: 1 }}
                         >
-                          <option value="CHAIR">Chủ tịch HĐ</option>
-                          <option value="SECRETARY">Thư ký HĐ</option>
-                          <option value="MEMBER">Ủy viên</option>
-                          <option value="EXTERNAL_MEMBER">Ủy viên ngoài</option>
+                          <option value="CHỦ TỊCH">Chủ tịch</option>
+                          <option value="THƯ KÝ">Thư ký</option>
+                          <option value="ỦY VIÊN">Ủy viên</option>
+                          <option value="PHẢN BIỆN">Phản biện</option>
                         </select>
 
                         <button
                           type="button"
-                          onClick={() => {
-                            setSelectedMembers(selectedMembers.filter((_, i) => i !== idx));
-                          }}
-                          className="p-1.5 text-rose-400 hover:bg-slate-800 rounded"
+                          onClick={() => setSelectedMembers(selectedMembers.filter((_, i) => i !== idx))}
+                          style={{ background: '#fee2e2', border: 'none', color: '#dc2626', borderRadius: '6px', padding: '0.4rem 0.6rem', cursor: 'pointer' }}
                         >
                           ✕
                         </button>
@@ -370,19 +380,12 @@ export const CouncilsPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateModal(false)}
-                    className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-sm hover:bg-slate-700 transition"
-                  >
+                <div className="utc-modal-footer">
+                  <button type="button" onClick={() => setShowCreateModal(false)} className="utc-btn-cancel">
                     Hủy
                   </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-500 transition"
-                  >
-                    Lưu Hội đồng
+                  <button type="submit" className="utc-btn-primary">
+                    Thành lập Hội đồng
                   </button>
                 </div>
               </form>

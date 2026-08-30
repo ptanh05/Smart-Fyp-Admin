@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { AdminLayout } from '../../components/AdminLayout';
+import { AdminLayout } from '../../components/layout/AdminLayout';
 import { apiClient } from '../../api/client';
+import './AllocationsPage.css';
 
 interface SupervisorQuota {
   id: number;
@@ -125,22 +126,23 @@ export const AllocationsPage: React.FC = () => {
     }
   };
 
-  const totalQuotaVA = quotas.reduce((s, q) => s + q.viet_anh_quota, 0);
-  const totalQuotaCNTT = quotas.reduce((s, q) => s + q.general_cntt_quota, 0);
-  const totalQuota = quotas.reduce((s, q) => s + q.max_total_quota, 0);
-  const totalAssigned = quotas.reduce((s, q) => s + q.current_assigned, 0);
+  const totalQuotaVA = quotas.reduce((s, q) => s + (q.viet_anh_quota || 0), 0);
+  const totalQuotaCNTT = quotas.reduce((s, q) => s + (q.general_cntt_quota || 0), 0);
+  const totalQuota = quotas.reduce((s, q) => s + (q.max_total_quota || 0), 0);
+  const totalAssigned = quotas.reduce((s, q) => s + (q.current_assigned || 0), 0);
 
   return (
-    <AdminLayout title="Phân Giảng viên Hướng dẫn (Min-Cost Max-Flow Matching)">
-      <div className="space-y-6 max-w-7xl mx-auto">
+    <AdminLayout>
+      <div className="utc-allocations-portal">
         {/* Batch Selector & Actions */}
-        <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-950/60 p-4 rounded-xl border border-slate-800">
-          <div className="flex items-center gap-3">
-            <label className="text-xs font-semibold text-slate-400">Đợt ĐATN:</label>
+        <div className="utc-allocations-header-bar">
+          <div className="utc-batch-select-group">
+            <label>🎯 Chọn Đợt ĐATN:</label>
             <select
               value={selectedBatchId || ''}
               onChange={(e) => setSelectedBatchId(Number(e.target.value))}
-              className="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 text-sm focus:outline-none focus:border-blue-500"
+              className="utc-form-select"
+              style={{ minWidth: '240px' }}
             >
               {batches.map((b) => (
                 <option key={b.id} value={b.id}>
@@ -150,17 +152,18 @@ export const AllocationsPage: React.FC = () => {
             </select>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
             <button
               onClick={() => setShowManualModal(true)}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-sm font-semibold transition border border-slate-700 flex items-center gap-2"
+              className="utc-btn-cancel"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
             >
               <span>✏️</span> Phân công thủ công
             </button>
             <button
               onClick={handleRunMCMF}
               disabled={matching}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-semibold transition shadow-lg shadow-blue-600/30 disabled:opacity-50 flex items-center gap-2"
+              className="utc-btn-primary"
             >
               <span>⚡</span> {matching ? 'Đang giải bài toán MCMF...' : 'Khởi chạy MCMF Auto-Match'}
             </button>
@@ -169,36 +172,36 @@ export const AllocationsPage: React.FC = () => {
 
         {/* Quota Metric Summary Cards */}
         {loading ? (
-          <div className="text-center py-8 text-slate-400">Đang tải dữ liệu phân công...</div>
+          <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Đang tải dữ liệu phân công...</div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-800">
-            <span className="text-xs text-slate-400 font-medium">Chỉ tiêu CLC Việt - Anh</span>
-            <p className="text-xl font-bold text-blue-400 mt-1">{totalQuotaVA} SV</p>
+          <div className="utc-quota-cards-grid">
+            <div className="utc-quota-card">
+              <span className="utc-quota-card-label">Chỉ tiêu CLC Việt - Anh</span>
+              <span className="utc-quota-card-val blue">{totalQuotaVA} SV</span>
+            </div>
+            <div className="utc-quota-card">
+              <span className="utc-quota-card-label">Chỉ tiêu CNTT Đại trà & KHMT</span>
+              <span className="utc-quota-card-val indigo">{totalQuotaCNTT} SV</span>
+            </div>
+            <div className="utc-quota-card">
+              <span className="utc-quota-card-label">Tổng định mức toàn Khoa</span>
+              <span className="utc-quota-card-val amber">{totalQuota} SV</span>
+            </div>
+            <div className="utc-quota-card">
+              <span className="utc-quota-card-label">Đã phân công thực tế</span>
+              <span className="utc-quota-card-val emerald">{totalAssigned} / {totalQuota} SV</span>
+            </div>
           </div>
-          <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-800">
-            <span className="text-xs text-slate-400 font-medium">Chỉ tiêu CNTT Đại trà & KHMT</span>
-            <p className="text-xl font-bold text-indigo-400 mt-1">{totalQuotaCNTT} SV</p>
-          </div>
-          <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-800">
-            <span className="text-xs text-slate-400 font-medium">Tổng định mức toàn Khoa</span>
-            <p className="text-xl font-bold text-amber-400 mt-1">{totalQuota} SV</p>
-          </div>
-          <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-800">
-            <span className="text-xs text-slate-400 font-medium">Đã phân công thực tế</span>
-            <p className="text-xl font-bold text-emerald-400 mt-1">{totalAssigned} / {totalQuota} SV</p>
-          </div>
-        </div>
         )}
 
         {/* Match Result Banner */}
         {matchResult && (
-          <div className="p-4 rounded-xl bg-slate-950 border border-blue-500/30 text-sm space-y-2">
-            <div className="flex items-center gap-2 text-emerald-400 font-bold">
+          <div className="utc-match-banner">
+            <div className="utc-match-banner-title">
               <span>✅</span> Phân công MCMF hoàn tất: Đã khớp {matchResult.matched_count} / {matchResult.total_students} sinh viên!
             </div>
             {matchResult.unassigned_count > 0 && (
-              <p className="text-amber-400 text-xs">
+              <p className="utc-match-banner-sub">
                 Có {matchResult.unassigned_count} sinh viên chưa thể xếp do vượt quota. Hãy sử dụng phân công thủ công hoặc mở thêm chỉ tiêu.
               </p>
             )}
@@ -206,51 +209,43 @@ export const AllocationsPage: React.FC = () => {
         )}
 
         {/* Quotas & Lecturers Table */}
-        <div className="bg-slate-950/50 rounded-xl border border-slate-800 overflow-hidden">
-          <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-            <h3 className="font-bold text-sm text-slate-200">Định mức Quota 33 Giảng viên Khoa CNTT</h3>
-            <span className="text-xs text-slate-400">{quotas.length} Giảng viên</span>
+        <div className="utc-table-card">
+          <div className="utc-table-card-head">
+            <h3>Định mức Quota Giảng viên Khoa CNTT</h3>
+            <span>{quotas.length} Giảng viên</span>
           </div>
 
-          <div className="overflow-x-auto max-h-80 overflow-y-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-900/80 text-slate-400 sticky top-0 uppercase font-semibold">
+          <div style={{ overflowX: 'auto' }}>
+            <table className="utc-custom-table">
+              <thead>
                 <tr>
-                  <th className="p-3">Mã GV</th>
-                  <th className="p-3">Họ và tên Giảng viên</th>
-                  <th className="p-3">Bộ môn</th>
-                  <th className="p-3 text-center">Quota VA</th>
-                  <th className="p-3 text-center">Quota CNTT</th>
-                  <th className="p-3 text-center">Tổng Quota</th>
-                  <th className="p-3 text-center">Đã nhận</th>
-                  <th className="p-3">Tình trạng</th>
+                  <th>Mã GV</th>
+                  <th>Họ và tên Giảng viên</th>
+                  <th>Bộ môn</th>
+                  <th style={{ textAlign: 'center' }}>Quota VA</th>
+                  <th style={{ textAlign: 'center' }}>Quota CNTT</th>
+                  <th style={{ textAlign: 'center' }}>Tổng Quota</th>
+                  <th style={{ textAlign: 'center' }}>Đã nhận</th>
+                  <th>Tình trạng</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 text-slate-300">
+              <tbody>
                 {quotas.map((q) => {
                   const isFull = q.current_assigned >= q.max_total_quota && q.max_total_quota > 0;
                   return (
-                    <tr key={q.id} className="hover:bg-slate-900/40">
-                      <td className="p-3 font-mono text-slate-400">{q.supervisor_id_code}</td>
-                      <td className="p-3 font-medium text-slate-100">{q.supervisor_name}</td>
-                      <td className="p-3">
-                        <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-                          {q.department || 'Bộ môn'}
-                        </span>
-                      </td>
-                      <td className="p-3 text-center font-semibold">{q.viet_anh_quota}</td>
-                      <td className="p-3 text-center font-semibold">{q.general_cntt_quota}</td>
-                      <td className="p-3 text-center font-bold text-amber-400">{q.max_total_quota}</td>
-                      <td className="p-3 text-center font-bold text-emerald-400">{q.current_assigned}</td>
-                      <td className="p-3">
+                    <tr key={q.id}>
+                      <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{q.supervisor_id_code}</td>
+                      <td style={{ fontWeight: 600 }}>{q.supervisor_name}</td>
+                      <td>{q.department || 'Khoa CNTT'}</td>
+                      <td style={{ textAlign: 'center', fontWeight: 600 }}>{q.viet_anh_quota}</td>
+                      <td style={{ textAlign: 'center', fontWeight: 600 }}>{q.general_cntt_quota}</td>
+                      <td style={{ textAlign: 'center', fontWeight: 700, color: '#d97706' }}>{q.max_total_quota}</td>
+                      <td style={{ textAlign: 'center', fontWeight: 700, color: '#16a34a' }}>{q.current_assigned}</td>
+                      <td>
                         {isFull ? (
-                          <span className="text-xs px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 font-medium">
-                            Đã đủ Quota
-                          </span>
+                          <span className="utc-badge-full">Đã đủ Quota</span>
                         ) : (
-                          <span className="text-xs px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
-                            Còn {q.max_total_quota - q.current_assigned} chỗ
-                          </span>
+                          <span className="utc-badge-available">Còn nhận {q.max_total_quota - q.current_assigned} SV</span>
                         )}
                       </td>
                     </tr>
@@ -261,39 +256,48 @@ export const AllocationsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Assigned Projects Table */}
-        <div className="bg-slate-950/50 rounded-xl border border-slate-800 overflow-hidden">
-          <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-            <h3 className="font-bold text-sm text-slate-200">Danh sách Đồ án đã được phân công ({projects.length} đề tài)</h3>
+        {/* Allocated Projects Table */}
+        <div className="utc-table-card">
+          <div className="utc-table-card-head">
+            <h3>Danh Sách Đồ Án Đã Được Phân Công ({projects.length} đề tài)</h3>
+            <span>Đợt ĐATN hiện tại</span>
           </div>
 
-          <div className="overflow-x-auto max-h-96 overflow-y-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-900/80 text-slate-400 sticky top-0 uppercase font-semibold">
+          <div style={{ overflowX: 'auto' }}>
+            <table className="utc-custom-table">
+              <thead>
                 <tr>
-                  <th className="p-3">MSSV</th>
-                  <th className="p-3">Sinh viên</th>
-                  <th className="p-3">Lớp học phần</th>
-                  <th className="p-3">Tên đề tài đồ án</th>
-                  <th className="p-3">Giảng viên hướng dẫn</th>
-                  <th className="p-3">Trạng thái</th>
+                  <th>MSSV</th>
+                  <th>Họ và Tên Sinh Viên</th>
+                  <th>Lớp Học Phần</th>
+                  <th>Tên Đề Tài Đồ Án</th>
+                  <th>Giảng Viên Hướng Dẫn</th>
+                  <th>Trạng Thái</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                {projects.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-900/40">
-                    <td className="p-3 font-mono text-blue-400">{p.student_reg_no}</td>
-                    <td className="p-3 font-medium text-slate-100">{p.student_name}</td>
-                    <td className="p-3 text-slate-400">{p.student_class}</td>
-                    <td className="p-3 font-medium text-slate-200">{p.topic_title_vi}</td>
-                    <td className="p-3 font-semibold text-emerald-400">{p.supervisor_name}</td>
-                    <td className="p-3">
-                      <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs">
-                        {p.status}
-                      </span>
+              <tbody>
+                {projects.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                      Chưa có sinh viên nào được phân công đề tài trong đợt này.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  projects.map((p) => (
+                    <tr key={p.id}>
+                      <td style={{ fontFamily: 'monospace', fontWeight: 700, color: '#0284c7' }}>{p.student_reg_no}</td>
+                      <td style={{ fontWeight: 600 }}>{p.student_name}</td>
+                      <td>{p.student_class}</td>
+                      <td style={{ maxWidth: '280px', fontWeight: 500 }} title={p.topic_title_vi}>
+                        {p.topic_title_vi}
+                      </td>
+                      <td style={{ fontWeight: 600, color: '#0f172a' }}>{p.supervisor_name}</td>
+                      <td>
+                        <span className="utc-badge-available">{p.status}</span>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -301,50 +305,39 @@ export const AllocationsPage: React.FC = () => {
 
         {/* Modal Manual Assign */}
         {showManualModal && (
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl max-w-md w-full shadow-2xl">
-              <h3 className="text-lg font-bold text-slate-100 mb-4">Phân công Giảng viên Hướng dẫn</h3>
-              <form onSubmit={handleManualAssign} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">ID Sinh viên</label>
+          <div className="utc-modal-backdrop">
+            <div className="utc-modal-box">
+              <h3>Phân công Giảng viên Hướng dẫn Thủ công</h3>
+              <p>Chỉ định trực tiếp Giảng viên hướng dẫn cho Sinh viên.</p>
+              <form onSubmit={handleManualAssign}>
+                <div className="utc-form-group">
+                  <label>ID Sinh viên (Student ID)</label>
                   <input
                     type="number"
                     required
-                    placeholder="Nhập ID sinh viên"
+                    placeholder="VD: 101"
                     value={manualStudentId}
                     onChange={(e) => setManualStudentId(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 text-sm focus:outline-none focus:border-blue-500"
+                    className="utc-form-input"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">Chọn Giảng viên hướng dẫn</label>
-                  <select
+                <div className="utc-form-group">
+                  <label>ID Giảng viên (Supervisor ID)</label>
+                  <input
+                    type="number"
+                    required
+                    placeholder="VD: 12"
                     value={manualSupervisorId}
                     onChange={(e) => setManualSupervisorId(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 text-sm focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="">-- Chọn giảng viên --</option>
-                    {quotas.map((q) => (
-                      <option key={q.supervisor} value={q.supervisor}>
-                        {q.supervisor_name} ({q.department}) - Đã nhận: {q.current_assigned}/{q.max_total_quota}
-                      </option>
-                    ))}
-                  </select>
+                    className="utc-form-input"
+                  />
                 </div>
-                <div className="flex justify-end gap-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowManualModal(false)}
-                    className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-sm hover:bg-slate-700 transition"
-                  >
+                <div className="utc-modal-footer">
+                  <button type="button" onClick={() => setShowManualModal(false)} className="utc-btn-cancel">
                     Hủy
                   </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-500 transition"
-                  >
-                    Lưu phân công
+                  <button type="submit" className="utc-btn-primary">
+                    Xác nhận phân công
                   </button>
                 </div>
               </form>

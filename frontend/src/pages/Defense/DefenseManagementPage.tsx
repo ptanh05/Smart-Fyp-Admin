@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { AdminLayout } from '../../components/AdminLayout';
+import { AdminLayout } from '../../components/layout/AdminLayout';
 import { apiClient } from '../../api/client';
+import './DefenseManagementPage.css';
 
 interface ProjectAdmin {
   id: number;
@@ -124,17 +125,18 @@ export const DefenseManagementPage: React.FC = () => {
   };
 
   return (
-    <AdminLayout title="Quản lý Bảo vệ ĐATN & Xuất Văn bản Hành chính (Word / Excel)">
-      <div className="space-y-6 max-w-7xl mx-auto">
+    <AdminLayout>
+      <div className="utc-defense-portal">
         {/* Filters & Actions */}
-        <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-950/60 p-4 rounded-xl border border-slate-800">
-          <div className="flex flex-wrap items-center gap-3">
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Đợt ĐATN:</label>
+        <div className="utc-defense-header-bar">
+          <div className="utc-defense-filters-group">
+            <div className="utc-defense-filter-item">
+              <label>Đợt ĐATN</label>
               <select
                 value={selectedBatchId || ''}
                 onChange={(e) => setSelectedBatchId(Number(e.target.value))}
-                className="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 text-sm focus:outline-none focus:border-blue-500"
+                className="utc-form-select"
+                style={{ minWidth: '180px' }}
               >
                 {batches.map((b) => (
                   <option key={b.id} value={b.id}>
@@ -144,12 +146,13 @@ export const DefenseManagementPage: React.FC = () => {
               </select>
             </div>
 
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Lọc theo Hội đồng:</label>
+            <div className="utc-defense-filter-item">
+              <label>Lọc theo Hội đồng</label>
               <select
                 value={selectedCouncilId}
                 onChange={(e) => setSelectedCouncilId(e.target.value)}
-                className="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 text-sm focus:outline-none focus:border-blue-500"
+                className="utc-form-select"
+                style={{ minWidth: '220px' }}
               >
                 <option value="">-- Tất cả Hội đồng --</option>
                 {councils.map((c) => (
@@ -160,12 +163,13 @@ export const DefenseManagementPage: React.FC = () => {
               </select>
             </div>
 
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Trạng thái:</label>
+            <div className="utc-defense-filter-item">
+              <label>Trạng thái</label>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 text-sm focus:outline-none focus:border-blue-500"
+                className="utc-form-select"
+                style={{ minWidth: '180px' }}
               >
                 <option value="">-- Tất cả trạng thái --</option>
                 <option value="ALLOCATED">Đã phân GVHD</option>
@@ -177,17 +181,17 @@ export const DefenseManagementPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="utc-defense-actions-group">
             <button
               onClick={handleDownloadToTrinhDocx}
-              className="px-4 py-2 bg-blue-700 hover:bg-blue-600 text-white rounded-lg text-sm font-semibold transition shadow-md shadow-blue-700/30 flex items-center gap-2"
+              className="utc-btn-primary"
               title="Xuất Tờ trình thành lập Hội đồng theo biểu mẫu Word .docx chuẩn UTC"
             >
               <span>📄</span> Xuất Tờ trình (.docx)
             </button>
             <button
               onClick={handleDownloadBienBanExcel}
-              className="px-4 py-2 bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg text-sm font-semibold transition shadow-md shadow-emerald-700/30 flex items-center gap-2"
+              className="utc-btn-emerald"
               title="Xuất Bảng điểm tổng hợp ĐATN chuẩn quy chế tín chỉ UTC"
             >
               <span>📊</span> Xuất Bảng điểm (.xlsx)
@@ -196,79 +200,77 @@ export const DefenseManagementPage: React.FC = () => {
         </div>
 
         {/* Defense Projects Table */}
-        <div className="bg-slate-950/50 rounded-xl border border-slate-800 overflow-hidden shadow-xl">
-          <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-            <h3 className="font-bold text-sm text-slate-200">
+        <div className="utc-table-card">
+          <div className="utc-table-card-head">
+            <h3>
               Danh sách Sinh viên & Kết quả Bảo vệ ĐATN ({projects.length} sinh viên)
             </h3>
-            <span className="text-xs text-slate-400">Trọng số UTC: GVHD (40%) + GVPB (20%) + HĐ (40%)</span>
+            <span>Trọng số UTC: GVHD (40%) + GVPB (20%) + HĐ (40%)</span>
           </div>
 
           {loading ? (
-            <div className="text-center py-12 text-slate-400">Đang tải danh sách đồ án bảo vệ...</div>
+            <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>Đang tải danh sách đồ án bảo vệ...</div>
+          ) : projects.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
+              Chưa có dữ liệu đồ án nào trong đợt này.
+            </div>
           ) : (
-            <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-900/90 text-slate-400 sticky top-0 uppercase font-semibold">
-                <tr>
-                  <th className="p-3">STT</th>
-                  <th className="p-3">MSSV</th>
-                  <th className="p-3">Họ và tên</th>
-                  <th className="p-3">Lớp</th>
-                  <th className="p-3">Tên đề tài đồ án</th>
-                  <th className="p-3">GVHD</th>
-                  <th className="p-3">GVPB</th>
-                  <th className="p-3">Hội đồng</th>
-                  <th className="p-3 text-center">GVHD (40%)</th>
-                  <th className="p-3 text-center">GVPB (20%)</th>
-                  <th className="p-3 text-center">Điểm 10</th>
-                  <th className="p-3 text-center">Chữ</th>
-                  <th className="p-3 text-center">Kết luận</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                {projects.map((p, idx) => {
-                  return (
-                    <tr key={p.id} className="hover:bg-slate-900/50 transition">
-                      <td className="p-3 text-slate-400">{idx + 1}</td>
-                      <td className="p-3 font-mono font-semibold text-blue-400">{p.student_reg_no}</td>
-                      <td className="p-3 font-medium text-slate-100">{p.student_name}</td>
-                      <td className="p-3 text-slate-400">{p.student_class}</td>
-                      <td className="p-3 font-medium text-slate-200 max-w-xs truncate" title={p.topic_title_vi}>
-                        {p.topic_title_vi}
-                      </td>
-                      <td className="p-3 text-slate-300">{p.supervisor_name}</td>
-                      <td className="p-3 text-slate-300">{p.reviewer_name || <span className="text-slate-400 italic">Chưa gán</span>}</td>
-                      <td className="p-3 text-slate-300">{p.council_name || <span className="text-slate-400 italic">Chưa gán</span>}</td>
-                      <td className="p-3 text-center font-semibold text-slate-200">{p.supervisor_score !== null ? p.supervisor_score : '-'}</td>
-                      <td className="p-3 text-center font-semibold text-slate-200">{p.reviewer_score !== null ? p.reviewer_score : '-'}</td>
-                      <td className="p-3 text-center font-bold text-amber-400 text-sm">
-                        {p.final_score_10 !== null ? p.final_score_10 : '-'}
-                      </td>
-                      <td className="p-3 text-center font-bold text-emerald-400">
-                        {p.final_letter_grade || '-'}
-                      </td>
-                      <td className="p-3 text-center">
-                        {p.status === 'PASSED' ? (
-                          <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
-                            ĐẠT
-                          </span>
-                        ) : p.status === 'FAILED' ? (
-                          <span className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold">
-                            KHÔNG ĐẠT
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400 text-xs">
-                            {p.status}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="utc-custom-table">
+                <thead>
+                  <tr>
+                    <th>STT</th>
+                    <th>MSSV</th>
+                    <th>Họ và tên</th>
+                    <th>Lớp</th>
+                    <th>Tên đề tài đồ án</th>
+                    <th>GVHD</th>
+                    <th>GVPB</th>
+                    <th>Hội đồng</th>
+                    <th style={{ textAlign: 'center' }}>GVHD (40%)</th>
+                    <th style={{ textAlign: 'center' }}>GVPB (20%)</th>
+                    <th style={{ textAlign: 'center' }}>Điểm 10</th>
+                    <th style={{ textAlign: 'center' }}>Chữ</th>
+                    <th style={{ textAlign: 'center' }}>Kết luận</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {projects.map((p, idx) => {
+                    return (
+                      <tr key={p.id}>
+                        <td style={{ color: '#64748b' }}>{idx + 1}</td>
+                        <td style={{ fontFamily: 'monospace', fontWeight: 700, color: '#0284c7' }}>{p.student_reg_no}</td>
+                        <td style={{ fontWeight: 600 }}>{p.student_name}</td>
+                        <td style={{ color: '#64748b' }}>{p.student_class}</td>
+                        <td style={{ maxWidth: '280px', fontWeight: 500 }} title={p.topic_title_vi}>
+                          {p.topic_title_vi}
+                        </td>
+                        <td>{p.supervisor_name}</td>
+                        <td>{p.reviewer_name || <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Chưa gán</span>}</td>
+                        <td>{p.council_name || <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Chưa gán</span>}</td>
+                        <td style={{ textAlign: 'center', fontWeight: 600 }}>{p.supervisor_score !== null ? p.supervisor_score : '-'}</td>
+                        <td style={{ textAlign: 'center', fontWeight: 600 }}>{p.reviewer_score !== null ? p.reviewer_score : '-'}</td>
+                        <td style={{ textAlign: 'center', fontWeight: 800, color: '#d97706', fontSize: '0.95rem' }}>
+                          {p.final_score_10 !== null ? p.final_score_10 : '-'}
+                        </td>
+                        <td style={{ textAlign: 'center', fontWeight: 800, color: '#16a34a' }}>
+                          {p.final_letter_grade || '-'}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          {p.status === 'PASSED' ? (
+                            <span className="utc-badge-passed">ĐẠT</span>
+                          ) : p.status === 'FAILED' ? (
+                            <span className="utc-badge-failed">KHÔNG ĐẠT</span>
+                          ) : (
+                            <span className="utc-badge-status">{p.status}</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </div>
