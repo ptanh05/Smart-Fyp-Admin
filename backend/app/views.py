@@ -48,12 +48,14 @@ from .services.document_generator import DocumentGenerationService
 logger = logging.getLogger(__name__)
 
 def set_refresh_cookie(response, refresh_token):
+    is_production = not getattr(settings, "DEBUG", True)
+    is_secure = is_production or getattr(settings, "SESSION_COOKIE_SECURE", False)
     response.set_cookie(
         key="refresh_token",
         value=str(refresh_token),
         httponly=True,
-        secure=False,  # Set to True in production HTTPS
-        samesite="Lax",
+        secure=is_secure,
+        samesite="None" if is_secure else "Lax",
         path="/app/",
         max_age=7 * 24 * 3600,
     )

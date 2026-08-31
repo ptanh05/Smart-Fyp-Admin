@@ -28,28 +28,40 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
+    let isMounted = true;
     const initAuth = async () => {
       try {
-        const res = await authApi.refreshToken();
-        if (res && res.access) {
+        const refreshPromise = authApi.refreshToken();
+        const timeoutPromise = new Promise<{ access: string }>((_, reject) =>
+          setTimeout(() => reject(new Error('Auth init timeout')), 8000)
+        );
+        const res = await Promise.race([refreshPromise, timeoutPromise]);
+        if (isMounted && res && res.access) {
           setAccessToken(res.access);
           setIsAuthenticated(true);
           setUserType('admin');
-        } else {
+        } else if (isMounted) {
           setAccessToken(null);
           setIsAuthenticated(false);
           setUserType(null);
         }
       } catch (err) {
-        setAccessToken(null);
-        setIsAuthenticated(false);
-        setUserType(null);
+        if (isMounted) {
+          setAccessToken(null);
+          setIsAuthenticated(false);
+          setUserType(null);
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     initAuth();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const login = async (email: string, password: string) => {
