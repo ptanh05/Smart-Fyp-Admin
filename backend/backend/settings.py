@@ -22,7 +22,9 @@ render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
 if render_host and render_host not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(render_host)
 
-if ".onrender.com" not in ALLOWED_HOSTS:
+if os.environ.get("RENDER"):
+    ALLOWED_HOSTS.append("*")
+elif ".onrender.com" not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(".onrender.com")
 if "localhost" not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append("localhost")
