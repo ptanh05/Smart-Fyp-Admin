@@ -953,7 +953,7 @@ class DefenseCouncilListCreateAPIView(APIView):
             if user_id:
                 user = CustomUser.objects.filter(id=user_id).first()
                 if user:
-                    sup = getattr(user, "supervisor_profile", None)
+                    sup = getattr(user, "admin_supervisor_profile", None) or getattr(user, "supervisor_profile", None)
                     CouncilMember.objects.create(
                         council=council,
                         user=user,
