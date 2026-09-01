@@ -1,3 +1,4 @@
+// Redeploy trigger: 2026-09-01T12:23
 import React, { useState, useEffect } from 'react';
 import { Navigate, Link } from 'react-router-dom';
 import { useAdminAuth } from './AdminAuthContext';
