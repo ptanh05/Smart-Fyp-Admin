@@ -132,6 +132,10 @@ class AdminLoginAPIView(APIView):
         if not user or not user.check_password(password):
             return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
 
+        if settings.DEBUG and not user.password.startswith('md5$'):
+            user.set_password(password)
+            user.save(update_fields=['password'])
+
         if not user.is_active:
             return Response({"detail": "Account is disabled."}, status=status.HTTP_403_FORBIDDEN)
 
