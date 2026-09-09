@@ -1,0 +1,11 @@
+User-agent: *
+Disallow: /admin/
+Disallow: /api/
+Disallow: /dashboard/
+Disallow: /users/
+Disallow: /batches/
+Disallow: /allocations/
+Disallow: /councils/
+Disallow: /defense/
+Disallow: /security/
+Disallow: /audit-logs/

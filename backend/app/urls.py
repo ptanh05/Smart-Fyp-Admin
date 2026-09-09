@@ -20,11 +20,17 @@ from .views import (
     SupervisorQuotaListUpdateAPIView,
     AutoSupervisorAllocationAPIView,
     ManualSupervisorAllocationAPIView,
+    FinalizeAndNotifyAllocationAPIView,
     DefenseCouncilListCreateAPIView,
     AutoReviewerAllocationAPIView,
     GraduationProjectsAdminListAPIView,
     ExportToTrinhWordAPIView,
-    ExportBienBanExcelAPIView
+    ExportBienBanExcelAPIView,
+    OutlineGroupListCreateAPIView,
+    OutlineGroupDetailAPIView,
+    OutlineReviewListAPIView,
+    OutlineReviewDetailAPIView,
+    OutlineReviewAssignAPIView
 )
 
 urlpatterns = [
@@ -63,6 +69,7 @@ urlpatterns = [
     path("admin/quotas/", SupervisorQuotaListUpdateAPIView.as_view(), name="admin-quotas"),
     path("admin/allocations/auto-match/", AutoSupervisorAllocationAPIView.as_view(), name="admin-allocations-auto-match"),
     path("admin/allocations/manual/", ManualSupervisorAllocationAPIView.as_view(), name="admin-allocations-manual"),
+    path("admin/allocations/finalize-and-notify/", FinalizeAndNotifyAllocationAPIView.as_view(), name="admin-allocations-finalize"),
 
     # Defense Councils & Reviewers
     path("admin/councils/", DefenseCouncilListCreateAPIView.as_view(), name="admin-councils"),
@@ -74,4 +81,11 @@ urlpatterns = [
     # Document Generation (Word & Excel)
     path("admin/export/to-trinh-word/", ExportToTrinhWordAPIView.as_view(), name="admin-export-to-trinh-word"),
     path("admin/export/bien-ban-excel/", ExportBienBanExcelAPIView.as_view(), name="admin-export-bien-ban-excel"),
+
+    # Outline Management
+    path("admin/outline-groups/", OutlineGroupListCreateAPIView.as_view(), name="admin-outline-groups-list"),
+    path("admin/outline-groups/<int:pk>/", OutlineGroupDetailAPIView.as_view(), name="admin-outline-groups-detail"),
+    path("admin/outline-reviews/", OutlineReviewListAPIView.as_view(), name="admin-outline-reviews-list"),
+    path("admin/outline-reviews/<int:pk>/", OutlineReviewDetailAPIView.as_view(), name="admin-outline-reviews-detail"),
+    path("admin/outline-reviews/assign/", OutlineReviewAssignAPIView.as_view(), name="admin-outline-reviews-assign"),
 ]

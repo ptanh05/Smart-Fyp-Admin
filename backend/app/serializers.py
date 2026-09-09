@@ -12,7 +12,9 @@ from .models import (
     DefenseCouncil,
     CouncilMember,
     FinalGradeSummary,
-    EvaluationPolicy
+    EvaluationPolicy,
+    OutlineReviewGroup,
+    OutlineReview
 )
 
 class StudentDetailSerializer(serializers.ModelSerializer):
@@ -139,6 +141,8 @@ class AdminUserSerializer(serializers.ModelSerializer):
         ]
 
     def get_full_name(self, obj):
+        if obj.last_name and obj.first_name:
+            return f"{obj.last_name} {obj.first_name}".strip()
         return obj.get_full_name() or obj.username
 
     def get_student_profile(self, obj):
@@ -375,3 +379,79 @@ class GraduationProjectAdminSerializer(serializers.ModelSerializer):
             return ""
         prefix = f"{obj.reviewer.academic_title} " if obj.reviewer.academic_title else ""
         return f"{prefix}{obj.reviewer.user.get_full_name()}".strip()
+
+class OutlineReviewGroupSerializer(serializers.ModelSerializer):
+    members_detail = serializers.SerializerMethodField()
+    total_projects = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OutlineReviewGroup
+        fields = ["id", "batch", "name", "department", "members", "members_detail", "total_projects"]
+
+    def get_members_detail(self, obj):
+        return [
+            {
+                "id": m.id,
+                "name": m.user.get_full_name() or m.user.username,
+                "title": m.academic_title
+            } for m in obj.members.all()
+        ]
+
+    def get_total_projects(self, obj):
+        return obj.reviewed_outlines.count()
+
+class OutlineReviewSerializer(serializers.ModelSerializer):
+    student_name = serializers.SerializerMethodField()
+    student_reg_no = serializers.CharField(source="project.student.registration_no", read_only=True)
+    student_class = serializers.SerializerMethodField()
+    supervisor_name = serializers.SerializerMethodField()
+    topic_title = serializers.CharField(source="project.topic_title_vi", read_only=True)
+    reviewer_name = serializers.SerializerMethodField()
+    group_name = serializers.CharField(source="review_group.name", read_only=True, default="")
+    verdict_display = serializers.CharField(source="get_verdict_display", read_only=True)
+    outline_file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OutlineReview
+        fields = [
+            "id", "project", "student_name", "student_reg_no", "student_class", "supervisor_name",
+            "topic_title", "review_group", "group_name", "reviewer", "reviewer_name",
+            "outline_file", "outline_file_url", "verdict", "verdict_display", "comments",
+            "submitted_at", "reviewed_at"
+        ]
+
+    def get_student_name(self, obj):
+        if not obj.project or not obj.project.student or not obj.project.student.user:
+            return ""
+        u = obj.project.student.user
+        if u.last_name and u.first_name:
+            return f"{u.last_name} {u.first_name}".strip()
+        return u.get_full_name() or u.username
+
+    def get_student_class(self, obj):
+        if not obj.project or not obj.project.student or not obj.project.student.course_class:
+            return ""
+        return obj.project.student.course_class.class_name or obj.project.student.course_class.class_code or ""
+
+    def get_supervisor_name(self, obj):
+        if not obj.project or not obj.project.supervisor or not obj.project.supervisor.user:
+            return ""
+        spv = obj.project.supervisor
+        u = spv.user
+        prefix = f"{spv.academic_title} " if spv.academic_title else ""
+        name = f"{u.last_name} {u.first_name}".strip() if (u.last_name and u.first_name) else (u.get_full_name() or u.username)
+        return f"{prefix}{name}".strip()
+
+    def get_reviewer_name(self, obj):
+        if not obj.reviewer:
+            return ""
+        spv = obj.reviewer
+        u = spv.user
+        prefix = f"{spv.academic_title} " if spv.academic_title else ""
+        name = f"{u.last_name} {u.first_name}".strip() if (u.last_name and u.first_name) else (u.get_full_name() or u.username)
+        return f"{prefix}{name}".strip()
+
+    def get_outline_file_url(self, obj):
+        if obj.outline_file:
+            return obj.outline_file.url
+        return ""

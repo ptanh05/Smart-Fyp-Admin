@@ -190,7 +190,12 @@ class DocumentGenerationService:
         Đồ án tốt nghiệp theo quy chế tín chỉ Trường ĐH Giao thông Vận tải.
         """
         council = DefenseCouncil.objects.select_related('batch').get(id=council_id)
-        projects = list(GraduationProject.objects.filter(council=council).select_related('student__user', 'supervisor__user', 'reviewer__user').order_by('student__user__last_name', 'student__user__first_name'))
+        projects_queryset = GraduationProject.objects.filter(council=council).select_related('student__user', 'supervisor__user', 'reviewer__user')
+        from .utils.vietnamese_sort import sort_by_vietnamese_name
+        projects = sort_by_vietnamese_name(
+            list(projects_queryset),
+            key_extractor=lambda p: p.student.user.get_full_name() or p.student.user.username
+        )
 
         wb = openpyxl.Workbook()
         ws = wb.active
