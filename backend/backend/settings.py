@@ -116,6 +116,26 @@ else:
     if 'sqlite' in DATABASES['default']['ENGINE']:
         DATABASES['default']['OPTIONS'] = {'timeout': 30}
 
+# Caches configuration (LocMemCache with bounded memory and fast eviction)
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'smart-fyp-admin-cache',
+        'TIMEOUT': 300,
+        'OPTIONS': {
+            'MAX_ENTRIES': 1000,
+            'CULL_FREQUENCY': 3,
+        }
+    }
+}
+
+# Cookie & Session Security Flags (OWASP standard)
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
+
 # Optimize password hashing speed for local development
 if DEBUG:
     PASSWORD_HASHERS = [

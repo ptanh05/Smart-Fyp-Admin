@@ -10,8 +10,17 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework_simplejwt.tokens import RefreshToken
+from django.core.cache import cache
 
 from django.conf import settings
+
+BATCHES_CACHE_KEY = "admin_academic_batches_list"
+USER_SUMMARY_CACHE_KEY = "admin_users_summary_cache"
+SECURITY_METRICS_CACHE_KEY = "admin_security_metrics_cache"
+
+def invalidate_user_summary_cache():
+    cache.delete(USER_SUMMARY_CACHE_KEY)
+    cache.delete(SECURITY_METRICS_CACHE_KEY)
 from .models import (
     CustomUser,
     AuditLog,
@@ -224,18 +233,13 @@ class AdminUserManagementAPIView(APIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
 
     def get(self, request):
-        users = CustomUser.objects.all().select_related(
-            "admin_student_profile",
-            "admin_student_profile__course_class",
-            "admin_student_profile__academic_batch",
-            "admin_student_profile__graduation_project",
-            "admin_student_profile__graduation_project__supervisor",
-            "admin_student_profile__graduation_project__supervisor__user",
-            "admin_supervisor_profile"
-        ).prefetch_related(
-            "council_roles",
-            "admin_supervisor_profile__quotas"
-        ).order_by("-id")
+        summary_only = str(request.query_params.get("summary_only", "")).lower() in ["true", "1"]
+        if summary_only:
+            cached_summary = cache.get(USER_SUMMARY_CACHE_KEY)
+            if cached_summary is not None:
+                res = Response(cached_summary, status=status.HTTP_200_OK)
+                res["Cache-Control"] = "private, max-age=60"
+                return res
 
         # Fast aggregated counts in a single query (10x faster over network)
         user_counts = CustomUser.objects.aggregate(
@@ -261,9 +265,8 @@ class AdminUserManagementAPIView(APIView):
         ).count()
         cntt_students_count = max(0, total_students - khmt_students_count)
 
-        summary_only = str(request.query_params.get("summary_only", "")).lower() in ["true", "1"]
         if summary_only:
-            return Response({
+            summary_data = {
                 "users": [],
                 "total": total_students + total_supervisors + total_committee + total_external + total_admins,
                 "counts": {
@@ -278,7 +281,24 @@ class AdminUserManagementAPIView(APIView):
                     "cntt_students": cntt_students_count,
                     "khmt_students": khmt_students_count,
                 }
-            }, status=status.HTTP_200_OK)
+            }
+            cache.set(USER_SUMMARY_CACHE_KEY, summary_data, 60)
+            res = Response(summary_data, status=status.HTTP_200_OK)
+            res["Cache-Control"] = "private, max-age=60"
+            return res
+
+        users = CustomUser.objects.all().select_related(
+            "admin_student_profile",
+            "admin_student_profile__course_class",
+            "admin_student_profile__academic_batch",
+            "admin_student_profile__graduation_project",
+            "admin_student_profile__graduation_project__supervisor",
+            "admin_student_profile__graduation_project__supervisor__user",
+            "admin_supervisor_profile"
+        ).prefetch_related(
+            "council_roles",
+            "admin_supervisor_profile__quotas"
+        ).order_by("-id")
 
         # Filters
         user_type = request.query_params.get("user_type") or request.query_params.get("role")
@@ -509,9 +529,10 @@ class AdminUserManagementAPIView(APIView):
             )
 
         serialized_user = AdminUserSerializer(user).data
+        invalidate_user_summary_cache()
         return Response({
-            "message": f"Tạo tài khoản {user_type} thành công.",
-            "user": serialized_user,
+            "message": f"Tạo người dùng '{user.username}' thành công.",
+            "user": AdminUserSerializer(user).data,
             "plain_password": plain_password
         }, status=status.HTTP_201_CREATED)
 
@@ -585,6 +606,7 @@ class AdminUserManagementAPIView(APIView):
             action_type="admin_user_update",
             description=f"Admin updated user '{user.username}' status/profile."
         )
+        invalidate_user_summary_cache()
         return Response({
             "message": "Cập nhật người dùng thành công.",
             "user": AdminUserSerializer(user).data
@@ -606,6 +628,7 @@ class AdminUserManagementAPIView(APIView):
             action_type="admin_user_update",
             description=f"Admin deleted user '{username}'."
         )
+        invalidate_user_summary_cache()
         return Response({"message": f"Đã xóa người dùng {username}."}, status=status.HTTP_200_OK)
 
 
@@ -643,6 +666,7 @@ class AdminImportExcelAPIView(APIView):
             action_type="admin_user_update",
             description=f"Imported Excel students for Batch #{batch_id}: Total={res.get('total')}, Created={res.get('created')}, Strategy={password_strategy}"
         )
+        invalidate_user_summary_cache()
 
         return Response(res, status=status.HTTP_200_OK if res.get("success") else status.HTTP_400_BAD_REQUEST)
 
@@ -768,6 +792,7 @@ class AdminResetUserPasswordAPIView(APIView):
             action_type="admin_user_update",
             description=f"Admin reset password for user '{user.username}' (Strategy: {strategy})."
         )
+        invalidate_user_summary_cache()
 
         return Response({
             "message": f"Đặt lại mật khẩu thành công cho tài khoản '{user.username}'.",
@@ -780,6 +805,12 @@ class AdminSecurityCenterAPIView(APIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
 
     def get(self, request):
+        cached_sec = cache.get(SECURITY_METRICS_CACHE_KEY)
+        if cached_sec is not None:
+            res = Response(cached_sec, status=status.HTTP_200_OK)
+            res["Cache-Control"] = "private, max-age=30"
+            return res
+
         total_users = CustomUser.objects.count()
         active_users = CustomUser.objects.filter(is_active=True).count()
         deactivated_users = CustomUser.objects.filter(is_active=False).count()
@@ -791,7 +822,7 @@ class AdminSecurityCenterAPIView(APIView):
         councils_count = DefenseCouncil.objects.count()
         recent_audits = AuditLogSerializer(AuditLog.objects.all().order_by("-created_at")[:10], many=True).data
 
-        return Response({
+        sec_data = {
             "metrics": {
                 "total_users": total_users,
                 "active_users": active_users,
@@ -814,7 +845,11 @@ class AdminSecurityCenterAPIView(APIView):
                 "rate_limiting_active": True,
             },
             "recent_audits": recent_audits
-        }, status=status.HTTP_200_OK)
+        }
+        cache.set(SECURITY_METRICS_CACHE_KEY, sec_data, 30)
+        res = Response(sec_data, status=status.HTTP_200_OK)
+        res["Cache-Control"] = "private, max-age=30"
+        return res
 
 
 class AdminAuditLogListAPIView(ListAPIView):
@@ -847,11 +882,42 @@ class AcademicBatchListCreateAPIView(ListCreateAPIView):
     queryset = AcademicBatch.objects.all().order_by("-created_at")
     pagination_class = None
 
+    def list(self, request, *args, **kwargs):
+        cached_data = cache.get(BATCHES_CACHE_KEY)
+        if cached_data is not None:
+            res = Response(cached_data, status=status.HTTP_200_OK)
+            res["Cache-Control"] = "private, max-age=120"
+            return res
+
+        response = super().list(request, *args, **kwargs)
+        if response.status_code == 200:
+            cache.set(BATCHES_CACHE_KEY, response.data, 600)
+            response["Cache-Control"] = "private, max-age=120"
+        return response
+
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        cache.delete(BATCHES_CACHE_KEY)
+        invalidate_user_summary_cache()
+        return response
+
 
 class AcademicBatchDetailAPIView(RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
     serializer_class = AcademicBatchSerializer
     queryset = AcademicBatch.objects.all()
+
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        cache.delete(BATCHES_CACHE_KEY)
+        invalidate_user_summary_cache()
+        return response
+
+    def destroy(self, request, *args, **kwargs):
+        response = super().destroy(request, *args, **kwargs)
+        cache.delete(BATCHES_CACHE_KEY)
+        invalidate_user_summary_cache()
+        return response
 
 
 class ExcelStudentImportAPIView(APIView):
@@ -874,6 +940,7 @@ class ExcelStudentImportAPIView(APIView):
             action_type="admin_user_update",
             description=f"Imported Excel students for Batch #{batch_id}: Total={res.get('total')}, Created={res.get('created')}"
         )
+        invalidate_user_summary_cache()
 
         return Response(res, status=status.HTTP_200_OK if res.get("success") else status.HTTP_400_BAD_REQUEST)
 
