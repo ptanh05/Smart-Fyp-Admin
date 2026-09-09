@@ -9,7 +9,7 @@ class CustomUser(AbstractUser):
         ("external_examiner", "External Examiner"),
         ("admin", "Admin"),
     )
-    user_type = models.CharField(max_length=50, choices=USER_TYPE_CHOICES)
+    user_type = models.CharField(max_length=50, choices=USER_TYPE_CHOICES, db_index=True)
 
     class Meta:
         db_table = "app_customuser"
@@ -53,7 +53,7 @@ class AuditLog(models.Model):
     field_name = models.CharField(max_length=100, blank=True, null=True)
     old_value = models.TextField(blank=True, null=True)
     new_value = models.TextField(blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
         db_table = "app_auditlog"

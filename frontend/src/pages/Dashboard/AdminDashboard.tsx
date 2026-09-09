@@ -20,7 +20,7 @@ export const AdminDashboard: React.FC = () => {
     setLoading(true);
     try {
       const [userData, secData, batchesData] = await Promise.allSettled([
-        usersApi.getUsers(),
+        usersApi.getUsers({ summary_only: true }),
         securityApi.getSecurityMetrics(),
         batchesApi.getBatches(),
       ]);

@@ -56,6 +56,7 @@ export interface GetUsersParams {
   supervisor_id?: string | number;
   has_supervisor?: string | boolean;
   is_active?: string;
+  summary_only?: boolean;
 }
 
 export const usersApi = {
