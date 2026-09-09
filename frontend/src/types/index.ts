@@ -67,6 +67,8 @@ export interface AdminUser {
 
 export interface UserCounts {
   total: number;
+  active?: number;
+  deactivated?: number;
   students: number;
   supervisors: number;
   committee: number;

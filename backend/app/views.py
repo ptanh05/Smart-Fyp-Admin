@@ -219,6 +219,8 @@ class AdminUserManagementAPIView(APIView):
         total_committee = CustomUser.objects.filter(user_type="committee_member").count()
         total_external = CustomUser.objects.filter(user_type="external_examiner").count()
         total_admins = CustomUser.objects.filter(user_type="admin").count()
+        total_active = CustomUser.objects.filter(is_active=True).count()
+        total_deactivated = CustomUser.objects.filter(is_active=False).count()
 
         # Major counts
         khmt_students_count = Student.objects.filter(
@@ -307,6 +309,8 @@ class AdminUserManagementAPIView(APIView):
             "total": total_matched,
             "counts": {
                 "total": total_students + total_supervisors + total_committee + total_external + total_admins,
+                "active": total_active,
+                "deactivated": total_deactivated,
                 "students": total_students,
                 "supervisors": total_supervisors,
                 "committee": total_committee,

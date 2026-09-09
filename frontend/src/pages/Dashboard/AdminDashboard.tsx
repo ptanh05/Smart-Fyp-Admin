@@ -54,6 +54,8 @@ export const AdminDashboard: React.FC = () => {
   const activeSupervisors = userCounts?.supervisors ?? metrics?.metrics?.supervisor_count ?? 0;
   const totalProjects = metrics?.metrics?.projects_count ?? (Array.isArray(batches) ? batches.reduce((acc, b) => acc + (b.project_count || 0), 0) : 0);
   const totalBatches = metrics?.metrics?.batches_count ?? (Array.isArray(batches) ? batches.length : 0);
+  const activeUsers = userCounts?.active ?? metrics?.metrics?.active_users ?? metrics?.active_users ?? totalUsers;
+  const deactivatedUsers = userCounts?.deactivated ?? metrics?.metrics?.deactivated_users ?? metrics?.deactivated_users ?? 0;
   const recentAudits: AuditLog[] = metrics?.recent_audits || [];
 
   return (
@@ -88,7 +90,18 @@ export const AdminDashboard: React.FC = () => {
                   <span className="utc-metric-label">Tổng Số Người Dùng</span>
                   <span className="utc-metric-value">{totalUsers || metrics?.metrics?.total_users || 0}</span>
                   <span className="utc-metric-subtext">
-                    Đang hoạt động: <strong>{metrics?.metrics?.active_users ?? totalUsers}</strong> tài khoản
+                    Gồm SV, GV, Cán bộ hội đồng & Admin
+                  </span>
+                </div>
+              </div>
+
+              <div className="utc-metric-card">
+                <div className="utc-metric-icon emerald">🟢</div>
+                <div className="utc-metric-info">
+                  <span className="utc-metric-label">Tài Khoản Đang Hoạt Động</span>
+                  <span className="utc-metric-value">{activeUsers}</span>
+                  <span className="utc-metric-subtext">
+                    Tỷ lệ: <strong>{totalUsers > 0 ? Math.round((activeUsers / totalUsers) * 100) : 100}%</strong> | Vô hiệu: <strong>{deactivatedUsers}</strong>
                   </span>
                 </div>
               </div>

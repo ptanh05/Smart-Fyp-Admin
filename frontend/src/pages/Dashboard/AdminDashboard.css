@@ -120,7 +120,7 @@
 /* Metrics KPI Cards Grid */
 .utc-metrics-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 1.25rem;
 }
 
@@ -154,6 +154,7 @@
 }
 
 .utc-metric-icon.blue { background: #e0f2fe; color: #0284c7; }
+.utc-metric-icon.emerald { background: #d1fae5; color: #059669; }
 .utc-metric-icon.green { background: #dcfce7; color: #16a34a; }
 .utc-metric-icon.purple { background: #f3e8ff; color: #9333ea; }
 .utc-metric-icon.amber { background: #fef3c7; color: #d97706; }
