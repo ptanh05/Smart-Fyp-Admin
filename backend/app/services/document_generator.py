@@ -191,7 +191,7 @@ class DocumentGenerationService:
         """
         council = DefenseCouncil.objects.select_related('batch').get(id=council_id)
         projects_queryset = GraduationProject.objects.filter(council=council).select_related('student__user', 'supervisor__user', 'reviewer__user')
-        from .utils.vietnamese_sort import sort_by_vietnamese_name
+        from app.utils.vietnamese_sort import sort_by_vietnamese_name
         projects = sort_by_vietnamese_name(
             list(projects_queryset),
             key_extractor=lambda p: p.student.user.get_full_name() or p.student.user.username
