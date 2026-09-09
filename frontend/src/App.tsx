@@ -8,6 +8,7 @@ import { AdminDashboard } from './pages/Dashboard/AdminDashboard';
 import { BatchesPage } from './pages/Batches/BatchesPage';
 import { AllocationsPage } from './pages/Allocations/AllocationsPage';
 import { CouncilsPage } from './pages/Councils/CouncilsPage';
+import { OutlineManagementPage } from './pages/Outline/OutlineManagementPage';
 import { DefenseManagementPage } from './pages/Defense/DefenseManagementPage';
 import { UserManagementPage } from './pages/Users/UserManagementPage';
 import { SecurityCenterPage } from './pages/Security/SecurityCenterPage';
@@ -53,6 +54,15 @@ export const App: React.FC = () => {
             element={
               <ProtectedAdminRoute>
                 <CouncilsPage />
+              </ProtectedAdminRoute>
+            }
+          />
+
+          <Route
+            path="/outlines"
+            element={
+              <ProtectedAdminRoute>
+                <OutlineManagementPage />
               </ProtectedAdminRoute>
             }
           />

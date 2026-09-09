@@ -38,6 +38,7 @@ export const AllocationsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [matching, setMatching] = useState(false);
   const [matchResult, setMatchResult] = useState<any>(null);
+  const [sendingEmails, setSendingEmails] = useState(false);
 
   // Manual Assign Modal
   const [showManualModal, setShowManualModal] = useState(false);
@@ -106,6 +107,23 @@ export const AllocationsPage: React.FC = () => {
     }
   };
 
+  const handleFinalizeAndNotify = async () => {
+    if (!selectedBatchId) return;
+    if (!confirm('Bạn có chắc chắn muốn chốt danh sách phân công và gửi email thông báo (SMTP) đến tất cả Giảng viên và Sinh viên trong đợt này?')) return;
+
+    try {
+      setSendingEmails(true);
+      const res = await apiClient.post('/admin/allocations/finalize-and-notify/', {
+        batch_id: selectedBatchId,
+      });
+      alert(`Đã chốt phân công và gửi email thành công (${res.data.emails_sent} email được gửi đi).`);
+    } catch (err: any) {
+      alert('Lỗi gửi email: ' + (err.response?.data?.error || err.response?.data?.detail || err.message));
+    } finally {
+      setSendingEmails(false);
+    }
+  };
+
   const handleManualAssign = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualStudentId || !manualSupervisorId || !selectedBatchId) return;
@@ -162,10 +180,18 @@ export const AllocationsPage: React.FC = () => {
             </button>
             <button
               onClick={handleRunMCMF}
-              disabled={matching}
+              disabled={matching || sendingEmails}
               className="utc-btn-primary"
             >
               <span>⚡</span> {matching ? 'Đang giải bài toán MCMF...' : 'Khởi chạy MCMF Auto-Match'}
+            </button>
+            <button
+              onClick={handleFinalizeAndNotify}
+              disabled={sendingEmails || matching}
+              className="utc-btn-primary"
+              style={{ backgroundColor: '#059669' }}
+            >
+              <span>✉️</span> {sendingEmails ? 'Đang gửi Email...' : 'Chốt danh sách & Gửi Email SMTP'}
             </button>
           </div>
         </div>

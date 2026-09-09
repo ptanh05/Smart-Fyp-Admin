@@ -95,6 +95,40 @@ export const UserManagementPage: React.FC = () => {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetSuccessInfo, setResetSuccessInfo] = useState<{ username: string; password: string } | null>(null);
 
+  // Vietnamese Collation Sort State
+  const [nameSortOrder, setNameSortOrder] = useState<'none' | 'asc' | 'desc'>('none');
+
+  const sortVietnameseUsers = (userList: any[], order: 'asc' | 'desc') => {
+    return [...userList].sort((a, b) => {
+      const getParts = (u: any) => {
+        const full = (u.full_name || `${u.last_name || ''} ${u.first_name || ''}`.trim() || u.username || '').trim();
+        const parts = full.split(/\s+/);
+        const given = parts.length > 0 ? parts[parts.length - 1] : '';
+        const family = parts.length > 1 ? parts.slice(0, -1).join(' ') : '';
+        return { given, family, full };
+      };
+      const aP = getParts(a);
+      const bP = getParts(b);
+      let cmp = aP.given.localeCompare(bP.given, 'vi', { sensitivity: 'base' });
+      if (cmp === 0) {
+        cmp = aP.family.localeCompare(bP.family, 'vi', { sensitivity: 'base' });
+      }
+      return order === 'asc' ? cmp : -cmp;
+    });
+  };
+
+  const handleToggleNameSort = () => {
+    setNameSortOrder((prev) => {
+      const next = prev === 'none' ? 'asc' : prev === 'asc' ? 'desc' : 'none';
+      if (next === 'none') {
+        fetchUsers();
+      } else {
+        setUsers((current) => sortVietnameseUsers(current, next));
+      }
+      return next;
+    });
+  };
+
   // Load Batches & Classes
   useEffect(() => {
     batchesApi.getBatches()
@@ -122,6 +156,11 @@ export const UserManagementPage: React.FC = () => {
         q: searchQuery.trim(),
       };
 
+      if (nameSortOrder !== 'none') {
+        params.sort = 'name';
+        params.order = nameSortOrder;
+      }
+
       if (activeTab === 'student') {
         if (majorFilter !== 'ALL') params.major = majorFilter;
         if (programFilter) params.program_type = programFilter;
@@ -134,7 +173,11 @@ export const UserManagementPage: React.FC = () => {
       if (isActiveFilter) params.is_active = isActiveFilter;
 
       const res = await usersApi.getUsers(params);
-      setUsers(res.users || []);
+      let fetchedUsers = res.users || [];
+      if (nameSortOrder !== 'none') {
+        fetchedUsers = sortVietnameseUsers(fetchedUsers, nameSortOrder);
+      }
+      setUsers(fetchedUsers);
       setTotal(res.total || 0);
       if (res.counts) setCounts(res.counts);
     } catch (e) {
@@ -151,6 +194,7 @@ export const UserManagementPage: React.FC = () => {
     supervisorFilter,
     isActiveFilter,
     searchQuery,
+    nameSortOrder,
   ]);
 
   useEffect(() => {
@@ -605,6 +649,30 @@ export const UserManagementPage: React.FC = () => {
                 />
               </div>
 
+              <div>
+                <button
+                  type="button"
+                  onClick={handleToggleNameSort}
+                  className="filter-sort-btn"
+                  style={{
+                    padding: '0.6rem 1rem',
+                    background: nameSortOrder !== 'none' ? '#dbeafe' : '#f8fafc',
+                    border: `1px solid ${nameSortOrder !== 'none' ? '#2563eb' : '#cbd5e1'}`,
+                    borderRadius: '8px',
+                    color: nameSortOrder !== 'none' ? '#1d4ed8' : '#334155',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    whiteSpace: 'nowrap',
+                  }}
+                  title="Sắp xếp danh sách theo bảng chữ cái Tiếng Việt A-Z"
+                >
+                  🔤 {nameSortOrder === 'asc' ? 'Tên VN: A ➔ Z ▲' : nameSortOrder === 'desc' ? 'Tên VN: Z ➔ A ▼' : 'Sắp xếp Tên A-Z ↕'}
+                </button>
+              </div>
+
               {hasActiveFilters && (
                 <div>
                   <button
@@ -656,6 +724,29 @@ export const UserManagementPage: React.FC = () => {
                 <option value="true">Đang hoạt động</option>
                 <option value="false">Bị vô hiệu hóa</option>
               </select>
+            </div>
+            <div>
+              <button
+                type="button"
+                onClick={handleToggleNameSort}
+                className="filter-sort-btn"
+                style={{
+                  padding: '0.6rem 1rem',
+                  background: nameSortOrder !== 'none' ? '#dbeafe' : '#f8fafc',
+                  border: `1px solid ${nameSortOrder !== 'none' ? '#2563eb' : '#cbd5e1'}`,
+                  borderRadius: '8px',
+                  color: nameSortOrder !== 'none' ? '#1d4ed8' : '#334155',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  whiteSpace: 'nowrap',
+                }}
+                title="Sắp xếp danh sách theo bảng chữ cái Tiếng Việt A-Z"
+              >
+                🔤 {nameSortOrder === 'asc' ? 'Tên VN: A ➔ Z ▲' : nameSortOrder === 'desc' ? 'Tên VN: Z ➔ A ▼' : 'Sắp xếp Tên A-Z ↕'}
+              </button>
             </div>
             {hasActiveFilters && (
               <button
@@ -723,7 +814,13 @@ export const UserManagementPage: React.FC = () => {
                   {activeTab === 'student' ? (
                     <>
                       <th>Mã SV (MSSV)</th>
-                      <th>Họ và Tên</th>
+                      <th
+                        onClick={handleToggleNameSort}
+                        style={{ cursor: 'pointer', userSelect: 'none', background: nameSortOrder !== 'none' ? '#eff6ff' : undefined }}
+                        title="Nhấn để sắp xếp theo Tên Tiếng Việt A-Z"
+                      >
+                        Họ và Tên {nameSortOrder === 'asc' ? '▲ (A-Z)' : nameSortOrder === 'desc' ? '▼ (Z-A)' : '↕'}
+                      </th>
                       <th>Ngành</th>
                       <th>Chương Trình & Lớp</th>
                       <th>Khóa Học</th>
@@ -735,7 +832,13 @@ export const UserManagementPage: React.FC = () => {
                   ) : activeTab === 'supervisor' ? (
                     <>
                       <th>Mã Giảng Viên</th>
-                      <th>Họ và Tên</th>
+                      <th
+                        onClick={handleToggleNameSort}
+                        style={{ cursor: 'pointer', userSelect: 'none', background: nameSortOrder !== 'none' ? '#eff6ff' : undefined }}
+                        title="Nhấn để sắp xếp theo Tên Tiếng Việt A-Z"
+                      >
+                        Họ và Tên {nameSortOrder === 'asc' ? '▲ (A-Z)' : nameSortOrder === 'desc' ? '▼ (Z-A)' : '↕'}
+                      </th>
                       <th>Học Hàm / Học Vị</th>
                       <th>Bộ Môn / Đơn Vị</th>
                       <th>Quota HD (VA / Đại trà / Tổng)</th>
@@ -746,7 +849,13 @@ export const UserManagementPage: React.FC = () => {
                   ) : (
                     <>
                       <th>Username</th>
-                      <th>Họ và Tên</th>
+                      <th
+                        onClick={handleToggleNameSort}
+                        style={{ cursor: 'pointer', userSelect: 'none', background: nameSortOrder !== 'none' ? '#eff6ff' : undefined }}
+                        title="Nhấn để sắp xếp theo Tên Tiếng Việt A-Z"
+                      >
+                        Họ và Tên {nameSortOrder === 'asc' ? '▲ (A-Z)' : nameSortOrder === 'desc' ? '▼ (Z-A)' : '↕'}
+                      </th>
                       <th>Vai Trò</th>
                       <th>Đơn Vị Công Tác</th>
                       <th>Email</th>
