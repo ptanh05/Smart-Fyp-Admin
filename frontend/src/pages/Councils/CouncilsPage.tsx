@@ -20,20 +20,31 @@ interface DefenseCouncil {
   session_date: string | null;
   session_time: string;
   defense_room: string;
+  is_finalized?: boolean;
   members: CouncilMember[];
   project_count: number;
+  validity_info?: {
+    is_valid: boolean;
+    chair_count: number;
+    secretary_count: number;
+    member_count: number;
+    total_count: number;
+    expected_formula: string;
+  };
 }
 
 export const CouncilsPage: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<'councils' | 'schedule'>('councils');
   const [batches, setBatches] = useState<any[]>([]);
   const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null);
   const [councils, setCouncils] = useState<DefenseCouncil[]>([]);
   const [users, setUsers] = useState<any[]>([]);
+  const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [assigning, setAssigning] = useState(false);
   const [assignResult, setAssignResult] = useState<any>(null);
 
-  // Create Council Form
+  // Create Council Form (1 Chủ tịch, 2 Thư ký, 2 Ủy viên)
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [councilNumber, setCouncilNumber] = useState(1);
   const [councilName, setCouncilName] = useState('');
@@ -41,6 +52,19 @@ export const CouncilsPage: React.FC = () => {
   const [sessionDate, setSessionDate] = useState('');
   const [sessionTime, setSessionTime] = useState('MORNING');
   const [selectedMembers, setSelectedMembers] = useState<Array<{ user_id: number; role: string; external_institution?: string }>>([]);
+
+  // Auto Schedule Modal
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [slotDuration, setSlotDuration] = useState(40);
+  const [morningStart, setMorningStart] = useState('08:00');
+  const [afternoonStart, setAfternoonStart] = useState('13:30');
+  const [scheduling, setScheduling] = useState(false);
+
+  // Manual Override Reviewer Modal
+  const [showOverrideModal, setShowOverrideModal] = useState(false);
+  const [overrideProj, setOverrideProj] = useState<any>(null);
+  const [overrideCouncilId, setOverrideCouncilId] = useState<number | ''>('');
+  const [overrideReviewerId, setOverrideReviewerId] = useState<number | ''>('');
 
   const fetchBatches = async () => {
     try {
@@ -60,17 +84,20 @@ export const CouncilsPage: React.FC = () => {
     if (!selectedBatchId) return;
     try {
       setLoading(true);
-      const [counRes, userRes] = await Promise.all([
+      const [counRes, userRes, projRes] = await Promise.all([
         apiClient.get(`/admin/councils/?batch_id=${selectedBatchId}`),
         apiClient.get('/admin/users/?user_type=supervisor'),
+        apiClient.get(`/admin/projects/?batch_id=${selectedBatchId}`),
       ]);
       setCouncils(Array.isArray(counRes.data) ? counRes.data : (counRes.data?.results || []));
       const userList = Array.isArray(userRes.data) ? userRes.data : (userRes.data?.users || userRes.data?.results || []);
       setUsers(userList);
+      setProjects(Array.isArray(projRes.data) ? projRes.data : (projRes.data?.results || []));
     } catch (err) {
       console.error(err);
       setCouncils([]);
       setUsers([]);
+      setProjects([]);
     } finally {
       setLoading(false);
     }
@@ -88,7 +115,7 @@ export const CouncilsPage: React.FC = () => {
 
   const handleAutoAssignReviewers = async () => {
     if (!selectedBatchId) return;
-    if (!confirm('Khởi chạy tự động phân bổ Hội đồng & Giảng viên phản biện (ràng buộc không trùng GVHD)?')) return;
+    if (!confirm('Khởi chạy tự động phân bổ Hội đồng & Giảng viên phản biện (ràng buộc không trùng GVHD, cân bằng tải)?')) return;
 
     try {
       setAssigning(true);
@@ -102,6 +129,55 @@ export const CouncilsPage: React.FC = () => {
       alert('Lỗi phân công phản biện: ' + (err.response?.data?.detail || err.message));
     } finally {
       setAssigning(false);
+    }
+  };
+
+  const handleRunAutoSchedule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBatchId) return;
+
+    try {
+      setScheduling(true);
+      const res = await apiClient.post('/admin/defense/auto-schedule/', {
+        batch_id: selectedBatchId,
+        slot_duration: slotDuration,
+        morning_start: morningStart,
+        afternoon_start: afternoonStart,
+      });
+      alert(`Đã tự động xếp lịch thành công cho ${res.data?.scheduled_projects_count} đồ án!`);
+      setShowScheduleModal(false);
+      setActiveTab('schedule');
+      fetchData();
+    } catch (err: any) {
+      alert('Lỗi xếp lịch: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setScheduling(false);
+    }
+  };
+
+  const handleOpenOverride = (proj: any) => {
+    setOverrideProj(proj);
+    setOverrideCouncilId(proj.council || '');
+    setOverrideReviewerId(proj.reviewer || '');
+    setShowOverrideModal(true);
+  };
+
+  const handleSaveOverride = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!overrideProj) return;
+
+    try {
+      const res = await apiClient.patch('/admin/defense/override-reviewer/', {
+        project_id: overrideProj.id,
+        council_id: overrideCouncilId ? Number(overrideCouncilId) : null,
+        reviewer_id: overrideReviewerId ? Number(overrideReviewerId) : null,
+      });
+      alert(res.data?.message || 'Đã điều chỉnh thành công!');
+      setShowOverrideModal(false);
+      setOverrideProj(null);
+      fetchData();
+    } catch (err: any) {
+      alert('Lỗi: ' + (err.response?.data?.detail || err.response?.data?.error || err.message));
     }
   };
 
@@ -119,274 +195,458 @@ export const CouncilsPage: React.FC = () => {
         session_time: sessionTime,
         members: selectedMembers,
       });
-      alert('Tạo Hội đồng bảo vệ thành công!');
       setShowCreateModal(false);
+      setCouncilName('');
+      setDefenseRoom('');
       setSelectedMembers([]);
       fetchData();
     } catch (err: any) {
-      alert('Lỗi tạo hội đồng: ' + (err.response?.data?.detail || err.message));
+      alert('Lỗi tạo Hội đồng: ' + (err.response?.data?.detail || err.message));
     }
   };
 
-  const addMemberRow = () => {
-    if (users.length > 0) {
-      setSelectedMembers([...selectedMembers, { user_id: users[0].id, role: 'MEMBER' }]);
-    }
+  const addMemberSlot = () => {
+    setSelectedMembers([...selectedMembers, { user_id: 0, role: 'MEMBER', external_institution: '' }]);
   };
 
-  const getRoleBadgeClass = (role: string) => {
-    if (role === 'CHỦ TỊCH' || role === 'PRESIDENT') return 'utc-role-president';
-    if (role === 'THƯ KÝ' || role === 'SECRETARY') return 'utc-role-secretary';
-    if (role === 'PHẢN BIỆN' || role === 'REVIEWER') return 'utc-role-reviewer';
-    return 'utc-role-member';
+  const updateMemberSlot = (index: number, field: string, val: any) => {
+    const updated = [...selectedMembers];
+    (updated[index] as any)[field] = val;
+    setSelectedMembers(updated);
+  };
+
+  const removeMemberSlot = (index: number) => {
+    setSelectedMembers(selectedMembers.filter((_, i) => i !== index));
   };
 
   return (
     <AdminLayout>
       <div className="utc-councils-portal">
+        {/* Navigation Tabs */}
+        <div className="utc-subnav-tabs">
+          <button
+            className={`utc-subnav-btn ${activeTab === 'councils' ? 'active' : ''}`}
+            onClick={() => setActiveTab('councils')}
+          >
+            🏛️ Hội Đồng Bảo Vệ & Phản Biện (1CT-2TK-2UV)
+          </button>
+          <button
+            className={`utc-subnav-btn ${activeTab === 'schedule' ? 'active' : ''}`}
+            onClick={() => setActiveTab('schedule')}
+          >
+            ⏱️ Lịch Bảo Vệ Chi Tiết Từng Sinh Viên (Slot)
+          </button>
+        </div>
+
         {/* Header Bar */}
         <div className="utc-councils-header-bar">
           <div className="utc-batch-select-group">
-            <label>⚖️ Chọn Đợt ĐATN:</label>
+            <label>🎯 Chọn Đợt ĐATN:</label>
             <select
               value={selectedBatchId || ''}
               onChange={(e) => setSelectedBatchId(Number(e.target.value))}
-              className="utc-form-select"
-              style={{ minWidth: '240px' }}
+              className="utc-batch-dropdown"
             >
               {batches.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {b.batch_name} ({b.batch_code})
+                  {b.batch_code} - {b.batch_name}
                 </option>
               ))}
             </select>
           </div>
 
-          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => {
-                setCouncilNumber(councils.length + 1);
-                setCouncilName(`Hội đồng ${councils.length + 1} - Kỹ sư CNTT`);
-                setShowCreateModal(true);
-              }}
-              className="utc-btn-primary"
-            >
-              <span>➕</span> Thành lập Hội đồng mới
+          <div className="utc-council-actions">
+            <button onClick={() => setShowCreateModal(true)} className="utc-btn-primary">
+              <span>➕</span> Tạo Hội Đồng Chuẩn (1CT-2TK-2UV)
             </button>
             <button
               onClick={handleAutoAssignReviewers}
               disabled={assigning}
               className="utc-btn-emerald"
+              title="Phân bổ đề tài vào HĐ & gán phản biện không trùng GVHD"
             >
-              <span>⚖️</span> {assigning ? 'Đang phân bổ...' : 'Auto Gán HĐ & Phản biện (No-Conflict)'}
+              <span>⚖️</span> {assigning ? 'Đang phân bổ...' : 'Tự Động Phân HĐ & Phản Biện'}
+            </button>
+            <button
+              onClick={() => setShowScheduleModal(true)}
+              className="utc-btn-violet"
+              title="Khoa nhập tham số ca/giờ/thời lượng để tự động xếp lịch"
+            >
+              <span>⏱️</span> Tự Động Xếp Lịch Bảo Vệ
             </button>
           </div>
         </div>
 
-        {/* Conflict & Assignment Result Banner */}
-        {assignResult && (
-          <div className="utc-match-banner">
-            <div className="utc-match-banner-title">
-              <span>✅</span> Đã phân công thành công {assignResult.assigned_count} đề tài vào các Hội đồng & Giảng viên phản biện!
-            </div>
-            {assignResult.conflicts?.length > 0 && (
-              <div style={{ marginTop: '0.5rem', color: '#d97706', fontSize: '0.82rem' }}>
-                <p style={{ fontWeight: 700, margin: '0 0 0.25rem 0' }}>Cảnh báo xung đột lợi ích ({assignResult.conflicts.length}):</p>
-                {assignResult.conflicts.map((c: any, i: number) => (
-                  <div key={i}>• SV {c.registration_no} ({c.student_name}): {c.reason}</div>
-                ))}
+        {/* TAB 1: COUNCILS */}
+        {activeTab === 'councils' && (
+          <>
+            {/* Auto-Assign Feedback */}
+            {assignResult && (
+              <div className="utc-assign-feedback">
+                <h4>🎉 Kết Quả Phân Bổ Hội Đồng & Phản Biện:</h4>
+                <p>
+                  Đã gán thành công: <strong>{assignResult.assigned_count}</strong> đề tài | Trùng xung đột: <strong>{assignResult.unassigned_count}</strong>
+                </p>
+                {assignResult.conflicts && assignResult.conflicts.length > 0 && (
+                  <div className="utc-conflicts-box">
+                    <strong>Xung đột lợi ích phát hiện:</strong>
+                    <ul>
+                      {assignResult.conflicts.map((c: any, idx: number) => (
+                        <li key={idx}>
+                          {c.student_name} ({c.registration_no}): {c.reason}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
 
-        {/* Councils Grid */}
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>Đang tải danh sách Hội đồng bảo vệ...</div>
-        ) : councils.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b', background: '#fff', borderRadius: '12px' }}>
-            Chưa có Hội đồng nào được thành lập cho đợt này. Hãy nhấn nút "Thành lập Hội đồng mới".
-          </div>
-        ) : (
-          <div className="utc-councils-grid">
-            {councils.map((c) => (
-              <div key={c.id} className="utc-council-card">
-                <div className="utc-council-card-head">
-                  <div>
-                    <span className="utc-council-tag">Hội đồng #{c.council_number}</span>
-                    <h4 className="utc-council-title">{c.council_name}</h4>
-                  </div>
-                  <span className="utc-council-room-tag">
-                    Phòng: {c.defense_room || 'Chưa xếp'}
-                  </span>
-                </div>
-
-                <div className="utc-council-meta-row">
-                  <span>📅 Ngày: {c.session_date || 'Chưa định ngày'}</span>
-                  <span>⏰ Ca: {c.session_time === 'MORNING' ? 'Sáng' : 'Chiều'}</span>
-                  <span style={{ color: '#16a34a', fontWeight: 700 }}>📁 {c.project_count} Đồ án</span>
-                </div>
-
-                {/* Members list */}
-                <div className="utc-council-members-list">
-                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569' }}>
-                    Thành viên Hội đồng ({c.members?.length || 0}):
-                  </span>
-                  {c.members && c.members.length > 0 ? (
-                    c.members.map((m) => (
-                      <div key={m.id} className="utc-council-member-item">
+            {/* Councils Grid */}
+            {loading ? (
+              <div className="utc-loading-text">Đang tải danh sách Hội đồng...</div>
+            ) : councils.length === 0 ? (
+              <div className="utc-empty-text">Chưa thành lập Hội đồng nào cho đợt này. Hãy nhấn "Tạo Hội Đồng Chuẩn".</div>
+            ) : (
+              <div className="utc-councils-grid">
+                {councils.map((council) => {
+                  const val = council.validity_info;
+                  return (
+                    <div key={council.id} className="utc-council-card">
+                      <div className="utc-council-card-head">
                         <div>
-                          <strong style={{ color: '#0f172a' }}>{m.lecturer_name}</strong>
-                          {m.academic_title && <span style={{ color: '#64748b', fontSize: '0.78rem', marginLeft: '0.35rem' }}>({m.academic_title})</span>}
-                          {m.external_institution && <span style={{ color: '#0284c7', fontSize: '0.75rem', display: 'block' }}>{m.external_institution}</span>}
+                          <span className="utc-council-tag">HĐ #{council.council_number}</span>
+                          <h4>{council.council_name}</h4>
                         </div>
-                        <span className={`utc-member-role-badge ${getRoleBadgeClass(m.role)}`}>
-                          {m.role}
+                        <span className={`utc-utc-model-badge ${val?.is_valid ? 'badge-utc-valid' : 'badge-utc-warn'}`}>
+                          {val?.is_valid ? '✅ Chuẩn 1CT-2TK-2UV' : `⚠️ Thành phần (${council.members?.length || 0}/5)`}
                         </span>
                       </div>
-                    ))
-                  ) : (
-                    <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Chưa có thành viên nào</span>
-                  )}
-                </div>
+
+                      <div className="utc-council-meta">
+                        <div>📅 {council.session_date ? council.session_date : 'Chưa xếp ngày'}</div>
+                        <div>⏰ {council.session_time === 'AFTERNOON' ? 'Ca Chiều (13:30)' : 'Ca Sáng (08:00)'}</div>
+                        <div>🚪 Phòng: <strong>{council.defense_room || 'Chưa gán'}</strong></div>
+                        <div>📚 Đề tài: <strong>{council.project_count || 0}</strong> sinh viên</div>
+                      </div>
+
+                      <div className="utc-members-list">
+                        <h5>Thành phần Hội đồng:</h5>
+                        {council.members && council.members.length > 0 ? (
+                          council.members.map((m) => (
+                            <div key={m.id} className="utc-member-row">
+                              <span className="utc-member-role">{m.role === 'CHAIR' ? 'Chủ tịch' : m.role === 'SECRETARY' ? 'Thư ký' : 'Ủy viên'}</span>
+                              <span className="utc-member-name">{m.academic_title} {m.lecturer_name}</span>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-muted text-xs">Chưa có thành viên nào.</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            ))}
+            )}
+          </>
+        )}
+
+        {/* TAB 2: DETAILED SCHEDULE (SLOTS) */}
+        {activeTab === 'schedule' && (
+          <div className="utc-schedule-section">
+            <div className="utc-panel-head">
+              <h4>⏱️ Lịch Bảo Vệ Chi Tiết Từng Sinh Viên (Theo Khung Giờ & Phòng)</h4>
+              <span className="text-muted">Được tính toán tự động dựa trên thời lượng và ca bảo vệ của từng Hội đồng</span>
+            </div>
+
+            <div className="utc-table-container">
+              <table className="utc-custom-table">
+                <thead>
+                  <tr>
+                    <th>STT</th>
+                    <th>Hội Đồng</th>
+                    <th>MSSV</th>
+                    <th>Sinh Viên</th>
+                    <th>Khung Giờ Bảo Vệ</th>
+                    <th>Phòng</th>
+                    <th>GV Hướng Dẫn</th>
+                    <th>GV Phản Biện</th>
+                    <th>Hành Động</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {projects.map((proj, idx) => (
+                    <tr key={proj.id}>
+                      <td className="text-center font-bold">{proj.schedule_slot_info?.order || idx + 1}</td>
+                      <td>
+                        <span className="font-semibold text-slate-800">{proj.council_name || 'Chưa gán HĐ'}</span>
+                      </td>
+                      <td className="font-bold">{proj.student_reg_no}</td>
+                      <td>
+                        <div className="font-semibold">{proj.student_name}</div>
+                        <div className="text-xs text-muted">{proj.topic_title_vi}</div>
+                      </td>
+                      <td>
+                        {proj.schedule_slot_info ? (
+                          <span className="utc-time-slot-badge">
+                            {proj.schedule_slot_info.start} - {proj.schedule_slot_info.end}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-400">Chưa xếp slot</span>
+                        )}
+                      </td>
+                      <td>
+                        <span className="font-bold text-blue-700">{proj.schedule_slot_info?.room || '—'}</span>
+                      </td>
+                      <td>{proj.supervisor_name}</td>
+                      <td>
+                        <span className="font-semibold text-purple-700">{proj.reviewer_name || 'Chưa gán GVPB'}</span>
+                      </td>
+                      <td>
+                        <button onClick={() => handleOpenOverride(proj)} className="utc-btn-override" title="Đổi HĐ hoặc Phản biện">
+                          ✏️ Đổi
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
-        {/* Modal Create Council */}
+        {/* MODAL 1: CREATE COUNCIL (1CT - 2TK - 2UV) */}
         {showCreateModal && (
           <div className="utc-modal-backdrop">
-            <div className="utc-modal-box" style={{ maxWidth: '580px' }}>
-              <h3>Thành Lập Hội Đồng Bảo Vệ Mới</h3>
-              <p>Điền thông tin phòng bảo vệ, thời gian và chỉ định các thành viên.</p>
-
+            <div className="utc-modal-card" style={{ maxWidth: '650px' }}>
+              <div className="utc-modal-head">
+                <h4>➕ Thành Lập Hội Đồng Bảo Vệ Chuẩn UTC (1CT-2TK-2UV)</h4>
+                <button onClick={() => setShowCreateModal(false)} className="utc-btn-close">✕</button>
+              </div>
               <form onSubmit={handleCreateCouncil}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1rem' }}>
                   <div className="utc-form-group">
-                    <label>Số thứ tự HĐ</label>
+                    <label>Số Hội Đồng:</label>
                     <input
                       type="number"
-                      required
+                      min={1}
                       value={councilNumber}
                       onChange={(e) => setCouncilNumber(Number(e.target.value))}
-                      className="utc-form-input"
+                      className="utc-input"
+                      required
                     />
                   </div>
                   <div className="utc-form-group">
-                    <label>Tên Hội đồng</label>
+                    <label>Tên Hội Đồng:</label>
                     <input
                       type="text"
-                      required
+                      placeholder="VD: Hội đồng chấm đồ án tốt nghiệp 1"
                       value={councilName}
                       onChange={(e) => setCouncilName(e.target.value)}
-                      className="utc-form-input"
+                      className="utc-input"
+                      required
                     />
                   </div>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
                   <div className="utc-form-group">
-                    <label>Phòng bảo vệ</label>
+                    <label>Phòng Bảo Vệ:</label>
                     <input
                       type="text"
                       placeholder="VD: P.402-A9"
                       value={defenseRoom}
                       onChange={(e) => setDefenseRoom(e.target.value)}
-                      className="utc-form-input"
+                      className="utc-input"
                     />
                   </div>
                   <div className="utc-form-group">
-                    <label>Ngày bảo vệ</label>
+                    <label>Ngày Bảo Vệ:</label>
                     <input
                       type="date"
                       value={sessionDate}
                       onChange={(e) => setSessionDate(e.target.value)}
-                      className="utc-form-input"
+                      className="utc-input"
                     />
                   </div>
                   <div className="utc-form-group">
-                    <label>Ca bảo vệ</label>
+                    <label>Ca Bảo Vệ:</label>
                     <select
                       value={sessionTime}
                       onChange={(e) => setSessionTime(e.target.value)}
-                      className="utc-form-select"
+                      className="utc-input"
                     >
-                      <option value="MORNING">Buổi sáng</option>
-                      <option value="AFTERNOON">Buổi chiều</option>
+                      <option value="MORNING">Ca Sáng (08:00)</option>
+                      <option value="AFTERNOON">Ca Chiều (13:30)</option>
                     </select>
                   </div>
                 </div>
 
-                {/* Members assignment */}
-                <div style={{ margin: '1rem 0' }}>
+                <div className="utc-form-group">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                    <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>Thành viên & Vai trò:</label>
-                    <button
-                      type="button"
-                      onClick={addMemberRow}
-                      className="utc-btn-primary"
-                      style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem' }}
-                    >
+                    <label>Thành Viên Hội Đồng (Chuẩn: 1 Chủ tịch, 2 Thư ký, 2 Ủy viên):</label>
+                    <button type="button" onClick={addMemberSlot} className="utc-btn-sm-add">
                       + Thêm thành viên
                     </button>
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '180px', overflowY: 'auto' }}>
-                    {selectedMembers.map((m, idx) => (
-                      <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                        <select
-                          value={m.user_id}
-                          onChange={(e) => {
-                            const updated = [...selectedMembers];
-                            updated[idx].user_id = Number(e.target.value);
-                            setSelectedMembers(updated);
-                          }}
-                          className="utc-form-select"
-                          style={{ flex: 2 }}
-                        >
-                          {users.map((u) => (
-                            <option key={u.id} value={u.id}>
-                              {u.full_name || u.username} ({u.email})
-                            </option>
-                          ))}
-                        </select>
+                  {selectedMembers.map((m, idx) => (
+                    <div key={idx} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
+                      <select
+                        style={{ flex: 2 }}
+                        className="utc-input"
+                        value={m.user_id}
+                        onChange={(e) => updateMemberSlot(idx, 'user_id', Number(e.target.value))}
+                        required
+                      >
+                        <option value={0}>-- Chọn giảng viên --</option>
+                        {users.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.full_name} ({u.username})
+                          </option>
+                        ))}
+                      </select>
 
-                        <select
-                          value={m.role}
-                          onChange={(e) => {
-                            const updated = [...selectedMembers];
-                            updated[idx].role = e.target.value;
-                            setSelectedMembers(updated);
-                          }}
-                          className="utc-form-select"
-                          style={{ flex: 1 }}
-                        >
-                          <option value="CHỦ TỊCH">Chủ tịch</option>
-                          <option value="THƯ KÝ">Thư ký</option>
-                          <option value="ỦY VIÊN">Ủy viên</option>
-                          <option value="PHẢN BIỆN">Phản biện</option>
-                        </select>
+                      <select
+                        style={{ flex: 1.5 }}
+                        className="utc-input"
+                        value={m.role}
+                        onChange={(e) => updateMemberSlot(idx, 'role', e.target.value)}
+                      >
+                        <option value="CHAIR">Chủ tịch (CT)</option>
+                        <option value="SECRETARY">Ủy viên, Thư ký (TK)</option>
+                        <option value="MEMBER">Ủy viên (UV)</option>
+                        <option value="EXTERNAL_MEMBER">Ủy viên ngoài trường</option>
+                      </select>
 
-                        <button
-                          type="button"
-                          onClick={() => setSelectedMembers(selectedMembers.filter((_, i) => i !== idx))}
-                          style={{ background: '#fee2e2', border: 'none', color: '#dc2626', borderRadius: '6px', padding: '0.4rem 0.6rem', cursor: 'pointer' }}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
+                      <button type="button" onClick={() => removeMemberSlot(idx)} className="utc-btn-sm-del">
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="utc-modal-foot">
+                  <button type="button" onClick={() => setShowCreateModal(false)} className="utc-btn-cancel">Hủy</button>
+                  <button type="submit" className="utc-btn-primary">Lưu Hội Đồng</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL 2: AUTO SCHEDULE */}
+        {showScheduleModal && (
+          <div className="utc-modal-backdrop">
+            <div className="utc-modal-card">
+              <div className="utc-modal-head">
+                <h4>⏱️ Tự Động Xếp Lịch Bảo Vệ Chi Tiết (Bước 41)</h4>
+                <button onClick={() => setShowScheduleModal(false)} className="utc-btn-close">✕</button>
+              </div>
+              <form onSubmit={handleRunAutoSchedule}>
+                <div className="utc-form-group">
+                  <label>Thời lượng mỗi đồ án (phút):</label>
+                  <input
+                    type="number"
+                    min={20}
+                    max={90}
+                    value={slotDuration}
+                    onChange={(e) => setSlotDuration(Number(e.target.value))}
+                    className="utc-input"
+                    required
+                  />
+                  <small style={{ color: '#64748b' }}>Tiêu chuẩn UTC: 40 - 45 phút cho mỗi đồ án bảo vệ.</small>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div className="utc-form-group">
+                    <label>Giờ bắt đầu ca sáng:</label>
+                    <input
+                      type="text"
+                      value={morningStart}
+                      onChange={(e) => setMorningStart(e.target.value)}
+                      className="utc-input"
+                      placeholder="08:00"
+                      required
+                    />
+                  </div>
+                  <div className="utc-form-group">
+                    <label>Giờ bắt đầu ca chiều:</label>
+                    <input
+                      type="text"
+                      value={afternoonStart}
+                      onChange={(e) => setAfternoonStart(e.target.value)}
+                      className="utc-input"
+                      placeholder="13:30"
+                      required
+                    />
                   </div>
                 </div>
 
-                <div className="utc-modal-footer">
-                  <button type="button" onClick={() => setShowCreateModal(false)} className="utc-btn-cancel">
-                    Hủy
+                <div className="utc-modal-foot">
+                  <button type="button" onClick={() => setShowScheduleModal(false)} className="utc-btn-cancel">Hủy</button>
+                  <button type="submit" disabled={scheduling} className="utc-btn-violet">
+                    {scheduling ? 'Đang phân slot...' : 'Khởi Chạy Xếp Lịch'}
                   </button>
-                  <button type="submit" className="utc-btn-primary">
-                    Thành lập Hội đồng
-                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL 3: MANUAL OVERRIDE REVIEWER / COUNCIL */}
+        {showOverrideModal && overrideProj && (
+          <div className="utc-modal-backdrop">
+            <div className="utc-modal-card">
+              <div className="utc-modal-head">
+                <h4>✏️ Điều Chỉnh Thủ Công Hội Đồng & Phản Biện</h4>
+                <button onClick={() => setShowOverrideModal(false)} className="utc-btn-close">✕</button>
+              </div>
+              <form onSubmit={handleSaveOverride}>
+                <div className="utc-form-group">
+                  <p>Sinh viên: <strong>{overrideProj.student_name}</strong> ({overrideProj.student_reg_no})</p>
+                  <p>GVHD: <strong>{overrideProj.supervisor_name}</strong> (Ràng buộc: Không được trùng với GVPB)</p>
+                </div>
+
+                <div className="utc-form-group">
+                  <label>Chọn Hội Đồng Bảo Vệ:</label>
+                  <select
+                    className="utc-input"
+                    value={overrideCouncilId}
+                    onChange={(e) => setOverrideCouncilId(e.target.value ? Number(e.target.value) : '')}
+                  >
+                    <option value="">-- Chọn Hội Đồng --</option>
+                    {councils.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.council_name} ({c.defense_room || 'Phòng ?'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="utc-form-group">
+                  <label>Chọn Giảng Viên Phản Biện (Reviewer):</label>
+                  <select
+                    className="utc-input"
+                    value={overrideReviewerId}
+                    onChange={(e) => setOverrideReviewerId(e.target.value ? Number(e.target.value) : '')}
+                  >
+                    <option value="">-- Chọn Giảng Viên Phản Biện --</option>
+                    {users.map((u) => {
+                      const sup = u.supervisor_profile;
+                      if (!sup) return null;
+                      return (
+                        <option key={sup.id} value={sup.id}>
+                          {sup.academic_title} {u.full_name} ({sup.department_name || 'Khoa CNTT'})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                <div className="utc-modal-foot">
+                  <button type="button" onClick={() => setShowOverrideModal(false)} className="utc-btn-cancel">Hủy</button>
+                  <button type="submit" className="utc-btn-primary">Xác Nhận Điều Chỉnh</button>
                 </div>
               </form>
             </div>

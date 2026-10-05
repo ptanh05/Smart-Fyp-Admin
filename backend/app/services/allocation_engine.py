@@ -1,19 +1,25 @@
 import collections
 from django.db import transaction
+from django.utils import timezone
 from app.models import (
     Student,
     Supervisor,
     SupervisorQuota,
     InternshipInfo,
+    StudentPreference,
     GraduationProject,
     AcademicBatch,
-    ProjectTopicArea
+    ProjectTopicArea,
+    AuditLog
 )
 
 class MinCostMaxFlowAllocationEngine:
     """
     Min-Cost Max-Flow (MCMF) Matching Engine for Supervisor Allocation.
-    Maximizes preference and department compatibility while strictly respecting Lecturer Quotas.
+    Tuân thủ quy trình nghiệp vụ Giai đoạn 2:
+    1. Hard Constraint: Nếu SV thuộc CT Kỹ sư (ENGINEER), GVHD bắt buộc phải đạt học vị tối thiểu (TS trở lên).
+    2. Soft Constraint: Tối ưu theo nguyện vọng NV1 (-120), NV2 (-70), NV3 (-40), độ phù hợp chuyên môn bộ môn (-30).
+    3. Capacity: Tính toán theo hệ số học vị (GS/PGS/TS/ThS).
     """
 
     class Edge:
@@ -29,7 +35,7 @@ class MinCostMaxFlowAllocationEngine:
         try:
             batch = AcademicBatch.objects.get(id=batch_id)
         except AcademicBatch.DoesNotExist:
-            return {"success": False, "error": f"Batch {batch_id} not found."}
+            return {"success": False, "error": f"Không tìm thấy đợt đồ án ID {batch_id}."}
 
         # 1. Fetch all students in batch
         students = list(Student.objects.filter(academic_batch=batch).select_related('course_class', 'user'))
@@ -43,7 +49,7 @@ class MinCostMaxFlowAllocationEngine:
                 "message": "Không có sinh viên nào trong đợt này."
             }
 
-        # 2. Fetch all supervisor quotas in batch
+        # 2. Fetch all supervisor quotas in batch and recalculate capacity with rank multipliers
         quotas = list(SupervisorQuota.objects.filter(batch=batch).select_related('supervisor__user'))
         if not quotas:
             return {
@@ -51,23 +57,29 @@ class MinCostMaxFlowAllocationEngine:
                 "error": "Chưa thiết lập định mức Quota cho giảng viên trong đợt này."
             }
 
-        # Fetch all internship / preference surveys
-        surveys = {info.student_id: info for info in InternshipInfo.objects.filter(batch=batch).select_related('topic_direction', 'preferred_supervisor')}
+        for q in quotas:
+            if q.max_total_quota is None:
+                q.calculate_capacity()
+                q.save(update_fields=["max_total_quota"])
 
-        # Map department topics
+        # Fetch student preferences (NV1, NV2, NV3) or legacy internship info
+        preferences = {pref.student_id: pref for pref in StudentPreference.objects.filter(batch=batch).select_related(
+            'topic_direction', 'preference_1', 'preference_2', 'preference_3'
+        )}
+        surveys = {info.student_id: info for info in InternshipInfo.objects.filter(batch=batch).select_related(
+            'topic_direction', 'preferred_supervisor'
+        )}
+
+        # Bộ môn và độ tương thích chuyên môn
         dept_topic_affinity = {
             "CNPM": ["SOFTWARE_DEV", "SOFTWARE_TESTING", "GAME_DEV"],
+            "MHTTT": ["NETWORK_INFRA", "CYBER_SECURITY", "SOFTWARE_DEV"],
             "Mạng&HTTT": ["NETWORK_INFRA", "CYBER_SECURITY", "SOFTWARE_DEV"],
             "KHMT": ["AI_DATA", "ALGORITHMS", "GAME_DEV", "SOFTWARE_DEV"],
             "Thỉnh giảng": ["AI_DATA", "SOFTWARE_DEV", "GAME_DEV"]
         }
 
         # Build MCMF Graph
-        # Node IDs:
-        # Source: 0
-        # Students: 1 to N
-        # Supervisors: N + 1 to N + M
-        # Sink: N + M + 1
         n_students = len(students)
         n_supervisors = len(quotas)
         source = 0
@@ -87,45 +99,66 @@ class MinCostMaxFlowAllocationEngine:
             add_edge(source, idx, 1, 0)
 
         # 2. Edges Student -> Supervisor
+        disqualified_pairs = 0
         for s_idx, student in enumerate(students, start=1):
+            pref = preferences.get(student.id)
             survey = surveys.get(student.id)
-            pref_sup_id = survey.preferred_supervisor_id if survey else None
-            topic_code = survey.topic_direction.code if (survey and survey.topic_direction) else "SOFTWARE_DEV"
+            
+            p1_id = pref.preference_1_id if pref else (survey.preferred_supervisor_id if survey else None)
+            p2_id = pref.preference_2_id if pref else None
+            p3_id = pref.preference_3_id if pref else None
+            
+            topic_code = ""
+            if pref and pref.topic_direction:
+                topic_code = pref.topic_direction.code
+            elif survey and survey.topic_direction:
+                topic_code = survey.topic_direction.code
+            else:
+                topic_code = "SOFTWARE_DEV"
+
+            is_engineer = (student.education_program == "ENGINEER") or (batch.program_type == "ENGINEER")
             is_viet_anh = student.course_class and student.course_class.program_type == "VIET_ANH"
 
             for g_idx, q in enumerate(quotas, start=n_students + 1):
                 sup = q.supervisor
-                dept = q.department or sup.department_name or ""
+                
+                # Hard Constraint: Kiểm tra chương trình Kỹ sư -> Giảng viên phải đạt học vị tối thiểu (TS trở lên)
+                if is_engineer and not sup.is_eligible_for_engineer():
+                    disqualified_pairs += 1
+                    continue # Bỏ qua cạnh này, không cho phép ghép nối
 
-                # Base cost
+                dept = q.department or sup.department_name or ""
                 cost = 0
 
-                # Student explicitly requested this supervisor
-                if pref_sup_id and pref_sup_id == sup.id:
-                    cost -= 100
+                # Trọng số theo thứ tự nguyện vọng NV1 -> NV2 -> NV3
+                if p1_id and p1_id == sup.id:
+                    cost -= 120
+                elif p2_id and p2_id == sup.id:
+                    cost -= 70
+                elif p3_id and p3_id == sup.id:
+                    cost -= 40
 
-                # Topic affinity
+                # Độ phù hợp theo hướng đề tài / bộ môn
                 aff_topics = dept_topic_affinity.get(dept, [])
                 if topic_code in aff_topics:
-                    cost -= 50
+                    cost -= 30
 
-                # Regular faculty preferred over visiting
-                if dept != "Thỉnh giảng":
+                # Giảng viên cơ hữu ưu tiên hơn thỉnh giảng
+                if dept != "Thỉnh giảng" and not sup.is_external:
                     cost -= 10
 
-                # Viet-Anh affinity if lecturer has VA quota
+                # Ưu tiên lớp Việt - Anh nếu giảng viên có định mức VA
                 if is_viet_anh and q.viet_anh_quota > 0:
-                    cost -= 30
+                    cost -= 25
 
                 add_edge(s_idx, g_idx, 1, cost)
 
-        # 3. Edges Supervisor -> Sink (Capacity = available quota)
+        # 3. Edges Supervisor -> Sink
         for g_idx, q in enumerate(quotas, start=n_students + 1):
-            # Calculate remaining capacity
             rem_quota = max(0, q.max_total_quota)
             add_edge(g_idx, sink, rem_quota, 0)
 
-        # Run SPFA / Bellman-Ford MCMF
+        # SPFA / MCMF
         flow = 0
         total_cost = 0
         INF = float('inf')
@@ -156,7 +189,6 @@ class MinCostMaxFlowAllocationEngine:
             if dist[sink] == INF:
                 break
 
-            # Find maximum flow along path
             push = INF
             curr = sink
             while curr != source:
@@ -165,7 +197,6 @@ class MinCostMaxFlowAllocationEngine:
                 push = min(push, adj[p][e].cap - adj[p][e].flow)
                 curr = p
 
-            # Apply flow
             curr = sink
             while curr != source:
                 p = parent_node[curr]
@@ -178,10 +209,9 @@ class MinCostMaxFlowAllocationEngine:
             flow += push
             total_cost += push * dist[sink]
 
-        # Extract matches
+        # Trích xuất kết quả đề xuất
         matched_results = []
         unassigned_students = []
-        assigned_student_ids = set()
 
         with transaction.atomic():
             for s_idx, student in enumerate(students, start=1):
@@ -192,45 +222,58 @@ class MinCostMaxFlowAllocationEngine:
                         matched_sup = quotas[q_idx].supervisor
                         break
 
+                pref = preferences.get(student.id)
                 survey = surveys.get(student.id)
-                topic_category = survey.topic_direction if survey else None
-                tentative_title = survey.tentative_title if survey else f"Đồ án tốt nghiệp - {student.registration_no}"
+                topic_category = (pref.topic_direction if pref else None) or (survey.topic_direction if survey else None)
+                tentative_title = (survey.tentative_title if survey else None) or f"Đề tài tốt nghiệp của {student.user.get_full_name() or student.registration_no}"
 
                 if matched_sup:
-                    assigned_student_ids.add(student.id)
-                    # Create or update GraduationProject
                     proj, _ = GraduationProject.objects.update_or_create(
                         student=student,
                         defaults={
                             "supervisor": matched_sup,
                             "batch": batch,
                             "topic_category": topic_category,
-                            "topic_title_vi": tentative_title or f"Đề tài tốt nghiệp của {student.user.get_full_name()}",
-                            "status": "ALLOCATED"
+                            "topic_title_vi": tentative_title,
+                            "status": "ALLOCATED",
+                            "topic_review_status": "DRAFT"
                         }
                     )
+                    
                     matched_results.append({
                         "student_id": student.id,
                         "student_name": student.user.get_full_name() or student.user.username,
                         "registration_no": student.registration_no,
+                        "education_program": student.education_program,
                         "supervisor_id": matched_sup.id,
                         "supervisor_name": f"{matched_sup.academic_title or ''} {matched_sup.user.get_full_name()}".strip(),
+                        "academic_title": matched_sup.academic_title or "",
                         "department": matched_sup.department_name,
                         "project_id": proj.id
                     })
                 else:
+                    reason = "Vượt quá chỉ tiêu Quota của các Giảng viên phù hợp."
+                    if (student.education_program == "ENGINEER" or batch.program_type == "ENGINEER"):
+                        reason += " Lưu ý: SV hệ Kỹ sư yêu cầu GVHD có học vị tối thiểu là Tiến sĩ (TS)."
+
                     unassigned_students.append({
                         "student_id": student.id,
                         "student_name": student.user.get_full_name() or student.user.username,
                         "registration_no": student.registration_no,
-                        "reason": "Vượt quá chỉ tiêu Quota của tất cả Giảng viên phù hợp."
+                        "education_program": student.education_program,
+                        "reason": reason
                     })
 
-            # Update assigned counts in SupervisorQuota
+            # Cập nhật số lượng đã phân công
             for q in quotas:
                 actual_assigned = GraduationProject.objects.filter(batch=batch, supervisor=q.supervisor).count()
                 q.current_assigned = actual_assigned
                 q.save(update_fields=["current_assigned"])
+
+            # Cập nhật trạng thái đợt sang Giai đoạn 2
+            if batch.current_stage == "PHASE_1_SETUP":
+                batch.current_stage = "PHASE_2_ALLOCATING"
+                batch.save(update_fields=["current_stage"])
 
         return {
             "success": True,
@@ -239,4 +282,39 @@ class MinCostMaxFlowAllocationEngine:
             "matched": matched_results,
             "unassigned": unassigned_students,
             "total_students": len(students)
+        }
+
+    @classmethod
+    def finalize_allocation(cls, batch_id, user=None):
+        """Khoa chốt phân công đề tài (Bước 17)"""
+        batch = AcademicBatch.objects.get(id=batch_id)
+        batch.current_stage = "PHASE_2_LOCKED"
+        batch.save(update_fields=["current_stage"])
+
+        if user:
+            AuditLog.objects.create(
+                user=user,
+                action_type="supervisor_request_update",
+                description=f"Khoa đã chốt phân công giảng viên hướng dẫn cho Đợt {batch.batch_code}."
+            )
+        return {"success": True, "message": "Đã chốt danh sách phân công GVHD thành công."}
+
+    @classmethod
+    def publish_and_notify_allocation(cls, batch_id, user=None):
+        """Công bố và gửi email kết quả phân công (Bước 18 & 19)"""
+        batch = AcademicBatch.objects.get(id=batch_id)
+        batch.is_allocation_published = True
+        batch.allocation_published_at = timezone.now()
+        batch.current_stage = "PHASE_3_TOPIC"
+        batch.save(update_fields=["is_allocation_published", "allocation_published_at", "current_stage"])
+
+        if user:
+            AuditLog.objects.create(
+                user=user,
+                action_type="group_status_change",
+                description=f"Khoa đã công bố và phát lệnh thông báo kết quả phân công cho Đợt {batch.batch_code}."
+            )
+        return {
+            "success": True,
+            "message": "Đã công bố và gửi thông báo kết quả phân công cho toàn bộ Giảng viên và Sinh viên."
         }

@@ -31,16 +31,25 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
             <span>👥</span> Quản Lý Tài Khoản
           </NavLink>
           <NavLink to="/batches" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>📅</span> Kỳ Học & Lớp HP
+            <span>📅</span> GĐ1: Đợt & Bộ Môn
           </NavLink>
           <NavLink to="/allocations" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>🤝</span> Phân Công GVHD
+            <span>🤝</span> GĐ2: Phân Công GVHD
+          </NavLink>
+          <NavLink to="/topics" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
+            <span>📑</span> GĐ3: Duyệt Đề Tài
+          </NavLink>
+          <NavLink to="/eligibility" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
+            <span>⚖️</span> GĐ4: Xét ĐK Làm ĐA
+          </NavLink>
+          <NavLink to="/progress" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
+            <span>📈</span> GĐ5: Giám Sát Tiến Độ
           </NavLink>
           <NavLink to="/councils" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>⚖️</span> Hội Đồng & Phản Biện
+            <span>🏛️</span> GĐ6: Hội Đồng & Lịch BV
           </NavLink>
           <NavLink to="/defense" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>📝</span> Điểm & Biên Bản
+            <span>📝</span> Điểm, Bảo Lưu & Chốt
           </NavLink>
           <NavLink to="/security" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
             <span>🛡️</span> Trung Tâm Bảo Mật

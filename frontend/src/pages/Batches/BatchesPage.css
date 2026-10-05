@@ -305,3 +305,200 @@
   font-size: 0.84rem;
   margin-top: 1rem;
 }
+
+/* Subnav Tabs */
+.utc-subnav-tabs {
+  display: flex;
+  gap: 0.75rem;
+  border-bottom: 2px solid #e2e8f0;
+  padding-bottom: 0.5rem;
+}
+
+.utc-subnav-btn {
+  background: none;
+  border: none;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #64748b;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.utc-subnav-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.utc-subnav-btn.active {
+  background: #0284c7;
+  color: #ffffff;
+}
+
+/* Radio Card Group */
+.utc-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.utc-radio-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.utc-radio-card.active {
+  border-color: #0284c7;
+  background: #f0f9ff;
+}
+
+.utc-radio-card p {
+  margin: 0.25rem 0 0 0;
+  font-size: 0.82rem;
+  color: #64748b;
+}
+
+/* Department Grid */
+.utc-dept-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.25rem;
+}
+
+.utc-dept-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1.25rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+}
+
+.utc-dept-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.utc-dept-code {
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: 6px;
+}
+
+.utc-dept-count {
+  font-size: 0.8rem;
+  color: #0284c7;
+  font-weight: 600;
+}
+
+.utc-prog-tag {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: 6px;
+  margin-left: 0.5rem;
+}
+
+.prog-engineer {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.prog-bachelor {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.prog-both {
+  background: #f3e8ff;
+  color: #6b21a8;
+}
+
+.utc-batch-stage-text {
+  font-size: 0.82rem;
+  color: #475569;
+  margin-bottom: 0.75rem;
+}
+
+.utc-btn-close-batch {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.utc-btn-close-batch:hover {
+  background: #fca5a5;
+}
+
+.utc-badge-edu {
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.edu-ks {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.edu-cn {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.utc-title-badge {
+  background: #f1f5f9;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.title-ts, .title-pgs.ts, .title-gs.ts {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.utc-btn-sm-edit {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.utc-btn-sm-edit:hover {
+  background: #0284c7;
+  color: #fff;
+  border-color: #0284c7;
+}
+
+.utc-loading-box, .utc-empty-box {
+  text-align: center;
+  padding: 3rem;
+  background: #ffffff;
+  border-radius: 12px;
+  color: #64748b;
+  border: 1px dashed #cbd5e1;
+}
+

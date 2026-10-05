@@ -4,16 +4,27 @@ from .models import (
     AuditLog,
     AcademicBatch,
     CourseClass,
+    Department,
     Student,
     Supervisor,
     SupervisorQuota,
     ProjectTopicArea,
+    StudentPreference,
     GraduationProject,
     DefenseCouncil,
     CouncilMember,
+    DefenseScheduleSlot,
     FinalGradeSummary,
     EvaluationPolicy
 )
+
+class DepartmentSerializer(serializers.ModelSerializer):
+    supervisor_count = serializers.IntegerField(source="supervisors.count", read_only=True)
+
+    class Meta:
+        model = Department
+        fields = ["id", "code", "name", "description", "supervisor_count"]
+
 
 class StudentDetailSerializer(serializers.ModelSerializer):
     batch_name = serializers.CharField(source="academic_batch.batch_name", read_only=True, default="")
@@ -34,6 +45,7 @@ class StudentDetailSerializer(serializers.ModelSerializer):
             "semester",
             "batch_no",
             "phone_number",
+            "education_program",
             "course_class",
             "class_code",
             "class_name",
@@ -72,6 +84,7 @@ class StudentDetailSerializer(serializers.ModelSerializer):
 
 class SupervisorDetailSerializer(serializers.ModelSerializer):
     quota_info = serializers.SerializerMethodField()
+    department_code = serializers.CharField(source="department_obj.code", read_only=True, default="")
 
     class Meta:
         model = Supervisor
@@ -80,6 +93,9 @@ class SupervisorDetailSerializer(serializers.ModelSerializer):
             "supervisor_id",
             "academic_title",
             "department_name",
+            "department_obj",
+            "department_code",
+            "academic_rank_multiplier",
             "phone_number",
             "research_interest",
             "academic_background",
@@ -91,12 +107,16 @@ class SupervisorDetailSerializer(serializers.ModelSerializer):
         quota = obj.quotas.first()
         if quota:
             return {
+                "base_quota": quota.base_quota,
+                "rank_multiplier": quota.rank_multiplier,
                 "viet_anh_quota": quota.viet_anh_quota,
                 "general_cntt_quota": quota.general_cntt_quota,
                 "max_total_quota": quota.max_total_quota,
                 "current_assigned": quota.current_assigned,
             }
         return {
+            "base_quota": 5,
+            "rank_multiplier": obj.academic_rank_multiplier or 1.0,
             "viet_anh_quota": 0,
             "general_cntt_quota": 0,
             "max_total_quota": 0,
@@ -174,13 +194,12 @@ class AdminCreateUserSerializer(serializers.Serializer):
     user_type = serializers.ChoiceField(choices=CustomUser.USER_TYPE_CHOICES)
     is_active = serializers.BooleanField(default=True, required=False)
 
-    # Common Profile fields
     first_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
     last_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
     phone_number = serializers.CharField(max_length=30, required=False, allow_blank=True)
 
-    # Student specific fields
     registration_no = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    education_program = serializers.ChoiceField(choices=["BACHELOR", "ENGINEER"], default="BACHELOR", required=False)
     major = serializers.ChoiceField(choices=["CNTT", "KHMT"], default="CNTT", required=False)
     program_type = serializers.ChoiceField(
         choices=["VIET_ANH", "DAI_TRA", "KHMT", "KHOA_CU"],
@@ -197,16 +216,16 @@ class AdminCreateUserSerializer(serializers.Serializer):
     )
     custom_password = serializers.CharField(max_length=128, required=False, allow_blank=True)
 
-    # Supervisor specific fields
     supervisor_id = serializers.CharField(max_length=100, required=False, allow_blank=True)
     academic_title = serializers.CharField(max_length=50, required=False, allow_blank=True)
     department_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    department_id = serializers.IntegerField(required=False, allow_null=True)
+    academic_rank_multiplier = serializers.FloatField(default=1.0, required=False)
     is_external = serializers.BooleanField(default=False, required=False)
     max_total_quota = serializers.IntegerField(default=5, required=False)
     viet_anh_quota = serializers.IntegerField(default=2, required=False)
     general_cntt_quota = serializers.IntegerField(default=3, required=False)
 
-    # Council / External Examiner fields
     external_institution = serializers.CharField(max_length=255, required=False, allow_blank=True)
 
 
@@ -244,7 +263,7 @@ class CourseClassSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CourseClass
-        fields = ["id", "batch", "class_code", "class_name", "program_type", "class_group", "student_count"]
+        fields = ["id", "batch", "class_code", "class_name", "program_type", "education_program", "class_group", "student_count"]
 
 
 class AcademicBatchSerializer(serializers.ModelSerializer):
@@ -254,7 +273,23 @@ class AcademicBatchSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = AcademicBatch
-        fields = ["id", "batch_code", "batch_name", "start_date", "end_date", "is_active", "created_at", "classes", "student_count", "project_count"]
+        fields = [
+            "id",
+            "batch_code",
+            "batch_name",
+            "program_type",
+            "current_stage",
+            "start_date",
+            "end_date",
+            "is_active",
+            "is_allocation_published",
+            "allocation_published_at",
+            "is_closed",
+            "created_at",
+            "classes",
+            "student_count",
+            "project_count"
+        ]
 
     def get_student_count(self, obj):
         return Student.objects.filter(academic_batch=obj).count()
@@ -280,6 +315,8 @@ class SupervisorQuotaSerializer(serializers.ModelSerializer):
             "phone_number",
             "batch",
             "department",
+            "base_quota",
+            "rank_multiplier",
             "viet_anh_quota",
             "general_cntt_quota",
             "max_total_quota",
@@ -313,24 +350,69 @@ class CouncilMemberSerializer(serializers.ModelSerializer):
 class DefenseCouncilSerializer(serializers.ModelSerializer):
     members = CouncilMemberSerializer(many=True, read_only=True)
     project_count = serializers.SerializerMethodField()
+    validity_info = serializers.SerializerMethodField()
 
     class Meta:
         model = DefenseCouncil
-        fields = ["id", "batch", "council_number", "council_name", "session_date", "session_time", "defense_room", "created_at", "members", "project_count"]
+        fields = [
+            "id",
+            "batch",
+            "council_number",
+            "council_name",
+            "session_date",
+            "session_time",
+            "defense_room",
+            "is_finalized",
+            "created_at",
+            "members",
+            "project_count",
+            "validity_info"
+        ]
 
     def get_project_count(self, obj):
         return obj.projects.count()
+
+    def get_validity_info(self, obj):
+        return obj.check_utc_model_validity()
+
+
+class DefenseScheduleSlotSerializer(serializers.ModelSerializer):
+    council_name = serializers.CharField(source="council.council_name", read_only=True)
+    student_name = serializers.CharField(source="project.student.user.get_full_name", read_only=True)
+    registration_no = serializers.CharField(source="project.student.registration_no", read_only=True)
+    topic_title = serializers.CharField(source="project.topic_title_vi", read_only=True)
+
+    class Meta:
+        model = DefenseScheduleSlot
+        fields = [
+            "id",
+            "council",
+            "council_name",
+            "project",
+            "student_name",
+            "registration_no",
+            "topic_title",
+            "order_number",
+            "slot_date",
+            "start_time",
+            "end_time",
+            "room"
+        ]
 
 
 class GraduationProjectAdminSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(source="student.user.get_full_name", read_only=True)
     student_reg_no = serializers.CharField(source="student.registration_no", read_only=True)
     student_class = serializers.CharField(source="student.department", read_only=True)
+    education_program = serializers.CharField(source="student.education_program", read_only=True)
     supervisor_name = serializers.SerializerMethodField()
     reviewer_name = serializers.SerializerMethodField()
     council_name = serializers.CharField(source="council.council_name", read_only=True, default="")
     topic_category_name = serializers.CharField(source="topic_category.name", read_only=True, default="")
+    schedule_slot_info = serializers.SerializerMethodField()
+
     final_score_10 = serializers.FloatField(source="final_grade_summary.final_score_10", read_only=True, default=None)
+    final_score_4 = serializers.FloatField(source="final_grade_summary.final_score_4", read_only=True, default=None)
     final_letter_grade = serializers.CharField(source="final_grade_summary.final_letter_grade", read_only=True, default="")
     is_passed = serializers.BooleanField(source="final_grade_summary.is_passed", read_only=True, default=False)
 
@@ -342,6 +424,7 @@ class GraduationProjectAdminSerializer(serializers.ModelSerializer):
             "student_name",
             "student_reg_no",
             "student_class",
+            "education_program",
             "supervisor",
             "supervisor_name",
             "batch",
@@ -350,14 +433,28 @@ class GraduationProjectAdminSerializer(serializers.ModelSerializer):
             "topic_title_vi",
             "topic_title_en",
             "status",
+            "topic_review_status",
+            "topic_revision_notes",
+            "outline_pdf_path",
+            "initial_eligibility",
+            "ineligibility_reason",
+            "gpa_score",
+            "debt_credits",
+            "supervisor_defense_confirmed",
+            "final_academic_eligibility",
+            "final_academic_notes",
+            "deferral_status",
+            "deferral_reason",
             "reviewer",
             "reviewer_name",
             "council",
             "council_name",
+            "schedule_slot_info",
             "supervisor_score",
             "reviewer_score",
             "is_eligible_for_defense",
             "final_score_10",
+            "final_score_4",
             "final_letter_grade",
             "is_passed",
             "created_at",
@@ -375,3 +472,15 @@ class GraduationProjectAdminSerializer(serializers.ModelSerializer):
             return ""
         prefix = f"{obj.reviewer.academic_title} " if obj.reviewer.academic_title else ""
         return f"{prefix}{obj.reviewer.user.get_full_name()}".strip()
+
+    def get_schedule_slot_info(self, obj):
+        slot = getattr(obj, "scheduled_defense_slot", None)
+        if slot:
+            return {
+                "order": slot.order_number,
+                "date": str(slot.slot_date) if slot.slot_date else "",
+                "start": slot.start_time.strftime("%H:%M") if slot.start_time else "",
+                "end": slot.end_time.strftime("%H:%M") if slot.end_time else "",
+                "room": slot.room
+            }
+        return None

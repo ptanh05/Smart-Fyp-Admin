@@ -24,7 +24,24 @@ from .views import (
     AutoReviewerAllocationAPIView,
     GraduationProjectsAdminListAPIView,
     ExportToTrinhWordAPIView,
-    ExportBienBanExcelAPIView
+    ExportBienBanExcelAPIView,
+    # New Views for Full 6-Phase Workflow
+    DepartmentListCreateAPIView,
+    DepartmentDetailAPIView,
+    SupervisorProfileUpdateAPIView,
+    FinalizeAllocationAPIView,
+    PublishAllocationAPIView,
+    TopicApprovalAPIView,
+    DownloadProjectOutlineAPIView,
+    ExcelEligibilityImportAPIView,
+    EligibilityDecisionAPIView,
+    ExcelFinalAcademicImportAPIView,
+    DeferralDecisionAPIView,
+    AutoDefenseScheduleAPIView,
+    ManualReviewerOverrideAPIView,
+    FinalizeCouncilScoresAPIView,
+    CloseBatchAPIView,
+    ExportFinalSummaryExcelAPIView,
 )
 
 urlpatterns = [
@@ -47,31 +64,49 @@ urlpatterns = [
     path("admin/users/<int:pk>/", AdminUserManagementAPIView.as_view(), name="admin-user-detail"),
     path("admin/users/<int:pk>/reset-password/", AdminResetUserPasswordAPIView.as_view(), name="admin-users-reset-password"),
 
-    # Admin Security Center
-    path("admin/security-center/", AdminSecurityCenterAPIView.as_view(), name="admin-security-center"),
+    # Giai đoạn 1: Thiết lập quan hệ Khoa - Bộ môn - Giảng viên
+    path("admin/departments/", DepartmentListCreateAPIView.as_view(), name="admin-departments-list"),
+    path("admin/departments/<int:pk>/", DepartmentDetailAPIView.as_view(), name="admin-departments-detail"),
+    path("admin/supervisors/<int:pk>/profile/", SupervisorProfileUpdateAPIView.as_view(), name="admin-supervisors-update-profile"),
 
-    # Admin Audit Logs
+    # Admin Security Center & Audit Logs
+    path("admin/security-center/", AdminSecurityCenterAPIView.as_view(), name="admin-security-center"),
     path("audit-logs/", AdminAuditLogListAPIView.as_view(), name="admin-audit-logs-list"),
     path("audit-logs/stats/", AdminAuditLogStatsAPIView.as_view(), name="admin-audit-logs-stats"),
 
-    # Academic Batches & Course Classes
+    # Academic Batches & Course Classes (Giai đoạn 1)
     path("admin/batches/", AcademicBatchListCreateAPIView.as_view(), name="admin-batches-list"),
     path("admin/batches/<int:pk>/", AcademicBatchDetailAPIView.as_view(), name="admin-batches-detail"),
+    path("admin/batches/<int:pk>/close/", CloseBatchAPIView.as_view(), name="admin-batches-close"),
     path("admin/students/import-excel/", ExcelStudentImportAPIView.as_view(), name="admin-students-import-excel"),
 
-    # Supervisor Quotas & Allocation
+    # Supervisor Quotas & Allocation (Giai đoạn 2)
     path("admin/quotas/", SupervisorQuotaListUpdateAPIView.as_view(), name="admin-quotas"),
     path("admin/allocations/auto-match/", AutoSupervisorAllocationAPIView.as_view(), name="admin-allocations-auto-match"),
     path("admin/allocations/manual/", ManualSupervisorAllocationAPIView.as_view(), name="admin-allocations-manual"),
+    path("admin/allocations/finalize/", FinalizeAllocationAPIView.as_view(), name="admin-allocations-finalize"),
+    path("admin/allocations/publish/", PublishAllocationAPIView.as_view(), name="admin-allocations-publish"),
 
-    # Defense Councils & Reviewers
-    path("admin/councils/", DefenseCouncilListCreateAPIView.as_view(), name="admin-councils"),
-    path("admin/reviewers/auto-assign/", AutoReviewerAllocationAPIView.as_view(), name="admin-reviewers-auto-assign"),
-
-    # Graduation Projects Listing
+    # Graduation Projects, Phê duyệt đề tài & Đề cương (Giai đoạn 3)
     path("admin/projects/", GraduationProjectsAdminListAPIView.as_view(), name="admin-projects-list"),
+    path("admin/projects/<int:pk>/topic-approval/", TopicApprovalAPIView.as_view(), name="admin-projects-topic-approval"),
+    path("admin/projects/<int:pk>/download-outline/", DownloadProjectOutlineAPIView.as_view(), name="admin-projects-download-outline"),
 
-    # Document Generation (Word & Excel)
+    # Xét điều kiện làm đồ án & Force Approve (Giai đoạn 4)
+    path("admin/eligibility/import-excel/", ExcelEligibilityImportAPIView.as_view(), name="admin-eligibility-import-excel"),
+    path("admin/projects/<int:pk>/eligibility-decision/", EligibilityDecisionAPIView.as_view(), name="admin-projects-eligibility-decision"),
+
+    # Defense Readiness, Deferral Branch, Councils & Scheduling (Giai đoạn 6 & Bảo lưu)
+    path("admin/final-academic/import-excel/", ExcelFinalAcademicImportAPIView.as_view(), name="admin-final-academic-import-excel"),
+    path("admin/projects/<int:pk>/deferral-decision/", DeferralDecisionAPIView.as_view(), name="admin-projects-deferral-decision"),
+    path("admin/councils/", DefenseCouncilListCreateAPIView.as_view(), name="admin-councils"),
+    path("admin/councils/<int:pk>/finalize-scores/", FinalizeCouncilScoresAPIView.as_view(), name="admin-councils-finalize-scores"),
+    path("admin/reviewers/auto-assign/", AutoReviewerAllocationAPIView.as_view(), name="admin-reviewers-auto-assign"),
+    path("admin/defense/override-reviewer/", ManualReviewerOverrideAPIView.as_view(), name="admin-defense-override-reviewer"),
+    path("admin/defense/auto-schedule/", AutoDefenseScheduleAPIView.as_view(), name="admin-defense-auto-schedule"),
+
+    # Document Generation (Word, Excel) & Xuất cuối kỳ
     path("admin/export/to-trinh-word/", ExportToTrinhWordAPIView.as_view(), name="admin-export-to-trinh-word"),
     path("admin/export/bien-ban-excel/", ExportBienBanExcelAPIView.as_view(), name="admin-export-bien-ban-excel"),
+    path("admin/export/final-summary-excel/", ExportFinalSummaryExcelAPIView.as_view(), name="admin-export-final-summary-excel"),
 ]

@@ -63,12 +63,48 @@ class AuditLog(models.Model):
         return f"AuditLog #{self.pk} - {self.action_type}"
 
 
+class Department(models.Model):
+    """Bộ môn chuyên môn trực thuộc Khoa CNTT"""
+    code = models.CharField(max_length=50, unique=True)
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+
+    class Meta:
+        db_table = "app_department"
+        ordering = ["code"]
+
+    def __str__(self):
+        return f"{self.name} ({self.code})"
+
+
 class AcademicBatch(models.Model):
+    PROGRAM_CHOICES = (
+        ("BACHELOR", "Cử nhân"),
+        ("ENGINEER", "Kỹ sư"),
+        ("BOTH", "Cả Cử nhân & Kỹ sư"),
+    )
+
+    STAGE_CHOICES = (
+        ("PHASE_1_SETUP", "GĐ1: Khởi tạo đợt & Thiết lập dữ liệu"),
+        ("PHASE_2_ALLOCATING", "GĐ2: Đang phân công GVHD"),
+        ("PHASE_2_LOCKED", "GĐ2: Khoa đã chốt phân công"),
+        ("PHASE_3_TOPIC", "GĐ3: Xây dựng & Phê duyệt đề tài"),
+        ("PHASE_4_ELIGIBILITY", "GĐ4: Xét điều kiện làm đồ án"),
+        ("PHASE_5_IN_PROGRESS", "GĐ5: Đang thực hiện đồ án"),
+        ("PHASE_6_DEFENSE", "GĐ6: Xét bảo vệ & Hội đồng"),
+        ("COMPLETED", "Hoàn tất: Đã kết thúc đợt đồ án"),
+    )
+
     batch_code = models.CharField(max_length=50, unique=True)
     batch_name = models.CharField(max_length=255)
+    program_type = models.CharField(max_length=50, choices=PROGRAM_CHOICES, default="BACHELOR")
+    current_stage = models.CharField(max_length=50, choices=STAGE_CHOICES, default="PHASE_1_SETUP")
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
+    is_allocation_published = models.BooleanField(default=False)
+    allocation_published_at = models.DateTimeField(null=True, blank=True)
+    is_closed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -76,7 +112,7 @@ class AcademicBatch(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"{self.batch_name} ({self.batch_code})"
+        return f"{self.batch_name} ({self.batch_code}) - {self.get_program_type_display()}"
 
 
 class CourseClass(models.Model):
@@ -86,10 +122,15 @@ class CourseClass(models.Model):
         ("KHMT", "Khoa học máy tính"),
         ("KHOA_CU", "Sinh viên Khóa cũ"),
     )
+    EDUCATION_CHOICES = (
+        ("BACHELOR", "Cử nhân"),
+        ("ENGINEER", "Kỹ sư"),
+    )
     batch = models.ForeignKey(AcademicBatch, on_delete=models.CASCADE, related_name="course_classes")
     class_code = models.CharField(max_length=50)
     class_name = models.CharField(max_length=255)
     program_type = models.CharField(max_length=50, choices=PROGRAM_CHOICES, default="DAI_TRA")
+    education_program = models.CharField(max_length=50, choices=EDUCATION_CHOICES, default="BACHELOR")
     class_group = models.CharField(max_length=50, blank=True, null=True)
 
     class Meta:
@@ -117,6 +158,11 @@ class Student(models.Model):
     semester = models.CharField(max_length=100, blank=True, null=True)
     batch_no = models.CharField(max_length=100, blank=True, null=True)
     phone_number = models.CharField(max_length=30, blank=True, null=True)
+    education_program = models.CharField(
+        max_length=50,
+        choices=(("BACHELOR", "Cử nhân"), ("ENGINEER", "Kỹ sư")),
+        default="BACHELOR"
+    )
     course_class = models.ForeignKey(CourseClass, on_delete=models.SET_NULL, null=True, blank=True, related_name="students")
     academic_batch = models.ForeignKey(AcademicBatch, on_delete=models.SET_NULL, null=True, blank=True, related_name="students")
 
@@ -133,8 +179,10 @@ class Supervisor(models.Model):
     research_interest = models.CharField(max_length=255, blank=True, null=True)
     academic_background = models.CharField(max_length=255, blank=True, null=True)
     phone_number = models.CharField(max_length=30, blank=True, null=True)
-    academic_title = models.CharField(max_length=50, blank=True, null=True)
+    academic_title = models.CharField(max_length=50, blank=True, null=True) # "ThS", "TS", "PGS.TS", "GS.TS"
     department_name = models.CharField(max_length=100, blank=True, null=True)
+    department_obj = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name="supervisors")
+    academic_rank_multiplier = models.FloatField(default=1.0) # Hệ số capacity theo học vị (GS: 2.0, PGS: 1.5, TS: 1.2, ThS: 1.0)
     is_external = models.BooleanField(default=False)
     category = models.ManyToManyField(ProjectCategories, related_name="supervisors", blank=True)
 
@@ -145,11 +193,18 @@ class Supervisor(models.Model):
         prefix = f"{self.academic_title} " if self.academic_title else ""
         return f"{prefix}{self.user.get_full_name() or self.user.username}"
 
+    def is_eligible_for_engineer(self):
+        """Kiểm tra giảng viên có đạt học vị tối thiểu (TS trở lên) để hướng dẫn SV Kỹ sư không"""
+        title = (self.academic_title or "").upper()
+        return ("TS" in title or "TIẾN SĨ" in title or "PGS" in title or "GS" in title)
+
 
 class SupervisorQuota(models.Model):
     supervisor = models.ForeignKey(Supervisor, on_delete=models.CASCADE, related_name="quotas")
     batch = models.ForeignKey(AcademicBatch, on_delete=models.CASCADE, related_name="supervisor_quotas")
     department = models.CharField(max_length=100, blank=True, null=True)
+    base_quota = models.IntegerField(default=5)
+    rank_multiplier = models.FloatField(default=1.0)
     viet_anh_quota = models.IntegerField(default=0)
     general_cntt_quota = models.IntegerField(default=0)
     max_total_quota = models.IntegerField(default=0)
@@ -161,6 +216,11 @@ class SupervisorQuota(models.Model):
 
     def __str__(self):
         return f"{self.supervisor} Quota: {self.max_total_quota}"
+
+    def calculate_capacity(self):
+        """Tính capacity tự động dựa trên base_quota * rank_multiplier"""
+        self.max_total_quota = int(round(self.base_quota * (self.rank_multiplier or 1.0)))
+        return self.max_total_quota
 
 
 class ProjectTopicArea(models.Model):
@@ -190,6 +250,24 @@ class InternshipInfo(models.Model):
         db_table = "app_internshipinfo"
 
 
+class StudentPreference(models.Model):
+    """Lưu nguyện vọng NV1, NV2, NV3 và tiêu chí phụ của SV (Giai đoạn 2)"""
+    student = models.OneToOneField(Student, on_delete=models.CASCADE, related_name="preference_record")
+    batch = models.ForeignKey(AcademicBatch, on_delete=models.CASCADE, related_name="student_preferences")
+    topic_direction = models.ForeignKey(ProjectTopicArea, on_delete=models.SET_NULL, null=True, blank=True, related_name="interested_students")
+    preference_1 = models.ForeignKey(Supervisor, on_delete=models.SET_NULL, null=True, blank=True, related_name="nv1_students")
+    preference_2 = models.ForeignKey(Supervisor, on_delete=models.SET_NULL, null=True, blank=True, related_name="nv2_students")
+    preference_3 = models.ForeignKey(Supervisor, on_delete=models.SET_NULL, null=True, blank=True, related_name="nv3_students")
+    sub_criteria = models.TextField(blank=True, null=True) # Tiêu chí phụ: công nghệ, loại hình đề tài, v.v.
+    submitted_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "app_studentpreference"
+
+    def __str__(self):
+        return f"NV của {self.student.registration_no} ({self.student.user.get_full_name()})"
+
+
 class DefenseCouncil(models.Model):
     SESSION_CHOICES = (
         ("MORNING", "Ca sáng"),
@@ -201,6 +279,7 @@ class DefenseCouncil(models.Model):
     session_date = models.DateField(null=True, blank=True)
     session_time = models.CharField(max_length=50, choices=SESSION_CHOICES, default="MORNING")
     defense_room = models.CharField(max_length=100, blank=True, null=True)
+    is_finalized = models.BooleanField(default=False) # Hội đồng xác nhận chốt điểm
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -209,6 +288,22 @@ class DefenseCouncil(models.Model):
 
     def __str__(self):
         return f"{self.council_name} (HĐ {self.council_number})"
+
+    def check_utc_model_validity(self):
+        """Kiểm tra mô hình chuẩn 1 Chủ tịch, 2 Thư ký, 2 Ủy viên (1CT-2TK-2UV = 5 thành viên)"""
+        members = list(self.members.all())
+        chairs = [m for m in members if m.role == "CHAIR"]
+        secs = [m for m in members if m.role == "SECRETARY"]
+        uvs = [m for m in members if m.role in ["MEMBER", "EXTERNAL_MEMBER"]]
+        is_valid = (len(chairs) == 1 and len(secs) == 2 and len(uvs) == 2 and len(members) == 5)
+        return {
+            "is_valid": is_valid,
+            "chair_count": len(chairs),
+            "secretary_count": len(secs),
+            "member_count": len(uvs),
+            "total_count": len(members),
+            "expected_formula": "1 Chủ tịch - 2 Thư ký - 2 Ủy viên (5 thành viên)"
+        }
 
 
 class CouncilMember(models.Model):
@@ -240,7 +335,37 @@ class GraduationProject(models.Model):
         ("PASSED", "Bảo vệ thành công - Đạt"),
         ("FAILED", "Không đạt"),
         ("DEFERRED", "Bảo lưu đồ án"),
+        ("DISQUALIFIED", "Bị loại khỏi đợt"),
     )
+
+    TOPIC_REVIEW_STATUS_CHOICES = (
+        ("DRAFT", "Bản nháp (GV & SV đang xây dựng)"),
+        ("GV_CONFIRMED", "Giảng viên đã xác nhận"),
+        ("APPROVED", "Khoa đã phê duyệt đề tài"),
+        ("REVISION_REQUIRED", "Khoa yêu cầu chỉnh sửa lại đề tài"),
+    )
+
+    ELIGIBILITY_CHOICES = (
+        ("PENDING", "Chưa xét điều kiện"),
+        ("ELIGIBLE", "Đủ điều kiện làm đồ án"),
+        ("INELIGIBLE", "Không đủ điều kiện làm đồ án"),
+        ("FORCE_APPROVED", "Khoa đặc cách cho làm đồ án (Force Approve)"),
+        ("DISQUALIFIED", "Loại khỏi đợt đồ án"),
+    )
+
+    FINAL_ACADEMIC_CHOICES = (
+        ("PENDING", "Chờ xét học vụ cuối"),
+        ("ELIGIBLE", "Đủ điều kiện học vụ cuối"),
+        ("INELIGIBLE", "Không đủ điều kiện học vụ cuối"),
+    )
+
+    DEFERRAL_CHOICES = (
+        ("NONE", "Không bảo lưu"),
+        ("REQUESTED", "Đơn xin bảo lưu chờ duyệt"),
+        ("APPROVED", "Khoa đã duyệt bảo lưu"),
+        ("REJECTED", "Không duyệt bảo lưu (Loại khỏi đợt)"),
+    )
+
     student = models.OneToOneField(Student, on_delete=models.CASCADE, related_name="graduation_project")
     supervisor = models.ForeignKey(Supervisor, on_delete=models.CASCADE, related_name="supervised_graduation_projects")
     batch = models.ForeignKey(AcademicBatch, on_delete=models.CASCADE, related_name="graduation_projects")
@@ -248,6 +373,28 @@ class GraduationProject(models.Model):
     topic_title_vi = models.CharField(max_length=500)
     topic_title_en = models.CharField(max_length=500, blank=True, null=True)
     status = models.CharField(max_length=50, choices=STATUS_CHOICES, default="ALLOCATED")
+
+    # Giai đoạn 3: Phê duyệt đề tài
+    topic_review_status = models.CharField(max_length=50, choices=TOPIC_REVIEW_STATUS_CHOICES, default="DRAFT")
+    topic_revision_notes = models.TextField(blank=True, null=True)
+    outline_pdf_path = models.CharField(max_length=500, blank=True, null=True)
+
+    # Giai đoạn 4: Xét điều kiện làm đồ án & Force Approve
+    initial_eligibility = models.CharField(max_length=50, choices=ELIGIBILITY_CHOICES, default="PENDING")
+    ineligibility_reason = models.TextField(blank=True, null=True)
+    gpa_score = models.FloatField(null=True, blank=True)
+    debt_credits = models.IntegerField(default=0)
+    force_approved_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="force_approved_projects")
+    force_approved_at = models.DateTimeField(null=True, blank=True)
+
+    # Giai đoạn 6 & Bảo lưu
+    supervisor_defense_confirmed = models.BooleanField(default=False)
+    final_academic_eligibility = models.CharField(max_length=50, choices=FINAL_ACADEMIC_CHOICES, default="PENDING")
+    final_academic_notes = models.TextField(blank=True, null=True)
+    deferral_status = models.CharField(max_length=50, choices=DEFERRAL_CHOICES, default="NONE")
+    deferral_reason = models.TextField(blank=True, null=True)
+    deferral_decided_at = models.DateTimeField(null=True, blank=True)
+
     reviewer = models.ForeignKey(Supervisor, on_delete=models.SET_NULL, null=True, blank=True, related_name="reviewed_graduation_projects")
     council = models.ForeignKey(DefenseCouncil, on_delete=models.SET_NULL, null=True, blank=True, related_name="projects")
     supervisor_score = models.FloatField(null=True, blank=True)
@@ -260,6 +407,28 @@ class GraduationProject(models.Model):
 
     class Meta:
         db_table = "app_graduationproject"
+
+    def __str__(self):
+        return f"{self.student.registration_no} - {self.topic_title_vi}"
+
+
+class DefenseScheduleSlot(models.Model):
+    """Lịch bảo vệ chi tiết từng sinh viên (Giai đoạn 6)"""
+    council = models.ForeignKey(DefenseCouncil, on_delete=models.CASCADE, related_name="schedule_slots")
+    project = models.OneToOneField(GraduationProject, on_delete=models.CASCADE, related_name="schedule_slot")
+    order_number = models.IntegerField(default=1)
+    slot_date = models.DateField(null=True, blank=True)
+    start_time = models.TimeField(null=True, blank=True)
+    end_time = models.TimeField(null=True, blank=True)
+    room = models.CharField(max_length=100, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "app_defensescheduleslot"
+        ordering = ["slot_date", "order_number"]
+
+    def __str__(self):
+        return f"{self.council.council_name} Slot #{self.order_number}: {self.project.student.registration_no}"
 
 
 class OutlineReviewGroup(models.Model):
@@ -431,4 +600,3 @@ class FinalGradeSummary(models.Model):
             self.is_passed = False
 
         self.save()
-

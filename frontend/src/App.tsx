@@ -7,6 +7,9 @@ import { AdminRegisterPage } from './pages/Login/AdminRegisterPage';
 import { AdminDashboard } from './pages/Dashboard/AdminDashboard';
 import { BatchesPage } from './pages/Batches/BatchesPage';
 import { AllocationsPage } from './pages/Allocations/AllocationsPage';
+import { TopicApprovalPage } from './pages/Topics/TopicApprovalPage';
+import { EligibilityPage } from './pages/Eligibility/EligibilityPage';
+import { ProgressMonitoringPage } from './pages/Progress/ProgressMonitoringPage';
 import { CouncilsPage } from './pages/Councils/CouncilsPage';
 import { DefenseManagementPage } from './pages/Defense/DefenseManagementPage';
 import { UserManagementPage } from './pages/Users/UserManagementPage';
@@ -44,6 +47,33 @@ export const App: React.FC = () => {
             element={
               <ProtectedAdminRoute>
                 <AllocationsPage />
+              </ProtectedAdminRoute>
+            }
+          />
+
+          <Route
+            path="/topics"
+            element={
+              <ProtectedAdminRoute>
+                <TopicApprovalPage />
+              </ProtectedAdminRoute>
+            }
+          />
+
+          <Route
+            path="/eligibility"
+            element={
+              <ProtectedAdminRoute>
+                <EligibilityPage />
+              </ProtectedAdminRoute>
+            }
+          />
+
+          <Route
+            path="/progress"
+            element={
+              <ProtectedAdminRoute>
+                <ProgressMonitoringPage />
               </ProtectedAdminRoute>
             }
           />

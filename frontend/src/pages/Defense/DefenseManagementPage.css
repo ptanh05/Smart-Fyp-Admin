@@ -77,3 +77,161 @@
   color: #475569;
   font-weight: 600;
 }
+
+.utc-btn-blue-outline {
+  background: #ffffff;
+  color: #0284c7;
+  border: 1.5px solid #0284c7;
+  padding: 0.55rem 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.86rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.utc-btn-blue-outline:hover {
+  background: #f0f9ff;
+}
+
+.utc-btn-emerald-outline {
+  background: #ffffff;
+  color: #059669;
+  border: 1.5px solid #059669;
+  padding: 0.55rem 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.86rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.utc-btn-emerald-outline:hover {
+  background: #ecfdf5;
+}
+
+.utc-btn-amber {
+  background: #d97706;
+  color: #ffffff;
+  border: none;
+  padding: 0.55rem 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.86rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.utc-btn-amber:hover {
+  background: #b45309;
+}
+
+.utc-btn-red {
+  background: #dc2626;
+  color: #ffffff;
+  border: none;
+  padding: 0.55rem 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.86rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.utc-btn-red:hover {
+  background: #b91c1c;
+}
+
+.utc-badge-deferral {
+  background: #fef3c7;
+  color: #92400e;
+  padding: 0.25rem 0.55rem;
+  border-radius: 6px;
+  font-weight: 800;
+  font-size: 0.75rem;
+  border: 1px solid #fde68a;
+}
+
+.utc-badge-pass {
+  background: #dcfce7;
+  color: #15803d;
+  padding: 0.25rem 0.55rem;
+  border-radius: 6px;
+  font-weight: 800;
+  font-size: 0.75rem;
+}
+
+.utc-badge-fail {
+  background: #fee2e2;
+  color: #dc2626;
+  padding: 0.25rem 0.55rem;
+  border-radius: 6px;
+  font-weight: 800;
+  font-size: 0.75rem;
+}
+
+.utc-badge-pending {
+  background: #f1f5f9;
+  color: #64748b;
+  padding: 0.25rem 0.55rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+}
+
+.utc-defense-table-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+}
+
+.utc-pill {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.pill-green {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.pill-red {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.pill-amber {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.utc-deferral-status {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.status-approved {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.status-rejected {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+}
+
+.status-requested {
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+}
+

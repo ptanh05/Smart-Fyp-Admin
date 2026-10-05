@@ -5,7 +5,16 @@ import re
 import random
 import string
 from django.db import transaction
-from app.models import CustomUser, Student, Supervisor, SupervisorQuota, AcademicBatch, CourseClass
+from app.models import (
+    CustomUser,
+    Student,
+    Supervisor,
+    SupervisorQuota,
+    AcademicBatch,
+    CourseClass,
+    GraduationProject,
+    AuditLog
+)
 
 def generate_random_password(length=8):
     chars = string.ascii_letters + string.digits + "!@#"
@@ -21,15 +30,14 @@ class ExcelImportService:
         default_major="CNTT"
     ):
         """
-        Import students and course classes from standard UTC portal Excel registration files
-        or simple custom rosters. Supports password strategies: MSSV, FIXED, RANDOM.
+        Import sinh viên và phân loại lớp học phần, chương trình đào tạo (Cử nhân / Kỹ sư).
         """
         try:
             batch = AcademicBatch.objects.get(id=batch_id)
         except AcademicBatch.DoesNotExist:
             return {
                 "success": False,
-                "error": f"AcademicBatch ID {batch_id} does not exist.",
+                "error": f"Không tìm thấy đợt ID {batch_id}.",
                 "total": 0,
                 "created": 0,
                 "updated": 0,
@@ -64,13 +72,14 @@ class ExcelImportService:
             if ws.max_row < 2:
                 continue
 
-            # Check if sheet contains Course Class header (e.g. Row 6: "Học phần: Đồ án tốt nghiệp-1-1-26(N41).DA")
             class_code = sheet_name.strip()
             class_name = f"Lớp {class_code}"
             class_group = ""
             program_type = "DAI_TRA"
             if default_major == "KHMT":
                 program_type = "KHMT"
+
+            education_program = "ENGINEER" if batch.program_type == "ENGINEER" else "BACHELOR"
 
             for r in range(1, min(10, ws.max_row + 1)):
                 val = str(ws.cell(r, 1).value or "")
@@ -83,8 +92,11 @@ class ExcelImportService:
                         program_type = "VIET_ANH"
                     elif "Khoa học máy tính" in class_name or "KHMT" in class_name:
                         program_type = "KHMT"
-                    elif "Kỹ sư" in class_name:
-                        program_type = "DAI_TRA"
+                    
+                    if "Kỹ sư" in class_name or "KS" in class_name:
+                        education_program = "ENGINEER"
+                    elif "Cử nhân" in class_name or "CN" in class_name:
+                        education_program = "BACHELOR"
                     break
 
             course_class, _ = CourseClass.objects.update_or_create(
@@ -93,7 +105,8 @@ class ExcelImportService:
                 defaults={
                     "class_name": class_name,
                     "class_group": class_group,
-                    "program_type": program_type
+                    "program_type": program_type,
+                    "education_program": education_program
                 }
             )
 
@@ -118,73 +131,87 @@ class ExcelImportService:
                         col_full_name = c_idx
                     elif val in ["họ và", "họ đệm", "họ"]:
                         col_last_name = c_idx
-                    elif val in ["tên", "ten"]:
+                    elif val in ["tên", "tên sv"]:
                         col_first_name = c_idx
-                    elif val in ["lớp", "lớp sinh hoạt", "tên lớp", "lop"]:
+                    elif val in ["lớp", "lớp sinh viên", "lớp quản lý", "lop"]:
                         col_class = c_idx
-                    elif val in ["ngành", "chuyên ngành", "khoa"]:
+                    elif val in ["ngành", "chuyên ngành"]:
                         col_major = c_idx
-                    elif val in ["điện thoại", "sđt", "số điện thoại", "phone"]:
+                    elif val in ["điện thoại", "sđt", "so dien thoai", "phone"]:
                         col_phone = c_idx
                     elif val in ["email", "hòm thư"]:
                         col_email = c_idx
 
-                if header_row_idx is not None:
+                if header_row_idx is not None and col_mssv is not None:
                     break
 
-            if header_row_idx is None:
+            if header_row_idx is None or col_mssv is None:
                 continue
 
-            # Process data rows
             for r in range(header_row_idx + 1, ws.max_row + 1):
-                mssv_raw = ws.cell(r, col_mssv).value if col_mssv else None
-                if not mssv_raw:
+                mssv_cell = ws.cell(r, col_mssv).value
+                if not mssv_cell:
                     continue
-
-                mssv = str(mssv_raw).strip()
-                if not mssv or mssv.lower() in ["stt", "người lập", "cán bộ", "*", "tổng cộng", "tong"]:
+                mssv = str(mssv_cell).strip()
+                if not mssv or len(mssv) < 4:
                     continue
-
-                # Parse name
-                first_name = ""
-                last_name = ""
-                if col_last_name and col_first_name:
-                    last_name = str(ws.cell(r, col_last_name).value or "").strip()
-                    first_name = str(ws.cell(r, col_first_name).value or "").strip()
-                elif col_full_name:
-                    full = str(ws.cell(r, col_full_name).value or "").strip()
-                    tokens = full.split()
-                    if tokens:
-                        first_name = tokens[-1]
-                        last_name = " ".join(tokens[:-1])
-
-                student_class_name = str(ws.cell(r, col_class).value or "").strip() if col_class else ""
-                row_major = str(ws.cell(r, col_major).value or "").strip() if col_major else default_major
-                phone_number = str(ws.cell(r, col_phone).value or "").strip() if col_phone else ""
-                row_email = str(ws.cell(r, col_email).value or "").strip() if col_email else ""
-
-                # Determine major and program_type
-                detected_major = "KHMT" if ("khoa học máy tính" in row_major.lower() or "khmt" in row_major.lower() or "cs" in row_major.lower() or program_type == "KHMT") else "CNTT"
-                if "việt - anh" in student_class_name.lower() or "việt anh" in student_class_name.lower() or "va" in student_class_name.lower():
-                    row_program = "VIET_ANH"
-                elif detected_major == "KHMT":
-                    row_program = "KHMT"
-                else:
-                    row_program = "DAI_TRA"
 
                 total_count += 1
                 try:
                     with transaction.atomic():
-                        username = mssv
-                        email = row_email if row_email else f"{mssv.lower()}@lms.utc.edu.vn"
+                        first_name = ""
+                        last_name = ""
+                        if col_full_name and ws.cell(r, col_full_name).value:
+                            full_name = str(ws.cell(r, col_full_name).value).strip()
+                            parts = full_name.split()
+                            if len(parts) > 1:
+                                last_name = " ".join(parts[:-1])
+                                first_name = parts[-1]
+                            else:
+                                first_name = full_name
+                        else:
+                            if col_last_name and ws.cell(r, col_last_name).value:
+                                last_name = str(ws.cell(r, col_last_name).value).strip()
+                            if col_first_name and ws.cell(r, col_first_name).value:
+                                first_name = str(ws.cell(r, col_first_name).value).strip()
 
-                        # Determine plain password
+                        student_class_name = ""
+                        if col_class and ws.cell(r, col_class).value:
+                            student_class_name = str(ws.cell(r, col_class).value).strip()
+
+                        phone_number = ""
+                        if col_phone and ws.cell(r, col_phone).value:
+                            phone_number = str(ws.cell(r, col_phone).value).strip()
+
+                        email = ""
+                        if col_email and ws.cell(r, col_email).value:
+                            email = str(ws.cell(r, col_email).value).strip()
+                        if not email:
+                            email = f"{mssv}@sv.utc.edu.vn"
+
+                        username = mssv
+
+                        detected_major = default_major
+                        if col_major and ws.cell(r, col_major).value:
+                            maj_val = str(ws.cell(r, col_major).value).strip().lower()
+                            if "khoa học máy tính" in maj_val or "khmt" in maj_val:
+                                detected_major = "KHMT"
+                            else:
+                                detected_major = "CNTT"
+
+                        # Determine education program (Kỹ sư vs Cử nhân)
+                        student_edu = education_program
+                        combined_text = f"{student_class_name} {course_class.class_name}".lower()
+                        if "kỹ sư" in combined_text or "ks" in combined_text:
+                            student_edu = "ENGINEER"
+                        elif "cử nhân" in combined_text or "cn" in combined_text:
+                            student_edu = "BACHELOR"
+
                         if password_strategy == "FIXED" and custom_fixed_password:
                             plain_password = custom_fixed_password.strip()
                         elif password_strategy == "RANDOM":
                             plain_password = generate_random_password(8)
                         else:
-                            # Default MSSV
                             plain_password = mssv
 
                         user, user_created = CustomUser.objects.get_or_create(
@@ -216,7 +243,8 @@ class ExcelImportService:
                                 "course_class": course_class,
                                 "academic_batch": batch,
                                 "batch_no": student_class_name,
-                                "phone_number": phone_number
+                                "phone_number": phone_number,
+                                "education_program": student_edu
                             }
                         )
 
@@ -233,7 +261,8 @@ class ExcelImportService:
                             "email": email,
                             "role": "student",
                             "major": detected_major,
-                            "program_type": row_program,
+                            "program_type": program_type,
+                            "education_program": student_edu,
                             "class_name": student_class_name or course_class.class_name,
                             "plain_password": plain_password if user_created else "(Không đổi)",
                             "status": action_status
@@ -442,3 +471,197 @@ class ExcelImportService:
         wb.save(buffer)
         buffer.seek(0)
         return buffer
+
+    @staticmethod
+    def import_eligibility_from_excel(file_obj, batch_id):
+        """
+        Giai đoạn 4: Import kết quả xét điều kiện làm đồ án (GPA, số tín chỉ nợ, kết luận Đủ / Không đủ).
+        """
+        try:
+            batch = AcademicBatch.objects.get(id=batch_id)
+        except AcademicBatch.DoesNotExist:
+            return {"success": False, "error": f"Không tìm thấy đợt ID {batch_id}."}
+
+        try:
+            wb = openpyxl.load_workbook(file_obj, data_only=True)
+            ws = wb.active
+        except Exception as ex:
+            return {"success": False, "error": f"Lỗi đọc file Excel: {str(ex)}"}
+
+        total = 0
+        eligible_count = 0
+        ineligible_count = 0
+        updated_projects = []
+
+        header_row = 1
+        col_mssv = None
+        col_gpa = None
+        col_credits = None
+        col_verdict = None
+        col_reason = None
+
+        for r in range(1, min(10, ws.max_row + 1)):
+            for c in range(1, ws.max_column + 1):
+                v = str(ws.cell(r, c).value or "").strip().lower()
+                if v in ["mssv", "mã sv", "mã sinh viên"]:
+                    col_mssv = c
+                    header_row = r
+                elif v in ["gpa", "điểm tích lũy", "điểm tl"]:
+                    col_gpa = c
+                elif v in ["tín chỉ nợ", "tc nợ", "nợ tín chỉ"]:
+                    col_credits = c
+                elif v in ["kết luận", "điều kiện", "kết quả", "trạng thái"]:
+                    col_verdict = c
+                elif v in ["lý do", "ghi chú"]:
+                    col_reason = c
+
+        if not col_mssv:
+            col_mssv = 1 # fallback cột 1
+
+        with transaction.atomic():
+            for r in range(header_row + 1, ws.max_row + 1):
+                mssv_val = ws.cell(r, col_mssv).value
+                if not mssv_val:
+                    continue
+                mssv = str(mssv_val).strip()
+                student = Student.objects.filter(academic_batch=batch, registration_no=mssv).first()
+                if not student:
+                    continue
+
+                total += 1
+                gpa = 0.0
+                if col_gpa and ws.cell(r, col_gpa).value:
+                    try:
+                        gpa = float(ws.cell(r, col_gpa).value)
+                    except:
+                        pass
+
+                debt_cred = 0
+                if col_credits and ws.cell(r, col_credits).value:
+                    try:
+                        debt_cred = int(ws.cell(r, col_credits).value)
+                    except:
+                        pass
+
+                verdict_str = ""
+                if col_verdict and ws.cell(r, col_verdict).value:
+                    verdict_str = str(ws.cell(r, col_verdict).value).strip().lower()
+
+                reason_str = ""
+                if col_reason and ws.cell(r, col_reason).value:
+                    reason_str = str(ws.cell(r, col_reason).value).strip()
+
+                is_eligible = True
+                if "không" in verdict_str or "trượt" in verdict_str or "loại" in verdict_str or (debt_cred > 8) or (gpa < 1.9 and gpa > 0):
+                    is_eligible = False
+                    if not reason_str:
+                        reason_str = f"Nợ {debt_cred} tín chỉ / GPA {gpa} không đạt chuẩn"
+
+                status_val = "ELIGIBLE" if is_eligible else "INELIGIBLE"
+                if is_eligible:
+                    eligible_count += 1
+                else:
+                    ineligible_count += 1
+
+                proj = getattr(student, "graduation_project", None)
+                if proj:
+                    proj.gpa_score = gpa
+                    proj.debt_credits = debt_cred
+                    proj.initial_eligibility = status_val
+                    proj.ineligibility_reason = reason_str
+                    proj.save(update_fields=["gpa_score", "debt_credits", "initial_eligibility", "ineligibility_reason"])
+
+                    updated_projects.append({
+                        "student_name": student.user.get_full_name(),
+                        "registration_no": mssv,
+                        "gpa": gpa,
+                        "debt_credits": debt_cred,
+                        "status": status_val,
+                        "reason": reason_str
+                    })
+
+            batch.current_stage = "PHASE_4_ELIGIBILITY"
+            batch.save(update_fields=["current_stage"])
+
+        return {
+            "success": True,
+            "total_processed": total,
+            "eligible_count": eligible_count,
+            "ineligible_count": ineligible_count,
+            "updated_list": updated_projects
+        }
+
+    @staticmethod
+    def import_final_academic_status(file_obj, batch_id):
+        """
+        Giai đoạn 6: Import rà soát điều kiện học vụ cuối (Chuẩn đầu ra ngoại ngữ, công nợ học phí, v.v.).
+        """
+        try:
+            batch = AcademicBatch.objects.get(id=batch_id)
+        except AcademicBatch.DoesNotExist:
+            return {"success": False, "error": f"Không tìm thấy đợt ID {batch_id}."}
+
+        try:
+            wb = openpyxl.load_workbook(file_obj, data_only=True)
+            ws = wb.active
+        except Exception as ex:
+            return {"success": False, "error": f"Lỗi đọc file: {str(ex)}"}
+
+        total = 0
+        eligible_count = 0
+        ineligible_count = 0
+        updated = []
+
+        with transaction.atomic():
+            for r in range(2, ws.max_row + 1):
+                mssv_cell = ws.cell(r, 1).value or ws.cell(r, 2).value
+                if not mssv_cell:
+                    continue
+                mssv = str(mssv_cell).strip()
+                student = Student.objects.filter(academic_batch=batch, registration_no=mssv).first()
+                if not student:
+                    continue
+
+                proj = getattr(student, "graduation_project", None)
+                if not proj:
+                    continue
+
+                # Cột 3: Trạng thái (Đạt / Không đạt / Đủ / Không đủ)
+                status_raw = str(ws.cell(r, 3).value or "Đủ").strip().lower()
+                note = str(ws.cell(r, 4).value or "").strip()
+
+                is_ok = ("không" not in status_raw and "chưa" not in status_raw)
+                total += 1
+
+                if is_ok:
+                    eligible_count += 1
+                    proj.final_academic_eligibility = "ELIGIBLE"
+                    proj.final_academic_notes = note
+                    # Nếu GVHD đã duyệt đủ điều kiện và học vụ đạt -> Sẵn sàng bảo vệ
+                    if proj.supervisor_defense_confirmed or proj.is_eligible_for_defense:
+                        proj.is_eligible_for_defense = True
+                        proj.status = "DEFENSE_READY"
+                else:
+                    ineligible_count += 1
+                    proj.final_academic_eligibility = "INELIGIBLE"
+                    proj.final_academic_notes = note or "Chưa đạt chuẩn đầu ra ngoại ngữ hoặc nợ học phí"
+                    # Chuyển sang chờ xét bảo lưu
+                    proj.deferral_status = "REQUESTED"
+                    proj.deferral_reason = proj.final_academic_notes
+
+                proj.save()
+                updated.append({
+                    "registration_no": mssv,
+                    "student_name": student.user.get_full_name(),
+                    "final_academic": proj.final_academic_eligibility,
+                    "deferral_status": proj.deferral_status,
+                    "status": proj.status
+                })
+
+        return {
+            "success": True,
+            "total": total,
+            "eligible_count": eligible_count,
+            "ineligible_count": ineligible_count,
+            "results": updated
+        }
