@@ -137,12 +137,15 @@ export const AllocationsPage: React.FC = () => {
     if (!confirm('CÔNG BỐ & PHÁT THÔNG BÁO kết quả phân công cho toàn bộ Giảng viên và Sinh viên qua hệ thống?')) return;
 
     try {
+      setSendingEmails(true);
       const res = await apiClient.post('/admin/allocations/publish/', { batch_id: selectedBatchId });
       alert(res.data?.message || 'Đã công bố và gửi thông báo thành công! Chuyển sang Giai đoạn 3.');
       fetchBatches();
       fetchData();
     } catch (err: any) {
       alert('Lỗi công bố: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setSendingEmails(false);
     }
   };
 
@@ -224,18 +227,11 @@ export const AllocationsPage: React.FC = () => {
 
             <button
               onClick={handlePublishAllocation}
+              disabled={sendingEmails || matching}
               className="utc-btn-primary"
               title="Công bố và gửi email kết quả cho SV & GV (Bước 18 & 19)"
             >
-              <span>📢</span> Công Bố & Gửi Thông Báo
-            </button>
-            <button
-              onClick={handleFinalizeAndNotify}
-              disabled={sendingEmails || matching}
-              className="utc-btn-primary"
-              style={{ backgroundColor: '#059669' }}
-            >
-              <span>✉️</span> {sendingEmails ? 'Đang gửi Email...' : 'Chốt danh sách & Gửi Email SMTP'}
+              <span>📢</span> {sendingEmails ? 'Đang công bố & gửi email...' : 'Công Bố & Gửi Thông Báo'}
             </button>
           </div>
         </div>
