@@ -4,15 +4,17 @@ from app.models import (
     DefenseCouncil,
     CouncilMember,
     Supervisor,
-    AcademicBatch
+    AcademicBatch,
+    AuditLog
 )
 
 class ReviewerAndCouncilAllocationEngine:
     """
-    Allocates Projects to Defense Councils and assigns Reviewers under STRICT Hard Constraints:
-    1. Supervisor(S) != Reviewer(S)
-    2. Supervisor(S) NOT IN CouncilMembers(Council(S))
-    3. Balanced review load among available council reviewers
+    Phân bổ Đề tài vào Hội đồng bảo vệ và gán Giảng viên phản biện (Bước 40)
+    Ràng buộc cứng:
+    1. Giảng viên phản biện != Giảng viên hướng dẫn
+    2. Giảng viên hướng dẫn KHÔNG được nằm trong Hội đồng chấm sinh viên của mình
+    3. Cân bằng tải phản biện giữa các thành viên hội đồng
     """
 
     @classmethod
@@ -20,13 +22,16 @@ class ReviewerAndCouncilAllocationEngine:
         try:
             batch = AcademicBatch.objects.get(id=batch_id)
         except AcademicBatch.DoesNotExist:
-            return {"success": False, "error": f"Batch ID {batch_id} not found."}
+            return {"success": False, "error": f"Không tìm thấy đợt ID {batch_id}."}
 
-        projects = list(GraduationProject.objects.filter(batch=batch).select_related('student__user', 'supervisor__user', 'topic_category'))
+        projects = list(GraduationProject.objects.filter(
+            batch=batch
+        ).exclude(deferral_status="APPROVED").select_related('student__user', 'supervisor__user', 'topic_category'))
+        
         councils = list(DefenseCouncil.objects.filter(batch=batch).prefetch_related('members__supervisor', 'members__user'))
 
         if not projects:
-            return {"success": False, "error": "Không có đề tài đồ án nào trong đợt này."}
+            return {"success": False, "error": "Không có đề tài đồ án nào hợp lệ để phân hội đồng trong đợt này."}
 
         if not councils:
             return {"success": False, "error": "Chưa thành lập Hội đồng bảo vệ cho đợt này."}
@@ -64,7 +69,6 @@ class ReviewerAndCouncilAllocationEngine:
             valid_councils = []
             for c in councils:
                 if sup_id not in council_supervisors[c.id]:
-                    # check capacity
                     valid_councils.append(c)
 
             # Sort valid councils by least assigned
@@ -79,7 +83,7 @@ class ReviewerAndCouncilAllocationEngine:
                     "student_name": proj.student.user.get_full_name(),
                     "registration_no": proj.student.registration_no,
                     "supervisor_name": proj.supervisor.user.get_full_name(),
-                    "reason": "Tất cả các Hội đồng hiện có đều có GVHD của sinh viên tham gia."
+                    "reason": "Tất cả các Hội đồng hiện có đều có GVHD của sinh viên tham gia (Trùng xung đột lợi ích)."
                 })
                 unassigned_count += 1
 
@@ -91,11 +95,9 @@ class ReviewerAndCouncilAllocationEngine:
                 candidates = council_reviewers[c.id]
 
                 for proj in c_projects:
-                    # Valid reviewer candidates in this council: supervisor != proj.supervisor
                     valid_revs = [rev for rev in candidates if rev.id != proj.supervisor_id]
 
                     if valid_revs:
-                        # Pick least loaded reviewer
                         valid_revs.sort(key=lambda rev: reviewer_load.get(rev.id, 0))
                         chosen_rev = valid_revs[0]
                         reviewer_load[chosen_rev.id] = reviewer_load.get(chosen_rev.id, 0) + 1
@@ -130,3 +132,32 @@ class ReviewerAndCouncilAllocationEngine:
             "conflicts": conflicts,
             "assignments": assignments
         }
+
+    @classmethod
+    def manual_override_reviewer(cls, project_id, council_id, reviewer_id, user=None):
+        """Khoa điều chỉnh thủ công Hội đồng & Giảng viên phản biện cho sinh viên"""
+        project = GraduationProject.objects.get(id=project_id)
+        council = DefenseCouncil.objects.filter(id=council_id).first() if council_id else None
+        reviewer = Supervisor.objects.filter(id=reviewer_id).first() if reviewer_id else None
+
+        if reviewer and project.supervisor_id == reviewer.id:
+            return {"success": False, "error": "Giảng viên phản biện không được trùng với Giảng viên hướng dẫn!"}
+
+        if council and reviewer:
+            # Kiểm tra xem GV phản biện có nằm trong hội đồng này không
+            is_member = council.members.filter(supervisor=reviewer).exists()
+            if not is_member:
+                return {"success": False, "error": f"Giảng viên {reviewer.user.get_full_name()} không thuộc {council.council_name}."}
+
+        project.council = council
+        project.reviewer = reviewer
+        project.save(update_fields=["council", "reviewer"])
+
+        if user:
+            AuditLog.objects.create(
+                user=user,
+                action_type="evaluation_update",
+                description=f"Khoa đã điều chỉnh thủ công HĐ/Phản biện cho SV {project.student.registration_no}."
+            )
+
+        return {"success": True, "message": "Điều chỉnh thủ công Hội đồng & Phản biện thành công."}

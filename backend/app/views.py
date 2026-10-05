@@ -1,4 +1,5 @@
 import logging
+from django.utils import timezone
 from django.db import transaction
 from django.db.models import Q, Count
 from django.shortcuts import get_object_or_404
@@ -26,13 +27,16 @@ from .models import (
     AuditLog,
     AcademicBatch,
     CourseClass,
+    Department,
     Student,
     Supervisor,
     SupervisorQuota,
     ProjectTopicArea,
+    StudentPreference,
     GraduationProject,
     DefenseCouncil,
     CouncilMember,
+    DefenseScheduleSlot,
     FinalGradeSummary,
     EvaluationPolicy
 )
@@ -45,14 +49,18 @@ from .serializers import (
     AuditLogSerializer,
     AcademicBatchSerializer,
     CourseClassSerializer,
+    DepartmentSerializer,
     SupervisorQuotaSerializer,
+    SupervisorDetailSerializer,
     DefenseCouncilSerializer,
+    DefenseScheduleSlotSerializer,
     GraduationProjectAdminSerializer
 )
 from .services.excel_importer import ExcelImportService, generate_random_password
 from .services.allocation_engine import MinCostMaxFlowAllocationEngine
 from .services.reviewer_engine import ReviewerAndCouncilAllocationEngine
 from .services.document_generator import DocumentGenerationService
+from .services.defense_scheduler import DefenseSchedulerEngine
 
 logger = logging.getLogger(__name__)
 
@@ -1478,3 +1486,401 @@ class DatabaseHealthCheckAPIView(APIView):
             return Response({"status": "healthy", "database": "connected", "total_users": user_count}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"status": "unhealthy", "database": "error", "error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ==============================================================================
+# DEPARTMENT MANAGEMENT (BỘ MÔN CHUYÊN MÔN - GIAI ĐOẠN 1)
+# ==============================================================================
+
+class DepartmentListCreateAPIView(ListCreateAPIView):
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+    serializer_class = DepartmentSerializer
+    queryset = Department.objects.all().order_by("code")
+    pagination_class = None
+
+
+class DepartmentDetailAPIView(RetrieveUpdateDestroyAPIView):
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+    serializer_class = DepartmentSerializer
+    queryset = Department.objects.all()
+
+
+class SupervisorProfileUpdateAPIView(APIView):
+    """Cập nhật thông tin học vị, bộ môn, hệ số, hướng nghiên cứu của GV (Bước 7)"""
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def patch(self, request, pk):
+        supervisor = get_object_or_404(Supervisor, pk=pk)
+        academic_title = request.data.get("academic_title")
+        department_id = request.data.get("department_id")
+        rank_multiplier = request.data.get("academic_rank_multiplier")
+        research_interest = request.data.get("research_interest")
+
+        if academic_title is not None:
+            supervisor.academic_title = academic_title
+        if department_id is not None:
+            supervisor.department_obj = Department.objects.filter(id=department_id).first()
+            if supervisor.department_obj:
+                supervisor.department_name = supervisor.department_obj.name
+        if rank_multiplier is not None:
+            try:
+                supervisor.academic_rank_multiplier = float(rank_multiplier)
+            except:
+                pass
+        if research_interest is not None:
+            supervisor.research_interest = research_interest
+
+        supervisor.save()
+
+        # Tự động cập nhật hệ số sang SupervisorQuota trong các đợt hiện có
+        for q in supervisor.quotas.all():
+            q.rank_multiplier = supervisor.academic_rank_multiplier
+            q.calculate_capacity()
+            q.save()
+
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="admin_user_update",
+            description=f"Cập nhật hồ sơ học vị/bộ môn của GV {supervisor.user.get_full_name()} (Hệ số={supervisor.academic_rank_multiplier})."
+        )
+
+        return Response(SupervisorDetailSerializer(supervisor).data, status=status.HTTP_200_OK)
+
+
+# ==============================================================================
+# ALLOCATION WORKFLOW (CHỐT PHÂN CÔNG & CÔNG BỐ - GIAI ĐOẠN 2 & 3)
+# ==============================================================================
+
+class FinalizeAllocationAPIView(APIView):
+    """Khoa chốt phân công đề tài (Bước 17)"""
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def post(self, request):
+        batch_id = request.data.get("batch_id")
+        if not batch_id:
+            return Response({"detail": "batch_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        res = MinCostMaxFlowAllocationEngine.finalize_allocation(batch_id, user=request.user)
+        return Response(res, status=status.HTTP_200_OK if res.get("success") else status.HTTP_400_BAD_REQUEST)
+
+
+class PublishAllocationAPIView(APIView):
+    """Công bố và gửi email kết quả phân công (Bước 18 & 19)"""
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def post(self, request):
+        batch_id = request.data.get("batch_id")
+        if not batch_id:
+            return Response({"detail": "batch_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        res = MinCostMaxFlowAllocationEngine.publish_and_notify_allocation(batch_id, user=request.user)
+        return Response(res, status=status.HTTP_200_OK if res.get("success") else status.HTTP_400_BAD_REQUEST)
+
+
+# ==============================================================================
+# TOPIC APPROVAL & OUTLINE DOWNLOAD (DUYỆT ĐỀ TÀI - GIAI ĐOẠN 3)
+# ==============================================================================
+
+class TopicApprovalAPIView(APIView):
+    """Khoa/Ban duyệt đề tài (Bước 22): APPROVE hoặc REQUEST_REVISION"""
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def patch(self, request, pk):
+        project = get_object_or_404(GraduationProject, pk=pk)
+        decision = request.data.get("decision")  # "APPROVE" hoặc "REQUEST_REVISION"
+        notes = request.data.get("notes", "")
+
+        if decision == "APPROVE":
+            project.topic_review_status = "APPROVED"
+            project.status = "OUTLINE_APPROVED"
+            project.topic_revision_notes = ""
+            project.save()
+
+            AuditLog.objects.create(
+                user=request.user,
+                action_type="document_status_change",
+                description=f"Khoa phê duyệt đề tài cho SV {project.student.registration_no} ({project.topic_title_vi})."
+            )
+            return Response({"message": "Phê duyệt đề tài thành công.", "status": "APPROVED"}, status=status.HTTP_200_OK)
+
+        elif decision == "REQUEST_REVISION":
+            project.topic_review_status = "REVISION_REQUIRED"
+            project.status = "OUTLINE_REVISION"
+            project.topic_revision_notes = notes
+            project.save()
+
+            AuditLog.objects.create(
+                user=request.user,
+                action_type="document_status_change",
+                description=f"Khoa yêu cầu sửa đề tài của SV {project.student.registration_no}: {notes}"
+            )
+            return Response({"message": "Đã gửi yêu cầu chỉnh sửa đề tài về Draft.", "status": "REVISION_REQUIRED"}, status=status.HTTP_200_OK)
+
+        return Response({"detail": "Quyết định không hợp lệ (APPROVE hoặc REQUEST_REVISION)."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class DownloadProjectOutlineAPIView(APIView):
+    """Giai đoạn 3 (Bước 23): Tải Phiếu giao đề tài & Đề cương đồ án tốt nghiệp"""
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def get(self, request, pk):
+        try:
+            buffer = DocumentGenerationService.generate_outline_docx(pk)
+            project = GraduationProject.objects.get(id=pk)
+            response = HttpResponse(
+                buffer.getvalue(),
+                content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+            filename = f"Phieu_giao_de_tai_{project.student.registration_no}.docx"
+            response["Content-Disposition"] = f'attachment; filename="{filename}"'
+            return response
+        except Exception as ex:
+            return Response({"detail": f"Error generating document: {str(ex)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ==============================================================================
+# ELIGIBILITY & FORCE APPROVE (GIAI ĐOẠN 4)
+# ==============================================================================
+
+class ExcelEligibilityImportAPIView(APIView):
+    """Import điểm / danh sách xét điều kiện làm đồ án (Bước 25 & 26)"""
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        file_obj = request.FILES.get("file")
+        batch_id = request.data.get("batch_id")
+
+        if not file_obj or not batch_id:
+            return Response({"detail": "File Excel và batch_id là bắt buộc."}, status=status.HTTP_400_BAD_REQUEST)
+
+        res = ExcelImportService.import_eligibility_from_excel(file_obj, batch_id)
+
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="admin_user_update",
+            description=f"Imported eligibility for Batch #{batch_id}: Processed={res.get('total_processed')}, Eligible={res.get('eligible_count')}"
+        )
+
+        return Response(res, status=status.HTTP_200_OK if res.get("success") else status.HTTP_400_BAD_REQUEST)
+
+
+class EligibilityDecisionAPIView(APIView):
+    """Quyết định Force Approve hoặc Loại khỏi đợt (Bước 27)"""
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def patch(self, request, pk):
+        project = get_object_or_404(GraduationProject, pk=pk)
+        decision = request.data.get("decision")  # "FORCE_APPROVE" hoặc "DISQUALIFY"
+        reason = request.data.get("reason", "")
+
+        if decision == "FORCE_APPROVE":
+            project.initial_eligibility = "FORCE_APPROVED"
+            project.status = "IN_PROGRESS"
+            project.force_approved_by = request.user
+            project.force_approved_at = timezone.now()
+            project.ineligibility_reason = f"Đặc cách: {reason}" if reason else project.ineligibility_reason
+            project.save()
+
+            AuditLog.objects.create(
+                user=request.user,
+                action_type="evaluation_update",
+                description=f"Khoa Force Approve cho SV {project.student.registration_no}: {reason}"
+            )
+            return Response({"message": "Khoa đã đặc cách cho phép làm đồ án (Force Approve).", "status": "FORCE_APPROVED"}, status=status.HTTP_200_OK)
+
+        elif decision == "DISQUALIFY":
+            project.initial_eligibility = "DISQUALIFIED"
+            project.status = "DISQUALIFIED"
+            project.ineligibility_reason = reason or "Không đủ điều kiện làm đồ án tốt nghiệp"
+            project.save()
+
+            AuditLog.objects.create(
+                user=request.user,
+                action_type="evaluation_update",
+                description=f"Khoa loại SV {project.student.registration_no} khỏi đợt đồ án: {reason}"
+            )
+            return Response({"message": "Đã loại sinh viên khỏi đợt đồ án.", "status": "DISQUALIFIED"}, status=status.HTTP_200_OK)
+
+        return Response({"detail": "Quyết định không hợp lệ (FORCE_APPROVE hoặc DISQUALIFY)."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ==============================================================================
+# DEFENSE READINESS, DEFERRAL & SCHEDULING (GIAI ĐOẠN 6 & BẢO LƯU)
+# ==============================================================================
+
+class ExcelFinalAcademicImportAPIView(APIView):
+    """Import kiểm tra điều kiện học vụ cuối (Bước 36 & 37)"""
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        file_obj = request.FILES.get("file")
+        batch_id = request.data.get("batch_id")
+
+        if not file_obj or not batch_id:
+            return Response({"detail": "File Excel và batch_id là bắt buộc."}, status=status.HTTP_400_BAD_REQUEST)
+
+        res = ExcelImportService.import_final_academic_status(file_obj, batch_id)
+
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="admin_user_update",
+            description=f"Imported final academic status for Batch #{batch_id}: Eligible={res.get('eligible_count')}, Ineligible={res.get('ineligible_count')}"
+        )
+
+        return Response(res, status=status.HTTP_200_OK if res.get("success") else status.HTTP_400_BAD_REQUEST)
+
+
+class DeferralDecisionAPIView(APIView):
+    """Xử lý Nhánh Bảo lưu (Bước 43): Khoa duyệt bảo lưu hoặc loại khỏi đợt"""
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def patch(self, request, pk):
+        project = get_object_or_404(GraduationProject, pk=pk)
+        decision = request.data.get("decision")  # "APPROVE_DEFERRAL" hoặc "REJECT_DEFERRAL"
+        reason = request.data.get("reason", "")
+
+        if decision == "APPROVE_DEFERRAL":
+            project.deferral_status = "APPROVED"
+            project.status = "DEFERRED"
+            project.deferral_reason = reason or project.deferral_reason or "Bảo lưu theo quy định học vụ"
+            project.deferral_decided_at = timezone.now()
+            project.is_eligible_for_defense = False
+            project.save()
+
+            AuditLog.objects.create(
+                user=request.user,
+                action_type="group_status_change",
+                description=f"Khoa phê duyệt đơn bảo lưu đồ án cho SV {project.student.registration_no}."
+            )
+            return Response({"message": "Khoa đã duyệt bảo lưu thành công.", "status": "DEFERRED"}, status=status.HTTP_200_OK)
+
+        elif decision == "REJECT_DEFERRAL":
+            project.deferral_status = "REJECTED"
+            project.status = "FAILED"
+            project.is_eligible_for_defense = False
+            project.deferral_reason = reason or "Khoa từ chối đơn bảo lưu -> Không đạt"
+            project.deferral_decided_at = timezone.now()
+            project.save()
+
+            AuditLog.objects.create(
+                user=request.user,
+                action_type="group_status_change",
+                description=f"Khoa từ chối đơn bảo lưu của SV {project.student.registration_no} -> Loại khỏi đợt."
+            )
+            return Response({"message": "Đã từ chối đơn bảo lưu và loại khỏi đợt đồ án.", "status": "FAILED"}, status=status.HTTP_200_OK)
+
+        return Response({"detail": "Quyết định không hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class AutoDefenseScheduleAPIView(APIView):
+    """Xếp lịch bảo vệ tự động (Bước 41)"""
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def post(self, request):
+        batch_id = request.data.get("batch_id")
+        slot_duration = int(request.data.get("slot_duration", 40))
+        morning_start = request.data.get("morning_start", "08:00")
+        afternoon_start = request.data.get("afternoon_start", "13:30")
+
+        if not batch_id:
+            return Response({"detail": "batch_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        res = DefenseSchedulerEngine.schedule_defense_for_batch(
+            batch_id=batch_id,
+            slot_duration_minutes=slot_duration,
+            morning_start_str=morning_start,
+            afternoon_start_str=afternoon_start,
+            user=request.user
+        )
+
+        return Response(res, status=status.HTTP_200_OK if res.get("success") else status.HTTP_400_BAD_REQUEST)
+
+
+class ManualReviewerOverrideAPIView(APIView):
+    """Khoa điều chỉnh thủ công Hội đồng & Giảng viên phản biện (Bước 40)"""
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def patch(self, request):
+        project_id = request.data.get("project_id")
+        council_id = request.data.get("council_id")
+        reviewer_id = request.data.get("reviewer_id")
+
+        if not project_id:
+            return Response({"detail": "project_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        res = ReviewerAndCouncilAllocationEngine.manual_override_reviewer(
+            project_id=project_id,
+            council_id=council_id,
+            reviewer_id=reviewer_id,
+            user=request.user
+        )
+
+        return Response(res, status=status.HTTP_200_OK if res.get("success") else status.HTTP_400_BAD_REQUEST)
+
+
+class FinalizeCouncilScoresAPIView(APIView):
+    """Hội đồng xác nhận chốt điểm (Bước 43)"""
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def post(self, request, pk):
+        council = get_object_or_404(DefenseCouncil, pk=pk)
+        council.is_finalized = True
+        council.save()
+
+        # Finalize all summaries
+        for proj in council.projects.all():
+            summary = getattr(proj, "final_grade_summary", None)
+            if summary:
+                summary.is_finalized = True
+                summary.save(update_fields=["is_finalized"])
+
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="evaluation_update",
+            description=f"Hội đồng {council.council_name} đã xác nhận chốt toàn bộ điểm bảo vệ."
+        )
+
+        return Response({"message": f"Đã chốt điểm thành công cho {council.council_name}."}, status=status.HTTP_200_OK)
+
+
+class CloseBatchAPIView(APIView):
+    """Khoa kết thúc đợt đồ án (Bước 46)"""
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def post(self, request, pk):
+        batch = get_object_or_404(AcademicBatch, pk=pk)
+        batch.current_stage = "COMPLETED"
+        batch.is_closed = True
+        batch.save(update_fields=["current_stage", "is_closed"])
+
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="group_status_change",
+            description=f"Khoa đã chính thức kết thúc Đợt đồ án {batch.batch_code}."
+        )
+
+        return Response({"message": f"Đợt {batch.batch_code} đã hoàn tất và kết thúc thành công."}, status=status.HTTP_200_OK)
+
+
+class ExportFinalSummaryExcelAPIView(APIView):
+    """Xuất dữ liệu cuối kỳ - ký (Bước 45)"""
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def get(self, request):
+        batch_id = request.query_params.get("batch_id")
+        if not batch_id:
+            return Response({"detail": "batch_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            buffer = DocumentGenerationService.generate_final_summary_excel(batch_id)
+            response = HttpResponse(
+                buffer.getvalue(),
+                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+            response["Content-Disposition"] = f'attachment; filename="Du_lieu_cuoi_ky_Dot_{batch_id}.xlsx"'
+            return response
+        except Exception as ex:
+            return Response({"detail": f"Error generating document: {str(ex)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
