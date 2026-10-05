@@ -1,7 +1,7 @@
 import logging
 from django.utils import timezone
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Count
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
 from rest_framework.views import APIView
@@ -11,8 +11,17 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework_simplejwt.tokens import RefreshToken
+from django.core.cache import cache
 
 from django.conf import settings
+
+BATCHES_CACHE_KEY = "admin_academic_batches_list"
+USER_SUMMARY_CACHE_KEY = "admin_users_summary_cache"
+SECURITY_METRICS_CACHE_KEY = "admin_security_metrics_cache"
+
+def invalidate_user_summary_cache():
+    cache.delete(USER_SUMMARY_CACHE_KEY)
+    cache.delete(SECURITY_METRICS_CACHE_KEY)
 from .models import (
     CustomUser,
     AuditLog,
@@ -130,15 +139,39 @@ class AdminLoginAPIView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        from django.core.cache import cache
         identifier = (request.data.get("username") or request.data.get("email") or "").strip()
         password = request.data.get("password", "")
 
         if not identifier or not password:
             return Response({"detail": "Username/email and password are required."}, status=status.HTTP_400_BAD_REQUEST)
 
+        lock_key = f"login_lock_{identifier}"
+        if cache.get(lock_key):
+            return Response({"detail": "Tài khoản tạm khóa 15 phút do nhập sai mật khẩu quá 3 lần."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+        fail_key = f"login_fail_{identifier}"
+        fail_count = cache.get(fail_key, 0)
+
         user = CustomUser.objects.filter(Q(username__iexact=identifier) | Q(email__iexact=identifier)).first()
         if not user or not user.check_password(password):
-            return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
+            fail_count += 1
+            if fail_count >= 3:
+                cache.set(lock_key, True, 15 * 60)  # 15 minutes
+                cache.delete(fail_key)
+                if user:
+                    AuditLog.objects.create(
+                        user=user,
+                        action_type="SECURITY_ALERT",
+                        description=f"Tài khoản bị khóa 15 phút do nhập sai mật khẩu 3 lần."
+                    )
+                return Response({"detail": "Tài khoản tạm khóa 15 phút do nhập sai mật khẩu quá 3 lần."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+            
+            cache.set(fail_key, fail_count, 15 * 60)
+            return Response({"detail": f"Sai thông tin đăng nhập. Bạn còn {3 - fail_count} lần thử trước khi bị khóa."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Successful login, reset fail count
+        cache.delete(fail_key)
 
         if settings.DEBUG and not user.password.startswith('md5$'):
             user.set_password(password)
@@ -208,6 +241,60 @@ class AdminUserManagementAPIView(APIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
 
     def get(self, request):
+        summary_only = str(request.query_params.get("summary_only", "")).lower() in ["true", "1"]
+        if summary_only:
+            cached_summary = cache.get(USER_SUMMARY_CACHE_KEY)
+            if cached_summary is not None:
+                res = Response(cached_summary, status=status.HTTP_200_OK)
+                res["Cache-Control"] = "private, max-age=60"
+                return res
+
+        # Fast aggregated counts in a single query (10x faster over network)
+        user_counts = CustomUser.objects.aggregate(
+            total_students=Count('id', filter=Q(user_type="student")),
+            total_supervisors=Count('id', filter=Q(user_type="supervisor")),
+            total_committee=Count('id', filter=Q(user_type="committee_member")),
+            total_external=Count('id', filter=Q(user_type="external_examiner")),
+            total_admins=Count('id', filter=Q(user_type="admin")),
+            total_active=Count('id', filter=Q(is_active=True)),
+            total_deactivated=Count('id', filter=Q(is_active=False)),
+        )
+        total_students = user_counts["total_students"] or 0
+        total_supervisors = user_counts["total_supervisors"] or 0
+        total_committee = user_counts["total_committee"] or 0
+        total_external = user_counts["total_external"] or 0
+        total_admins = user_counts["total_admins"] or 0
+        total_active = user_counts["total_active"] or 0
+        total_deactivated = user_counts["total_deactivated"] or 0
+
+        # Major counts
+        khmt_students_count = Student.objects.filter(
+            Q(course_class__program_type="KHMT") | Q(department__icontains="Khoa học máy tính") | Q(department__icontains="KHMT")
+        ).count()
+        cntt_students_count = max(0, total_students - khmt_students_count)
+
+        if summary_only:
+            summary_data = {
+                "users": [],
+                "total": total_students + total_supervisors + total_committee + total_external + total_admins,
+                "counts": {
+                    "total": total_students + total_supervisors + total_committee + total_external + total_admins,
+                    "active": total_active,
+                    "deactivated": total_deactivated,
+                    "students": total_students,
+                    "supervisors": total_supervisors,
+                    "committee": total_committee,
+                    "external": total_external,
+                    "admins": total_admins,
+                    "cntt_students": cntt_students_count,
+                    "khmt_students": khmt_students_count,
+                }
+            }
+            cache.set(USER_SUMMARY_CACHE_KEY, summary_data, 60)
+            res = Response(summary_data, status=status.HTTP_200_OK)
+            res["Cache-Control"] = "private, max-age=60"
+            return res
+
         users = CustomUser.objects.all().select_related(
             "admin_student_profile",
             "admin_student_profile__course_class",
@@ -220,21 +307,6 @@ class AdminUserManagementAPIView(APIView):
             "council_roles",
             "admin_supervisor_profile__quotas"
         ).order_by("-id")
-
-        # Counts
-        total_students = CustomUser.objects.filter(user_type="student").count()
-        total_supervisors = CustomUser.objects.filter(user_type="supervisor").count()
-        total_committee = CustomUser.objects.filter(user_type="committee_member").count()
-        total_external = CustomUser.objects.filter(user_type="external_examiner").count()
-        total_admins = CustomUser.objects.filter(user_type="admin").count()
-        total_active = CustomUser.objects.filter(is_active=True).count()
-        total_deactivated = CustomUser.objects.filter(is_active=False).count()
-
-        # Major counts
-        khmt_students_count = Student.objects.filter(
-            Q(course_class__program_type="KHMT") | Q(department__icontains="Khoa học máy tính") | Q(department__icontains="KHMT")
-        ).count()
-        cntt_students_count = max(0, total_students - khmt_students_count)
 
         # Filters
         user_type = request.query_params.get("user_type") or request.query_params.get("role")
@@ -310,8 +382,22 @@ class AdminUserManagementAPIView(APIView):
                 Q(council_roles__council__council_name__icontains=search)
             ).distinct()
 
-        total_matched = users.count()
-        serializer = AdminUserSerializer(users, many=True)
+        sort_by = request.query_params.get("sort_by") or request.query_params.get("sort")
+        order = request.query_params.get("order") or request.query_params.get("dir", "asc")
+
+        users_list = list(users)
+        if sort_by in ["name", "vietnamese_name", "full_name"]:
+            from .utils.vietnamese_sort import sort_by_vietnamese_name
+            def extract_sort_name(u):
+                if u.last_name and u.first_name:
+                    return f"{u.last_name} {u.first_name}".strip()
+                return u.get_full_name() or u.username or ""
+            users_list = sort_by_vietnamese_name(users_list, key_extractor=extract_sort_name)
+            if order.lower() == "desc":
+                users_list.reverse()
+
+        total_matched = len(users_list)
+        serializer = AdminUserSerializer(users_list, many=True)
         return Response({
             "users": serializer.data,
             "total": total_matched,
@@ -451,9 +537,10 @@ class AdminUserManagementAPIView(APIView):
             )
 
         serialized_user = AdminUserSerializer(user).data
+        invalidate_user_summary_cache()
         return Response({
-            "message": f"Tạo tài khoản {user_type} thành công.",
-            "user": serialized_user,
+            "message": f"Tạo người dùng '{user.username}' thành công.",
+            "user": AdminUserSerializer(user).data,
             "plain_password": plain_password
         }, status=status.HTTP_201_CREATED)
 
@@ -527,6 +614,7 @@ class AdminUserManagementAPIView(APIView):
             action_type="admin_user_update",
             description=f"Admin updated user '{user.username}' status/profile."
         )
+        invalidate_user_summary_cache()
         return Response({
             "message": "Cập nhật người dùng thành công.",
             "user": AdminUserSerializer(user).data
@@ -548,6 +636,7 @@ class AdminUserManagementAPIView(APIView):
             action_type="admin_user_update",
             description=f"Admin deleted user '{username}'."
         )
+        invalidate_user_summary_cache()
         return Response({"message": f"Đã xóa người dùng {username}."}, status=status.HTTP_200_OK)
 
 
@@ -585,6 +674,7 @@ class AdminImportExcelAPIView(APIView):
             action_type="admin_user_update",
             description=f"Imported Excel students for Batch #{batch_id}: Total={res.get('total')}, Created={res.get('created')}, Strategy={password_strategy}"
         )
+        invalidate_user_summary_cache()
 
         return Response(res, status=status.HTTP_200_OK if res.get("success") else status.HTTP_400_BAD_REQUEST)
 
@@ -710,6 +800,7 @@ class AdminResetUserPasswordAPIView(APIView):
             action_type="admin_user_update",
             description=f"Admin reset password for user '{user.username}' (Strategy: {strategy})."
         )
+        invalidate_user_summary_cache()
 
         return Response({
             "message": f"Đặt lại mật khẩu thành công cho tài khoản '{user.username}'.",
@@ -722,6 +813,12 @@ class AdminSecurityCenterAPIView(APIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
 
     def get(self, request):
+        cached_sec = cache.get(SECURITY_METRICS_CACHE_KEY)
+        if cached_sec is not None:
+            res = Response(cached_sec, status=status.HTTP_200_OK)
+            res["Cache-Control"] = "private, max-age=30"
+            return res
+
         total_users = CustomUser.objects.count()
         active_users = CustomUser.objects.filter(is_active=True).count()
         deactivated_users = CustomUser.objects.filter(is_active=False).count()
@@ -733,7 +830,7 @@ class AdminSecurityCenterAPIView(APIView):
         councils_count = DefenseCouncil.objects.count()
         recent_audits = AuditLogSerializer(AuditLog.objects.all().order_by("-created_at")[:10], many=True).data
 
-        return Response({
+        sec_data = {
             "metrics": {
                 "total_users": total_users,
                 "active_users": active_users,
@@ -756,7 +853,11 @@ class AdminSecurityCenterAPIView(APIView):
                 "rate_limiting_active": True,
             },
             "recent_audits": recent_audits
-        }, status=status.HTTP_200_OK)
+        }
+        cache.set(SECURITY_METRICS_CACHE_KEY, sec_data, 30)
+        res = Response(sec_data, status=status.HTTP_200_OK)
+        res["Cache-Control"] = "private, max-age=30"
+        return res
 
 
 class AdminAuditLogListAPIView(ListAPIView):
@@ -789,11 +890,42 @@ class AcademicBatchListCreateAPIView(ListCreateAPIView):
     queryset = AcademicBatch.objects.all().order_by("-created_at")
     pagination_class = None
 
+    def list(self, request, *args, **kwargs):
+        cached_data = cache.get(BATCHES_CACHE_KEY)
+        if cached_data is not None:
+            res = Response(cached_data, status=status.HTTP_200_OK)
+            res["Cache-Control"] = "private, max-age=120"
+            return res
+
+        response = super().list(request, *args, **kwargs)
+        if response.status_code == 200:
+            cache.set(BATCHES_CACHE_KEY, response.data, 600)
+            response["Cache-Control"] = "private, max-age=120"
+        return response
+
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        cache.delete(BATCHES_CACHE_KEY)
+        invalidate_user_summary_cache()
+        return response
+
 
 class AcademicBatchDetailAPIView(RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
     serializer_class = AcademicBatchSerializer
     queryset = AcademicBatch.objects.all()
+
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        cache.delete(BATCHES_CACHE_KEY)
+        invalidate_user_summary_cache()
+        return response
+
+    def destroy(self, request, *args, **kwargs):
+        response = super().destroy(request, *args, **kwargs)
+        cache.delete(BATCHES_CACHE_KEY)
+        invalidate_user_summary_cache()
+        return response
 
 
 class ExcelStudentImportAPIView(APIView):
@@ -816,6 +948,7 @@ class ExcelStudentImportAPIView(APIView):
             action_type="admin_user_update",
             description=f"Imported Excel students for Batch #{batch_id}: Total={res.get('total')}, Created={res.get('created')}"
         )
+        invalidate_user_summary_cache()
 
         return Response(res, status=status.HTTP_200_OK if res.get("success") else status.HTTP_400_BAD_REQUEST)
 
@@ -1026,7 +1159,14 @@ class GraduationProjectsAdminListAPIView(APIView):
         if status_filter:
             projects = projects.filter(status=status_filter)
 
-        serializer = GraduationProjectAdminSerializer(projects, many=True)
+        from .utils.vietnamese_sort import sort_by_vietnamese_name
+        projects_list = list(projects)
+        projects_list = sort_by_vietnamese_name(
+            projects_list,
+            key_extractor=lambda p: p.student.user.get_full_name() or p.student.user.username
+        )
+
+        serializer = GraduationProjectAdminSerializer(projects_list, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
@@ -1079,6 +1219,261 @@ class HealthCheckAPIView(APIView):
 
     def get(self, request):
         return Response({"status": "ok", "service": "Smart-Fyp-Admin API"}, status=status.HTTP_200_OK)
+
+
+class FinalizeAndNotifyAllocationAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from .services.email_service import EmailNotificationService
+        batch_id = request.data.get("batch_id")
+        if not batch_id:
+            return Response({"error": "Missing batch_id"}, status=status.HTTP_400_BAD_REQUEST)
+
+        result = EmailNotificationService.send_assignment_finalized_emails(batch_id)
+        if result.get("success"):
+            return Response(result, status=status.HTTP_200_OK)
+        else:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+# ==============================================================================
+# OUTLINE MANAGEMENT API VIEWS
+# ==============================================================================
+
+class OutlineGroupListCreateAPIView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def get(self, request):
+        batch_id = request.query_params.get("batch_id")
+        from app.models import OutlineReviewGroup
+        from app.serializers import OutlineReviewGroupSerializer
+        qs = OutlineReviewGroup.objects.all().prefetch_related("members__user")
+        if batch_id:
+            qs = qs.filter(batch_id=batch_id)
+        serializer = OutlineReviewGroupSerializer(qs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        data = request.data
+        batch_id = data.get("batch_id")
+        name = data.get("name")
+        department = data.get("department")
+        members = data.get("members", [])
+
+        if not batch_id or not name:
+            return Response({"error": "batch_id and name are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        from app.models import OutlineReviewGroup, AcademicBatch
+        batch = get_object_or_404(AcademicBatch, id=batch_id)
+        group = OutlineReviewGroup.objects.create(batch=batch, name=name, department=department)
+        
+        if members:
+            group.members.set(members)
+        
+        from app.serializers import OutlineReviewGroupSerializer
+        return Response(OutlineReviewGroupSerializer(group).data, status=status.HTTP_201_CREATED)
+
+
+class OutlineGroupDetailAPIView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def put(self, request, pk):
+        from app.models import OutlineReviewGroup
+        from app.serializers import OutlineReviewGroupSerializer
+        group = get_object_or_404(OutlineReviewGroup, pk=pk)
+        data = request.data
+        if "name" in data:
+            group.name = data["name"]
+        if "department" in data:
+            group.department = data["department"]
+        group.save()
+        if "members" in data:
+            group.members.set(data["members"])
+            
+        return Response(OutlineReviewGroupSerializer(group).data, status=status.HTTP_200_OK)
+
+    def delete(self, request, pk):
+        from app.models import OutlineReviewGroup
+        group = get_object_or_404(OutlineReviewGroup, pk=pk)
+        group.delete()
+        return Response({"success": True}, status=status.HTTP_204_NO_CONTENT)
+
+
+class OutlineReviewListAPIView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def get(self, request):
+        batch_id = request.query_params.get("batch_id")
+        verdict_filter = request.query_params.get("verdict")
+        group_id = request.query_params.get("group_id")
+        search = (request.query_params.get("search") or request.query_params.get("q") or "").strip()
+
+        from app.models import OutlineReview, GraduationProject, AcademicBatch
+        from app.serializers import OutlineReviewSerializer
+        from app.utils.vietnamese_sort import sort_by_vietnamese_name
+
+        if not batch_id:
+            first_batch = AcademicBatch.objects.first()
+            batch_id = first_batch.id if first_batch else None
+
+        if not batch_id:
+            return Response([], status=status.HTTP_200_OK)
+
+        projects = GraduationProject.objects.filter(batch_id=batch_id).select_related("student__user")
+
+        # Ensure OutlineReview exists for all projects
+        for p in projects:
+            if not hasattr(p, 'outline_review'):
+                OutlineReview.objects.create(project=p)
+
+        reviews = OutlineReview.objects.filter(project__batch_id=batch_id).select_related(
+            "project__student__user",
+            "project__student__course_class",
+            "project__supervisor__user",
+            "review_group",
+            "reviewer__user"
+        )
+
+        if verdict_filter and verdict_filter != "ALL":
+            reviews = reviews.filter(verdict=verdict_filter)
+
+        if group_id:
+            if group_id == "unassigned":
+                reviews = reviews.filter(review_group__isnull=True)
+            else:
+                reviews = reviews.filter(review_group_id=group_id)
+
+        if search:
+            reviews = reviews.filter(
+                Q(project__student__user__first_name__icontains=search) |
+                Q(project__student__user__last_name__icontains=search) |
+                Q(project__student__registration_no__icontains=search) |
+                Q(project__topic_title_vi__icontains=search) |
+                Q(project__topic_title_en__icontains=search)
+            )
+
+        # Sort by Vietnamese name collation
+        reviews_list = list(reviews)
+        reviews_list = sort_by_vietnamese_name(
+            reviews_list,
+            key_extractor=lambda r: (f"{r.project.student.user.last_name} {r.project.student.user.first_name}".strip() if (r.project.student.user.last_name or r.project.student.user.first_name) else (r.project.student.user.get_full_name() or r.project.student.user.username))
+        )
+
+        serializer = OutlineReviewSerializer(reviews_list, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class OutlineReviewDetailAPIView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def patch(self, request, pk):
+        from app.models import OutlineReview, Supervisor
+        from app.serializers import OutlineReviewSerializer
+        from django.utils import timezone
+
+        review = get_object_or_404(OutlineReview, pk=pk)
+        data = request.data
+
+        if "verdict" in data:
+            review.verdict = data["verdict"]
+            review.reviewed_at = timezone.now()
+            # Sync project status
+            project = review.project
+            if review.verdict == "APPROVED":
+                project.status = "OUTLINE_APPROVED"
+            elif review.verdict == "REVISION_REQUIRED":
+                project.status = "OUTLINE_REVISION"
+            elif review.verdict == "REJECTED":
+                project.status = "FAILED"
+            elif review.verdict == "PENDING":
+                project.status = "OUTLINE_PENDING"
+            project.save()
+
+        if "comments" in data:
+            review.comments = data["comments"]
+
+        if "review_group_id" in data:
+            review.review_group_id = data["review_group_id"] or None
+
+        if "reviewer_id" in data:
+            review.reviewer_id = data["reviewer_id"] or None
+
+        review.save()
+        return Response(OutlineReviewSerializer(review).data, status=status.HTTP_200_OK)
+
+
+class OutlineReviewAssignAPIView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def post(self, request):
+        from app.models import OutlineReview, OutlineReviewGroup, GraduationProject
+        from django.utils import timezone
+
+        action = request.data.get("action", "assign_group")
+        batch_id = request.data.get("batch_id")
+
+        if action == "auto_assign":
+            # Distribute unassigned projects across groups in the batch
+            groups = list(OutlineReviewGroup.objects.filter(batch_id=batch_id)) if batch_id else list(OutlineReviewGroup.objects.all())
+            if not groups:
+                return Response({"error": "Cần tạo ít nhất một nhóm xét duyệt đề cương trước khi phân nhóm tự động."}, status=status.HTTP_400_BAD_REQUEST)
+
+            projects = GraduationProject.objects.filter(batch_id=batch_id) if batch_id else GraduationProject.objects.all()
+            assigned_count = 0
+            for idx, p in enumerate(projects):
+                review, _ = OutlineReview.objects.get_or_create(project=p)
+                review.review_group = groups[idx % len(groups)]
+                review.save()
+                assigned_count += 1
+
+            return Response({
+                "success": True,
+                "assigned_count": assigned_count,
+                "message": f"Đã tự động phân bổ {assigned_count} đề cương vào {len(groups)} nhóm thẩm định."
+            }, status=status.HTTP_200_OK)
+
+        elif action == "bulk_approve":
+            project_ids = request.data.get("project_ids", [])
+            query = OutlineReview.objects.all()
+            if project_ids:
+                query = query.filter(project_id__in=project_ids)
+            elif batch_id:
+                query = query.filter(project__batch_id=batch_id)
+
+            updated = 0
+            now = timezone.now()
+            for r in query:
+                r.verdict = "APPROVED"
+                r.reviewed_at = now
+                if not r.comments:
+                    r.comments = "Đề cương đạt chuẩn yêu cầu bảo vệ ĐATN."
+                r.save()
+                r.project.status = "OUTLINE_APPROVED"
+                r.project.save()
+                updated += 1
+
+            return Response({
+                "success": True,
+                "updated_count": updated,
+                "message": f"Đã duyệt đạt yêu cầu cho {updated} đề cương."
+            }, status=status.HTTP_200_OK)
+
+        else:
+            project_ids = request.data.get("project_ids", [])
+            group_id = request.data.get("group_id")
+            
+            if not project_ids or not group_id:
+                return Response({"error": "project_ids and group_id are required"}, status=status.HTTP_400_BAD_REQUEST)
+                
+            group = get_object_or_404(OutlineReviewGroup, id=group_id)
+            updated_count = 0
+            for pid in project_ids:
+                review, created = OutlineReview.objects.get_or_create(project_id=pid)
+                review.review_group = group
+                review.save()
+                updated_count += 1
+                
+            return Response({"success": True, "updated_count": updated_count}, status=status.HTTP_200_OK)
 
 
 

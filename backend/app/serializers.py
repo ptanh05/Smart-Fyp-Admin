@@ -15,7 +15,9 @@ from .models import (
     CouncilMember,
     DefenseScheduleSlot,
     FinalGradeSummary,
-    EvaluationPolicy
+    EvaluationPolicy,
+    OutlineReviewGroup,
+    OutlineReview
 )
 
 class DepartmentSerializer(serializers.ModelSerializer):
@@ -159,6 +161,8 @@ class AdminUserSerializer(serializers.ModelSerializer):
         ]
 
     def get_full_name(self, obj):
+        if obj.last_name and obj.first_name:
+            return f"{obj.last_name} {obj.first_name}".strip()
         return obj.get_full_name() or obj.username
 
     def get_student_profile(self, obj):

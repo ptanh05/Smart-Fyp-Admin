@@ -20,6 +20,7 @@ from .views import (
     SupervisorQuotaListUpdateAPIView,
     AutoSupervisorAllocationAPIView,
     ManualSupervisorAllocationAPIView,
+    FinalizeAndNotifyAllocationAPIView,
     DefenseCouncilListCreateAPIView,
     AutoReviewerAllocationAPIView,
     GraduationProjectsAdminListAPIView,

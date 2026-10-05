@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AdminAuthProvider } from './auth/AdminAuthContext';
 import { ProtectedAdminRoute } from './auth/ProtectedAdminRoute';
@@ -20,36 +20,46 @@ export const App: React.FC = () => {
   return (
     <Router>
       <AdminAuthProvider>
-        <Routes>
-          <Route path="/login" element={<AdminLoginPage />} />
-          <Route path="/register" element={<AdminRegisterPage />} />
-          
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedAdminRoute>
-                <AdminDashboard />
-              </ProtectedAdminRoute>
-            }
-          />
+        <Suspense fallback={<AdminLoadingFallback />}>
+          <Routes>
+            <Route path="/login" element={<AdminLoginPage />} />
+            <Route path="/register" element={<AdminRegisterPage />} />
+            
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedAdminRoute>
+                  <AdminDashboard />
+                </ProtectedAdminRoute>
+              }
+            />
 
-          <Route
-            path="/batches"
-            element={
-              <ProtectedAdminRoute>
-                <BatchesPage />
-              </ProtectedAdminRoute>
-            }
-          />
+            <Route
+              path="/batches"
+              element={
+                <ProtectedAdminRoute>
+                  <BatchesPage />
+                </ProtectedAdminRoute>
+              }
+            />
 
-          <Route
-            path="/allocations"
-            element={
-              <ProtectedAdminRoute>
-                <AllocationsPage />
-              </ProtectedAdminRoute>
-            }
-          />
+            <Route
+              path="/allocations"
+              element={
+                <ProtectedAdminRoute>
+                  <AllocationsPage />
+                </ProtectedAdminRoute>
+              }
+            />
+
+            <Route
+              path="/councils"
+              element={
+                <ProtectedAdminRoute>
+                  <CouncilsPage />
+                </ProtectedAdminRoute>
+              }
+            />
 
           <Route
             path="/topics"
@@ -87,45 +97,46 @@ export const App: React.FC = () => {
             }
           />
 
-          <Route
-            path="/defense"
-            element={
-              <ProtectedAdminRoute>
-                <DefenseManagementPage />
-              </ProtectedAdminRoute>
-            }
-          />
+            <Route
+              path="/defense"
+              element={
+                <ProtectedAdminRoute>
+                  <DefenseManagementPage />
+                </ProtectedAdminRoute>
+              }
+            />
 
-          <Route
-            path="/users"
-            element={
-              <ProtectedAdminRoute>
-                <UserManagementPage />
-              </ProtectedAdminRoute>
-            }
-          />
+            <Route
+              path="/users"
+              element={
+                <ProtectedAdminRoute>
+                  <UserManagementPage />
+                </ProtectedAdminRoute>
+              }
+            />
 
-          <Route
-            path="/security"
-            element={
-              <ProtectedAdminRoute>
-                <SecurityCenterPage />
-              </ProtectedAdminRoute>
-            }
-          />
+            <Route
+              path="/security"
+              element={
+                <ProtectedAdminRoute>
+                  <SecurityCenterPage />
+                </ProtectedAdminRoute>
+              }
+            />
 
-          <Route
-            path="/audit-logs"
-            element={
-              <ProtectedAdminRoute>
-                <AuditLogsPage />
-              </ProtectedAdminRoute>
-            }
-          />
+            <Route
+              path="/audit-logs"
+              element={
+                <ProtectedAdminRoute>
+                  <AuditLogsPage />
+                </ProtectedAdminRoute>
+              }
+            />
 
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </Suspense>
       </AdminAuthProvider>
     </Router>
   );

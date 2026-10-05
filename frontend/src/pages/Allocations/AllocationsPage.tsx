@@ -42,6 +42,7 @@ export const AllocationsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [matching, setMatching] = useState(false);
   const [matchResult, setMatchResult] = useState<any>(null);
+  const [sendingEmails, setSendingEmails] = useState(false);
 
   // Manual Override Modal
   const [showOverrideModal, setShowOverrideModal] = useState(false);
@@ -227,6 +228,14 @@ export const AllocationsPage: React.FC = () => {
               title="Công bố và gửi email kết quả cho SV & GV (Bước 18 & 19)"
             >
               <span>📢</span> Công Bố & Gửi Thông Báo
+            </button>
+            <button
+              onClick={handleFinalizeAndNotify}
+              disabled={sendingEmails || matching}
+              className="utc-btn-primary"
+              style={{ backgroundColor: '#059669' }}
+            >
+              <span>✉️</span> {sendingEmails ? 'Đang gửi Email...' : 'Chốt danh sách & Gửi Email SMTP'}
             </button>
           </div>
         </div>
