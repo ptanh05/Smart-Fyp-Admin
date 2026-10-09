@@ -66,7 +66,7 @@ logger = logging.getLogger(__name__)
 
 def set_refresh_cookie(response, refresh_token):
     is_production = not getattr(settings, "DEBUG", True)
-    is_secure = is_production or getattr(settings, "SESSION_COOKIE_SECURE", False)
+    is_secure = is_production and getattr(settings, "SESSION_COOKIE_SECURE", True)
     response.set_cookie(
         key="refresh_token",
         value=str(refresh_token),
@@ -80,7 +80,13 @@ def set_refresh_cookie(response, refresh_token):
 
 
 def delete_refresh_cookie(response):
-    response.delete_cookie(key="refresh_token", path="/app/")
+    is_production = not getattr(settings, "DEBUG", True)
+    is_secure = is_production and getattr(settings, "SESSION_COOKIE_SECURE", True)
+    response.delete_cookie(
+        key="refresh_token",
+        path="/app/",
+        samesite="None" if is_secure else "Lax",
+    )
     return response
 
 
@@ -182,6 +188,10 @@ class AdminLoginAPIView(APIView):
 
         if not (user.is_staff or user.is_superuser or user.user_type == "admin"):
             return Response({"detail": "Forbidden: You do not have admin access privileges."}, status=status.HTTP_403_FORBIDDEN)
+
+        if user.user_type != "admin" and (user.is_staff or user.is_superuser):
+            user.user_type = "admin"
+            user.save(update_fields=["user_type"])
 
         refresh = RefreshToken.for_user(user)
         access_token = str(refresh.access_token)

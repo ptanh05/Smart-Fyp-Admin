@@ -81,7 +81,7 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 
 ADMIN_REGISTRATION_SECRET = env('ADMIN_REGISTRATION_SECRET', default='utc-smart-fyp-admin-secret-key-2026')
 
-# Shared Database Strategy (Neon PostgreSQL)
+# Database Strategy (Neon PostgreSQL in Production, local SQLite in Development)
 IS_TESTING = 'test' in sys.argv
 
 if IS_TESTING:
@@ -92,17 +92,11 @@ if IS_TESTING:
         }
     }
 else:
-    shared_db = BASE_DIR.parent.parent / 'smart-fyp-management' / 'backend' / 'db.sqlite3'
-    if os.environ.get('DATABASE_URL'):
+    db_url = os.environ.get('DATABASE_URL', '').strip()
+    is_placeholder = any(p in db_url for p in ['user:password', 'username:password', '<', 'placeholder', 'ep-old-pine'])
+    if db_url and not is_placeholder:
         DATABASES = {
             'default': env.db('DATABASE_URL')
-        }
-    elif shared_db.exists():
-        DATABASES = {
-            'default': {
-                'ENGINE': 'django.db.backends.sqlite3',
-                'NAME': shared_db,
-            }
         }
     else:
         DATABASES = {
@@ -242,14 +236,25 @@ USE_X_FORWARDED_HOST = True
 USE_X_FORWARDED_PORT = True
 
 # Production Security Settings (Driven by environment / DEBUG flag)
-SECURE_SSL_REDIRECT = env.bool('SECURE_SSL_REDIRECT', default=False)
-SESSION_COOKIE_SECURE = env.bool('SESSION_COOKIE_SECURE', default=not DEBUG)
-CSRF_COOKIE_SECURE = env.bool('CSRF_COOKIE_SECURE', default=not DEBUG)
-SESSION_COOKIE_SAMESITE = 'None' if (not DEBUG or env.bool('SESSION_COOKIE_SECURE', default=False)) else 'Lax'
-CSRF_COOKIE_SAMESITE = 'None' if (not DEBUG or env.bool('CSRF_COOKIE_SECURE', default=False)) else 'Lax'
-SECURE_HSTS_SECONDS = env.int('SECURE_HSTS_SECONDS', default=31536000 if not DEBUG else 0)
-SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool('SECURE_HSTS_INCLUDE_SUBDOMAINS', default=not DEBUG)
-SECURE_HSTS_PRELOAD = env.bool('SECURE_HSTS_PRELOAD', default=not DEBUG)
+if DEBUG:
+    SECURE_SSL_REDIRECT = False
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    CSRF_COOKIE_SAMESITE = 'Lax'
+    SECURE_HSTS_SECONDS = 0
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+    SECURE_HSTS_PRELOAD = False
+else:
+    SECURE_SSL_REDIRECT = env.bool('SECURE_SSL_REDIRECT', default=True)
+    SESSION_COOKIE_SECURE = env.bool('SESSION_COOKIE_SECURE', default=True)
+    CSRF_COOKIE_SECURE = env.bool('CSRF_COOKIE_SECURE', default=True)
+    SESSION_COOKIE_SAMESITE = 'None' if env.bool('SESSION_COOKIE_SECURE', default=True) else 'Lax'
+    CSRF_COOKIE_SAMESITE = 'None' if env.bool('CSRF_COOKIE_SECURE', default=True) else 'Lax'
+    SECURE_HSTS_SECONDS = env.int('SECURE_HSTS_SECONDS', default=31536000)
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool('SECURE_HSTS_INCLUDE_SUBDOMAINS', default=True)
+    SECURE_HSTS_PRELOAD = env.bool('SECURE_HSTS_PRELOAD', default=True)
+
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'

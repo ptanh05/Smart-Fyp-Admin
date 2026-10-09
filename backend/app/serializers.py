@@ -166,21 +166,30 @@ class AdminUserSerializer(serializers.ModelSerializer):
         return obj.get_full_name() or obj.username
 
     def get_student_profile(self, obj):
-        std = getattr(obj, "admin_student_profile", None)
-        if std:
-            return StudentDetailSerializer(std).data
+        try:
+            std = getattr(obj, "admin_student_profile", None)
+            if std:
+                return StudentDetailSerializer(std).data
+        except Exception:
+            return None
         return None
 
     def get_supervisor_profile(self, obj):
-        spv = getattr(obj, "admin_supervisor_profile", None)
-        if spv:
-            return SupervisorDetailSerializer(spv).data
+        try:
+            spv = getattr(obj, "admin_supervisor_profile", None)
+            if spv:
+                return SupervisorDetailSerializer(spv).data
+        except Exception:
+            return None
         return None
 
     def get_council_roles(self, obj):
-        roles = obj.council_roles.all()
-        if roles.exists():
-            return CouncilRoleDetailSerializer(roles, many=True).data
+        try:
+            roles = obj.council_roles.all()
+            if roles.exists():
+                return CouncilRoleDetailSerializer(roles, many=True).data
+        except Exception:
+            return []
         return []
 
 

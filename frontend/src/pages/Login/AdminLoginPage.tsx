@@ -36,7 +36,12 @@ export const AdminLoginPage: React.FC = () => {
       await login(email, password);
       navigate('/dashboard');
     } catch (err: any) {
-      setError(err.message || 'Đăng nhập Admin thất bại. Vui lòng kiểm tra lại tài khoản.');
+      const msg =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        err.message ||
+        'Đăng nhập Admin thất bại. Vui lòng kiểm tra lại tài khoản.';
+      setError(msg);
     } finally {
       setLoading(false);
     }

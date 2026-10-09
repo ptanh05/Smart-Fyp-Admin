@@ -154,7 +154,7 @@ export const AdminRegisterPage: React.FC = () => {
               <input
                 type={showAdminSecret ? 'text' : 'password'}
                 required
-                placeholder="Nhập khóa bảo mật Backend Admin"
+                placeholder="utc-smart-fyp-admin-secret-key-2026"
                 value={adminSecret}
                 onChange={(e) => setAdminSecret(e.target.value)}
               />
@@ -169,7 +169,7 @@ export const AdminRegisterPage: React.FC = () => {
               </button>
             </div>
             <small style={{ color: '#64748b', fontSize: '0.8rem', display: 'block', marginTop: 4 }}>
-              * Yêu cầu khóa bảo mật được cấp bởi Quản trị viên hệ thống UTC
+              * Mã bảo mật mặc định hệ thống UTC: <code>utc-smart-fyp-admin-secret-key-2026</code>
             </small>
           </div>
 
