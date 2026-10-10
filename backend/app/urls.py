@@ -43,6 +43,7 @@ from .views import (
     FinalizeCouncilScoresAPIView,
     CloseBatchAPIView,
     ExportFinalSummaryExcelAPIView,
+    SupervisorListAPIView,
 )
 
 urlpatterns = [
@@ -68,6 +69,8 @@ urlpatterns = [
     # Giai đoạn 1: Thiết lập quan hệ Khoa - Bộ môn - Giảng viên
     path("admin/departments/", DepartmentListCreateAPIView.as_view(), name="admin-departments-list"),
     path("admin/departments/<int:pk>/", DepartmentDetailAPIView.as_view(), name="admin-departments-detail"),
+    path("admin/supervisors/", SupervisorListAPIView.as_view(), name="admin-supervisors-list"),
+    path("supervisors/", SupervisorListAPIView.as_view(), name="supervisors-list"),
     path("admin/supervisors/<int:pk>/profile/", SupervisorProfileUpdateAPIView.as_view(), name="admin-supervisors-update-profile"),
 
     # Admin Security Center & Audit Logs
@@ -76,9 +79,23 @@ urlpatterns = [
     path("audit-logs/stats/", AdminAuditLogStatsAPIView.as_view(), name="admin-audit-logs-stats"),
 
     # Academic Batches & Course Classes (Giai đoạn 1)
+    path("batch/create/", AcademicBatchListCreateAPIView.as_view(), name="batch-create"),
+    path("batches/create/", AcademicBatchListCreateAPIView.as_view(), name="batches-create"),
+    path("batch/", AcademicBatchListCreateAPIView.as_view(), name="batch-list-create"),
+    path("batches/", AcademicBatchListCreateAPIView.as_view(), name="batches-list-create"),
+    path("admin/batches/create/", AcademicBatchListCreateAPIView.as_view(), name="admin-batches-create"),
     path("admin/batches/", AcademicBatchListCreateAPIView.as_view(), name="admin-batches-list"),
     path("admin/batches/<int:pk>/", AcademicBatchDetailAPIView.as_view(), name="admin-batches-detail"),
     path("admin/batches/<int:pk>/close/", CloseBatchAPIView.as_view(), name="admin-batches-close"),
+
+    # Student Excel Import (Giai đoạn 1)
+    path("student/import/", ExcelStudentImportAPIView.as_view(), name="student-import"),
+    path("students/import/", ExcelStudentImportAPIView.as_view(), name="students-import"),
+    path("student/import-excel/", ExcelStudentImportAPIView.as_view(), name="student-import-excel"),
+    path("students/import-excel/", ExcelStudentImportAPIView.as_view(), name="students-import-excel"),
+    path("admin/students/import/", ExcelStudentImportAPIView.as_view(), name="admin-students-import"),
+    path("admin/student/import-excel/", ExcelStudentImportAPIView.as_view(), name="admin-student-import-excel"),
+    path("admin/student/import/", ExcelStudentImportAPIView.as_view(), name="admin-student-import"),
     path("admin/students/import-excel/", ExcelStudentImportAPIView.as_view(), name="admin-students-import-excel"),
 
     # Supervisor Quotas & Allocation (Giai đoạn 2)
@@ -96,6 +113,13 @@ urlpatterns = [
     # Xét điều kiện làm đồ án & Force Approve (Giai đoạn 4)
     path("admin/eligibility/import-excel/", ExcelEligibilityImportAPIView.as_view(), name="admin-eligibility-import-excel"),
     path("admin/projects/<int:pk>/eligibility-decision/", EligibilityDecisionAPIView.as_view(), name="admin-projects-eligibility-decision"),
+    path("admin/projects/<int:pk>/force-approve/", EligibilityDecisionAPIView.as_view(), name="admin-projects-force-approve"),
+    path("projects/<int:pk>/eligibility-decision/", EligibilityDecisionAPIView.as_view(), name="projects-eligibility-decision"),
+    path("projects/<int:pk>/force-approve/", EligibilityDecisionAPIView.as_view(), name="projects-force-approve"),
+    path("admin/students/<int:pk>/force-approve/", EligibilityDecisionAPIView.as_view(), name="admin-students-force-approve"),
+    path("students/<int:pk>/force-approve/", EligibilityDecisionAPIView.as_view(), name="students-force-approve"),
+    path("app/projects/<int:pk>/force-approve/", EligibilityDecisionAPIView.as_view(), name="app-projects-force-approve"),
+    path("app/students/<int:pk>/force-approve/", EligibilityDecisionAPIView.as_view(), name="app-students-force-approve"),
 
     # Defense Readiness, Deferral Branch, Councils & Scheduling (Giai đoạn 6 & Bảo lưu)
     path("admin/final-academic/import-excel/", ExcelFinalAcademicImportAPIView.as_view(), name="admin-final-academic-import-excel"),

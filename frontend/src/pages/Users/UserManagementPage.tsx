@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { usersApi, type CreateUserPayload } from '../../api/users';
 import { batchesApi, type AcademicBatch, type CourseClass } from '../../api/batches';
 import type {
@@ -16,6 +17,7 @@ import './UserManagementPage.css';
 import '../../components/common/Modal.css';
 
 export const UserManagementPage: React.FC = () => {
+  const navigate = useNavigate();
   // Data state
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [total, setTotal] = useState(0);
@@ -1002,6 +1004,16 @@ export const UserManagementPage: React.FC = () => {
 
                       <td>
                         <div className="action-btn-group">
+                          {u.supervisor_profile && (
+                            <button
+                              className="btn-icon edit"
+                              onClick={() => navigate('/supervisors')}
+                              title="Cập nhật học vị & hướng nghiên cứu nâng cao"
+                              style={{ color: '#0284c7' }}
+                            >
+                              ✏️
+                            </button>
+                          )}
                           <button
                             className="btn-icon key"
                             onClick={() => {

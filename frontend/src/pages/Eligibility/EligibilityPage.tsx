@@ -100,7 +100,7 @@ export const EligibilityPage: React.FC = () => {
     if (!forceProject) return;
 
     try {
-      await apiClient.patch(`/admin/projects/${forceProject.id}/eligibility-decision/`, {
+      await apiClient.post(`/admin/projects/${forceProject.id}/force-approve/`, {
         decision: 'FORCE_APPROVE',
         reason: forceReason.trim() || 'Khoa phê duyệt đặc cách theo đơn giải trình',
       });
@@ -110,6 +110,29 @@ export const EligibilityPage: React.FC = () => {
       fetchProjects();
     } catch (err: any) {
       alert('Lỗi đặc cách: ' + (err.response?.data?.detail || err.message));
+    }
+  };
+
+  const handleBulkForceApproveIneligible = async () => {
+    const ineligibles = projects.filter((p) => p.initial_eligibility === 'INELIGIBLE');
+    if (ineligibles.length === 0) {
+      alert('Không có sinh viên nào ở trạng thái Không đủ điều kiện.');
+      return;
+    }
+    if (!window.confirm(`Bạn có chắc chắn muốn Force Approve đặc cách cho toàn bộ ${ineligibles.length} sinh viên không đủ điều kiện được làm đồ án tốt nghiệp?`)) {
+      return;
+    }
+    try {
+      for (const p of ineligibles) {
+        await apiClient.post(`/admin/projects/${p.id}/force-approve/`, {
+          decision: 'FORCE_APPROVE',
+          reason: 'Khoa phê duyệt đặc cách tập trung cho đợt đồ án',
+        });
+      }
+      alert(`Đã Force Approve thành công cho ${ineligibles.length} sinh viên!`);
+      fetchProjects();
+    } catch (err: any) {
+      alert('Lỗi: ' + (err.response?.data?.detail || err.message));
     }
   };
 
@@ -165,6 +188,16 @@ export const EligibilityPage: React.FC = () => {
             <button onClick={() => setShowImportModal(true)} className="utc-btn-emerald">
               <span>📊</span> Import Điểm Xét ĐK (Excel)
             </button>
+
+            {countIneligible > 0 && (
+              <button
+                onClick={handleBulkForceApproveIneligible}
+                className="utc-btn-force-bulk"
+                title="Đặc cách cho tất cả sinh viên không đủ điều kiện trong đợt"
+              >
+                <span>⭐</span> Force Approve Tất Cả ({countIneligible})
+              </button>
+            )}
           </div>
         </div>
 
@@ -275,32 +308,50 @@ export const EligibilityPage: React.FC = () => {
                       </td>
                       <td>
                         <div className="utc-action-btn-group">
-                          {p.initial_eligibility === 'INELIGIBLE' && (
+                          {p.initial_eligibility !== 'ELIGIBLE' && p.initial_eligibility !== 'FORCE_APPROVED' && (
                             <>
                               <button
-                                onClick={() => setForceProject(p)}
+                                onClick={() => {
+                                  setForceProject(p);
+                                  setForceReason(p.ineligibility_reason ? `Đặc cách: ${p.ineligibility_reason}` : 'Khoa phê duyệt đặc cách theo đơn giải trình');
+                                }}
                                 className="utc-btn-sm-force"
-                                title="Cho phép đặc cách làm đồ án"
+                                data-testid="force-approve-btn"
+                                title="Cho phép đặc cách làm đồ án (Force Approve)"
                               >
                                 ⭐ Force Approve
                               </button>
-                              <button
-                                onClick={() => handleDisqualify(p.id, p.student_reg_no)}
-                                className="utc-btn-sm-disqualify"
-                                title="Loại sinh viên khỏi đợt đồ án"
-                              >
-                                ✕ Loại
-                              </button>
+                              {p.initial_eligibility !== 'DISQUALIFIED' && (
+                                <button
+                                  onClick={() => handleDisqualify(p.id, p.student_reg_no)}
+                                  className="utc-btn-sm-disqualify"
+                                  title="Loại sinh viên khỏi đợt đồ án"
+                                >
+                                  ✕ Loại
+                                </button>
+                              )}
                             </>
                           )}
                           {p.initial_eligibility === 'ELIGIBLE' && (
-                            <span className="text-xs text-emerald-600 font-bold">Đã vào GĐ5</span>
+                            <span className="text-xs text-emerald-600 font-bold">✅ Đủ ĐK (GĐ5)</span>
                           )}
                           {p.initial_eligibility === 'FORCE_APPROVED' && (
-                            <span className="text-xs text-blue-600 font-bold">Đặc cách (GĐ5)</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span className="text-xs text-blue-600 font-bold">⭐ Đã đặc cách (GĐ5)</span>
+                              <button
+                                onClick={() => {
+                                  setForceProject(p);
+                                  setForceReason(p.ineligibility_reason || 'Khoa phê duyệt đặc cách theo đơn giải trình');
+                                }}
+                                className="utc-btn-sm-subtle"
+                                title="Cập nhật thông tin đặc cách"
+                              >
+                                Sửa
+                              </button>
+                            </div>
                           )}
                           {p.initial_eligibility === 'DISQUALIFIED' && (
-                            <span className="text-xs text-red-600 font-bold">Đã loại</span>
+                            <span className="text-xs text-red-600 font-bold">🚫 Đã loại</span>
                           )}
                         </div>
                       </td>

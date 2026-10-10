@@ -16,6 +16,7 @@ const ProgressMonitoringPage = lazy(() => import('./pages/Progress/ProgressMonit
 const CouncilsPage = lazy(() => import('./pages/Councils/CouncilsPage').then(m => ({ default: m.CouncilsPage })));
 const DefenseManagementPage = lazy(() => import('./pages/Defense/DefenseManagementPage').then(m => ({ default: m.DefenseManagementPage })));
 const UserManagementPage = lazy(() => import('./pages/Users/UserManagementPage').then(m => ({ default: m.UserManagementPage })));
+const SupervisorsPage = lazy(() => import('./pages/Supervisors/SupervisorsPage').then(m => ({ default: m.SupervisorsPage })));
 const SecurityCenterPage = lazy(() => import('./pages/Security/SecurityCenterPage').then(m => ({ default: m.SecurityCenterPage })));
 const AuditLogsPage = lazy(() => import('./pages/AuditLogs/AuditLogsPage').then(m => ({ default: m.AuditLogsPage })));
 
@@ -131,6 +132,15 @@ export const App: React.FC = () => {
               element={
                 <ProtectedAdminRoute>
                   <UserManagementPage />
+                </ProtectedAdminRoute>
+              }
+            />
+
+            <Route
+              path="/supervisors"
+              element={
+                <ProtectedAdminRoute>
+                  <SupervisorsPage />
                 </ProtectedAdminRoute>
               }
             />

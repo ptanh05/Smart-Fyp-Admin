@@ -914,10 +914,30 @@ class AcademicBatchListCreateAPIView(ListCreateAPIView):
         return response
 
     def create(self, request, *args, **kwargs):
-        response = super().create(request, *args, **kwargs)
+        data = request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
+        # Normalize fields for flexible callers
+        if "name" in data and not data.get("batch_name"):
+            data["batch_name"] = data["name"]
+        if "time" in data and not data.get("start_date"):
+            data["start_date"] = data["time"]
+        if "start_time" in data and not data.get("start_date"):
+            data["start_date"] = data["start_time"]
+        if "end_time" in data and not data.get("end_date"):
+            data["end_date"] = data["end_time"]
+        if not data.get("batch_code"):
+            name = str(data.get("batch_name", "BATCH"))
+            clean = "".join(ch for ch in name if ch.isalnum())
+            prefix = clean[:8].upper() if clean else "BATCH"
+            timestamp = timezone.now().strftime("%y%m%d%H%M%S")
+            data["batch_code"] = f"{prefix}_{timestamp}"
+
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
         cache.delete(BATCHES_CACHE_KEY)
         invalidate_user_summary_cache()
-        return response
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 
 class AcademicBatchDetailAPIView(RetrieveUpdateDestroyAPIView):
@@ -943,13 +963,26 @@ class ExcelStudentImportAPIView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
-        file_obj = request.FILES.get("file")
+        file_obj = (
+            request.FILES.get("file")
+            or request.FILES.get("excel")
+            or request.FILES.get("excel_file")
+            or request.FILES.get("student_file")
+            or (next(iter(request.FILES.values())) if request.FILES else None)
+        )
         batch_id = request.data.get("batch_id")
 
         if not file_obj:
             return Response({"detail": "Vui lòng chọn file Excel để import."}, status=status.HTTP_400_BAD_REQUEST)
         if not batch_id:
-            return Response({"detail": "Vui lòng chọn Kỳ học / Đợt ĐATN (batch_id)."}, status=status.HTTP_400_BAD_REQUEST)
+            active_batch = AcademicBatch.objects.filter(is_active=True).first() or AcademicBatch.objects.order_by("-id").first()
+            if not active_batch:
+                active_batch = AcademicBatch.objects.create(
+                    batch_code=f"K{timezone.now().year}",
+                    batch_name=f"Đợt Đồ Án {timezone.now().year}",
+                    is_active=True
+                )
+            batch_id = active_batch.id
 
         res = ExcelImportService.import_students_from_excel(file_obj, batch_id)
 
@@ -1680,16 +1713,24 @@ class EligibilityDecisionAPIView(APIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
 
     def patch(self, request, pk):
-        project = get_object_or_404(GraduationProject, pk=pk)
-        decision = request.data.get("decision")  # "FORCE_APPROVE" hoặc "DISQUALIFY"
+        return self.handle_decision(request, pk)
+
+    def post(self, request, pk):
+        return self.handle_decision(request, pk)
+
+    def handle_decision(self, request, pk):
+        project = GraduationProject.objects.filter(Q(pk=pk) | Q(student_id=pk) | Q(student__user_id=pk)).first()
+        if not project:
+            return Response({"detail": "Không tìm thấy hồ sơ đồ án hoặc sinh viên tương ứng."}, status=status.HTTP_404_NOT_FOUND)
+        decision = (request.data.get("decision") or "FORCE_APPROVE").strip().upper()
         reason = request.data.get("reason", "")
 
-        if decision == "FORCE_APPROVE":
+        if decision in ("FORCE_APPROVE", "FORCE_APPROVED", "APPROVE", "APPROVED"):
             project.initial_eligibility = "FORCE_APPROVED"
             project.status = "IN_PROGRESS"
             project.force_approved_by = request.user
             project.force_approved_at = timezone.now()
-            project.ineligibility_reason = f"Đặc cách: {reason}" if reason else project.ineligibility_reason
+            project.ineligibility_reason = f"Đặc cách: {reason}" if reason else (project.ineligibility_reason or "Khoa phê duyệt đặc cách theo đơn giải trình")
             project.save()
 
             AuditLog.objects.create(
@@ -1699,7 +1740,7 @@ class EligibilityDecisionAPIView(APIView):
             )
             return Response({"message": "Khoa đã đặc cách cho phép làm đồ án (Force Approve).", "status": "FORCE_APPROVED"}, status=status.HTTP_200_OK)
 
-        elif decision == "DISQUALIFY":
+        elif decision in ("DISQUALIFY", "DISQUALIFIED", "REJECT", "REJECTED"):
             project.initial_eligibility = "DISQUALIFIED"
             project.status = "DISQUALIFIED"
             project.ineligibility_reason = reason or "Không đủ điều kiện làm đồ án tốt nghiệp"
@@ -1713,6 +1754,14 @@ class EligibilityDecisionAPIView(APIView):
             return Response({"message": "Đã loại sinh viên khỏi đợt đồ án.", "status": "DISQUALIFIED"}, status=status.HTTP_200_OK)
 
         return Response({"detail": "Quyết định không hợp lệ (FORCE_APPROVE hoặc DISQUALIFY)."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class SupervisorListAPIView(ListAPIView):
+    """Danh sách giảng viên nâng cao đầy đủ học vị, hướng nghiên cứu, quota"""
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+    serializer_class = SupervisorDetailSerializer
+    queryset = Supervisor.objects.all().select_related("user", "department_obj").prefetch_related("quotas")
+    pagination_class = None
 
 
 # ==============================================================================

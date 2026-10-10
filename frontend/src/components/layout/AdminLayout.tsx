@@ -30,6 +30,9 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
           <NavLink to="/users" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
             <span>👥</span> Quản Lý Tài Khoản
           </NavLink>
+          <NavLink to="/supervisors" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
+            <span>👨‍🏫</span> Quản Lý Giảng Viên
+          </NavLink>
           <NavLink to="/batches" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
             <span>📅</span> GĐ1: Đợt & Bộ Môn
           </NavLink>
@@ -40,7 +43,7 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
             <span>📑</span> GĐ3: Duyệt Đề Tài
           </NavLink>
           <NavLink to="/eligibility" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>⚖️</span> GĐ4: Xét ĐK Làm ĐA
+            <span>⚖️</span> GĐ4: Xét ĐK & Force Approve
           </NavLink>
           <NavLink to="/progress" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
             <span>📈</span> GĐ5: Giám Sát Tiến Độ

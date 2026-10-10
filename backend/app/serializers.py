@@ -87,12 +87,18 @@ class StudentDetailSerializer(serializers.ModelSerializer):
 class SupervisorDetailSerializer(serializers.ModelSerializer):
     quota_info = serializers.SerializerMethodField()
     department_code = serializers.CharField(source="department_obj.code", read_only=True, default="")
+    user_full_name = serializers.SerializerMethodField()
+    username = serializers.CharField(source="user.username", read_only=True, default="")
+    email = serializers.CharField(source="user.email", read_only=True, default="")
 
     class Meta:
         model = Supervisor
         fields = [
             "id",
             "supervisor_id",
+            "user_full_name",
+            "username",
+            "email",
             "academic_title",
             "department_name",
             "department_obj",
@@ -104,6 +110,13 @@ class SupervisorDetailSerializer(serializers.ModelSerializer):
             "is_external",
             "quota_info"
         ]
+
+    def get_user_full_name(self, obj):
+        if not obj.user:
+            return ""
+        if obj.user.last_name and obj.user.first_name:
+            return f"{obj.user.last_name} {obj.user.first_name}".strip()
+        return obj.user.get_full_name() or obj.user.username
 
     def get_quota_info(self, obj):
         quota = obj.quotas.first()
