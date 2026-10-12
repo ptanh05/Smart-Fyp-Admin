@@ -22,7 +22,7 @@ const EyeOffIcon = () => (
 export const AdminLoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { login } = useAdminAuth();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +33,7 @@ export const AdminLoginPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      await login(email, password);
+      await login(identifier.trim(), password);
       navigate('/dashboard');
     } catch (err: any) {
       const msg =
@@ -60,13 +60,14 @@ export const AdminLoginPage: React.FC = () => {
 
         <form onSubmit={handleSubmit}>
           <div className="admin-form-group">
-            <label>Email Admin</label>
+            <label>Email hoặc Tên đăng nhập Admin</label>
             <input
-              type="email"
+              type="text"
               required
-              placeholder="admin@utc.edu.vn"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              placeholder="admin@utc.edu.vn hoặc tên đăng nhập (ADMIN1, ...)"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              autoComplete="username"
             />
           </div>
 

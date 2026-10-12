@@ -81,6 +81,37 @@ export const BatchesPage: React.FC = () => {
   const [supMultiplier, setSupMultiplier] = useState(1.0);
   const [supInterest, setSupInterest] = useState('');
 
+  // View Students in Batch Modal
+  const [showStudentsModal, setShowStudentsModal] = useState(false);
+  const [studentsModalBatch, setStudentsModalBatch] = useState<AcademicBatch | null>(null);
+  const [studentsList, setStudentsList] = useState<any[]>([]);
+  const [studentsLoading, setStudentsLoading] = useState(false);
+  const [studentsSearch, setStudentsSearch] = useState('');
+  const [studentsFilterClass, setStudentsFilterClass] = useState<string>('ALL');
+
+  const handleOpenStudentsModal = async (batch: AcademicBatch, filterClass: string = 'ALL') => {
+    setStudentsModalBatch(batch);
+    setStudentsFilterClass(filterClass);
+    setStudentsSearch('');
+    setShowStudentsModal(true);
+    setStudentsLoading(true);
+    try {
+      const res = await apiClient.get('/admin/users/', {
+        params: {
+          user_type: 'student',
+          batch_id: batch.id,
+        },
+      });
+      const list = Array.isArray(res.data) ? res.data : (res.data?.users || res.data?.results || []);
+      setStudentsList(list);
+    } catch (err) {
+      console.error('Lỗi tải danh sách sinh viên đợt:', err);
+      setStudentsList([]);
+    } finally {
+      setStudentsLoading(false);
+    }
+  };
+
   const fetchBatches = async () => {
     try {
       setLoading(true);
@@ -321,7 +352,18 @@ export const BatchesPage: React.FC = () => {
                     </div>
 
                     <div className="utc-batch-footer">
-                      <span>{batch.is_closed ? 'Đợt đã lưu trữ' : 'Nhấp để xem chi tiết lớp học'}</span>
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          style={{ color: '#0284c7', background: 'none', border: 'none', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', padding: 0 }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenStudentsModal(batch);
+                          }}
+                        >
+                          👥 Xem sinh viên ({batch.student_count || 0})
+                        </button>
+                      </div>
                       {!batch.is_closed && (
                         <button
                           onClick={(e) => {
@@ -343,9 +385,24 @@ export const BatchesPage: React.FC = () => {
             {/* Selected Batch Details */}
             {selectedBatchId && (
               <div className="utc-classes-section">
-                <div className="utc-classes-header">
-                  <h4>Danh sách Lớp học phần thuộc đợt: #{selectedBatchId}</h4>
-                  <span className="utc-classes-subtitle">Tự động phân loại từ file Excel đăng ký tín chỉ UTC</span>
+                <div className="utc-classes-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                  <div>
+                    <h4>Danh sách Lớp học phần thuộc đợt: {batches.find((b) => b.id === selectedBatchId)?.batch_name || `#${selectedBatchId}`}</h4>
+                    <span className="utc-classes-subtitle">Tự động phân loại từ file Excel đăng ký tín chỉ UTC</span>
+                  </div>
+                  {(() => {
+                    const curr = batches.find((b) => b.id === selectedBatchId);
+                    return curr ? (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenStudentsModal(curr)}
+                        className="utc-btn-primary"
+                        style={{ fontSize: '0.82rem', padding: '0.45rem 0.9rem' }}
+                      >
+                        👥 Xem Danh Sách Sinh Viên Đợt ({curr.student_count || 0})
+                      </button>
+                    ) : null;
+                  })()}
                 </div>
 
                 {(() => {
@@ -380,7 +437,23 @@ export const BatchesPage: React.FC = () => {
                                 </span>
                               </td>
                               <td>{cls.class_group || '—'}</td>
-                              <td className="text-center font-bold text-blue-600">{cls.student_count}</td>
+                              <td className="text-center font-bold text-blue-600">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenStudentsModal(curr, cls.class_name)}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#0284c7',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    textDecoration: 'underline'
+                                  }}
+                                  title={`Xem ${cls.student_count} sinh viên lớp ${cls.class_name}`}
+                                >
+                                  {cls.student_count} 👥
+                                </button>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -604,11 +677,26 @@ export const BatchesPage: React.FC = () => {
                 </div>
 
                 {importResult && (
-                  <div className="utc-alert-box">
-                    <strong>Kết quả import:</strong>
-                    <div>Tổng sinh viên: {importResult.total}</div>
-                    <div style={{ color: '#059669' }}>Tạo mới thành công: {importResult.created}</div>
-                    <div style={{ color: '#2563eb' }}>Cập nhật: {importResult.updated}</div>
+                  <div className="utc-alert-box" style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '1rem', borderRadius: 8, margin: '1rem 0' }}>
+                    <strong style={{ color: '#065f46' }}>✅ Kết quả import Excel:</strong>
+                    <div style={{ marginTop: '0.25rem' }}>Tổng số dòng dữ liệu: <strong>{importResult.total}</strong></div>
+                    <div style={{ color: '#059669' }}>Tạo mới thành công: <strong>{importResult.created}</strong> sinh viên</div>
+                    <div style={{ color: '#2563eb' }}>Cập nhật: <strong>{importResult.updated}</strong> sinh viên</div>
+                    {importResult.skipped > 0 && <div style={{ color: '#d97706' }}>Bỏ qua: <strong>{importResult.skipped}</strong></div>}
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <button
+                        type="button"
+                        className="utc-btn-primary"
+                        style={{ fontSize: '0.82rem', padding: '0.4rem 0.8rem' }}
+                        onClick={() => {
+                          setShowImportModal(false);
+                          const b = batches.find((x) => x.id === selectedBatchId);
+                          if (b) handleOpenStudentsModal(b);
+                        }}
+                      >
+                        👥 Xem danh sách sinh viên đợt
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -752,6 +840,148 @@ export const BatchesPage: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* MODAL 5: VIEW STUDENTS IN BATCH */}
+        {showStudentsModal && studentsModalBatch && (() => {
+          const distinctClasses = Array.from(
+            new Set(
+              studentsList
+                .map((s) => s.student_profile?.class_name || s.student_profile?.department)
+                .filter(Boolean)
+            )
+          ).sort();
+
+          const filteredStudents = studentsList.filter((s) => {
+            const studentClass = s.student_profile?.class_name || s.student_profile?.department || '';
+            if (studentsFilterClass !== 'ALL' && studentClass !== studentsFilterClass) {
+              return false;
+            }
+            if (studentsSearch.trim()) {
+              const q = studentsSearch.toLowerCase();
+              const mssv = (s.student_profile?.registration_no || s.username || '').toLowerCase();
+              const name = (s.full_name || `${s.last_name || ''} ${s.first_name || ''}`).toLowerCase();
+              const clsName = studentClass.toLowerCase();
+              const email = (s.email || '').toLowerCase();
+              const phone = (s.student_profile?.phone_number || '').toLowerCase();
+              return mssv.includes(q) || name.includes(q) || clsName.includes(q) || email.includes(q) || phone.includes(q);
+            }
+            return true;
+          });
+
+          return (
+            <div className="utc-modal-backdrop">
+              <div className="utc-modal-card" style={{ maxWidth: '980px', width: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+                <div className="utc-modal-head">
+                  <div>
+                    <h4>🎓 Danh Sách Sinh Viên — {studentsModalBatch.batch_name} ({studentsModalBatch.batch_code})</h4>
+                    <p style={{ margin: '0.25rem 0 0', color: '#64748b', fontSize: '0.85rem' }}>
+                      Tổng số sinh viên: <strong>{studentsList.length}</strong> (Hiển thị: <strong>{filteredStudents.length}</strong>)
+                    </p>
+                  </div>
+                  <button onClick={() => setShowStudentsModal(false)} className="utc-btn-close">✕</button>
+                </div>
+
+                {/* Filter controls */}
+                <div style={{ display: 'flex', gap: '0.75rem', padding: '1rem 0', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <div style={{ flex: '1 1 240px' }}>
+                    <input
+                      type="text"
+                      placeholder="🔍 Tìm kiếm theo MSSV, Họ tên, SĐT, Email..."
+                      value={studentsSearch}
+                      onChange={(e) => setStudentsSearch(e.target.value)}
+                      className="utc-input"
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  <div style={{ flex: '0 1 240px' }}>
+                    <select
+                      value={studentsFilterClass}
+                      onChange={(e) => setStudentsFilterClass(e.target.value)}
+                      className="utc-input"
+                      style={{ width: '100%' }}
+                    >
+                      <option value="ALL">-- Tất cả lớp sinh hoạt ({studentsList.length}) --</option>
+                      {distinctClasses.map((cls) => (
+                        <option key={cls} value={cls}>
+                          {cls} ({studentsList.filter((s) => (s.student_profile?.class_name || s.student_profile?.department) === cls).length})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Students Table */}
+                <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                  {studentsLoading ? (
+                    <div className="utc-loading-box" style={{ padding: '2rem' }}>Đang tải danh sách sinh viên...</div>
+                  ) : filteredStudents.length === 0 ? (
+                    <div className="utc-empty-box" style={{ padding: '2rem' }}>
+                      {studentsList.length === 0 ? 'Đợt này chưa có sinh viên nào. Hãy thực hiện Import Excel.' : 'Không tìm thấy sinh viên phù hợp với bộ lọc.'}
+                    </div>
+                  ) : (
+                    <table className="utc-classes-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                      <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
+                        <tr>
+                          <th style={{ width: '45px', textAlign: 'center' }}>STT</th>
+                          <th>MSSV</th>
+                          <th>Họ và Tên</th>
+                          <th>Lớp sinh hoạt</th>
+                          <th>Ngành</th>
+                          <th>Hệ ĐT</th>
+                          <th>Số điện thoại</th>
+                          <th>Email</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredStudents.map((std, idx) => {
+                          const prof = std.student_profile || {};
+                          const fullName = std.full_name || `${std.last_name || ''} ${std.first_name || ''}`.trim() || std.username;
+                          const mssv = prof.registration_no || std.username;
+                          const className = prof.class_name || prof.department || '—';
+                          const major = prof.major || (className.includes('KHMT') ? 'KHMT' : 'CNTT');
+                          const eduProgram = prof.program_type || (studentsModalBatch.program_type === 'ENGINEER' ? 'Kỹ sư' : 'Cử nhân');
+                          return (
+                            <tr key={std.id || idx}>
+                              <td style={{ textAlign: 'center', color: '#64748b' }}>{idx + 1}</td>
+                              <td style={{ fontWeight: 700, color: '#0284c7' }}>{mssv}</td>
+                              <td style={{ fontWeight: 600 }}>{fullName}</td>
+                              <td>
+                                <span style={{ background: '#f1f5f9', padding: '0.2rem 0.5rem', borderRadius: 4, fontWeight: 500 }}>
+                                  {className}
+                                </span>
+                              </td>
+                              <td>
+                                <span className="utc-badge-prog">
+                                  {major}
+                                </span>
+                              </td>
+                              <td>
+                                <span className={`utc-badge-edu ${studentsModalBatch.program_type === 'ENGINEER' ? 'edu-ks' : 'edu-cn'}`} style={{ fontSize: '0.75rem' }}>
+                                  {eduProgram}
+                                </span>
+                              </td>
+                              <td>{prof.phone_number || '—'}</td>
+                              <td style={{ color: '#475569' }}>{std.email || '—'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                <div className="utc-modal-foot" style={{ marginTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                    Hiển thị {filteredStudents.length} / {studentsList.length} sinh viên
+                  </span>
+                  <button type="button" onClick={() => setShowStudentsModal(false)} className="utc-btn-cancel">
+                    Đóng
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </AdminLayout>
   );
