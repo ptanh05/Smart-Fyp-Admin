@@ -73,7 +73,7 @@ def set_refresh_cookie(response, refresh_token):
         httponly=True,
         secure=is_secure,
         samesite="None" if is_secure else "Lax",
-        path="/app/",
+        path="/",
         max_age=7 * 24 * 3600,
     )
     return response
@@ -84,7 +84,7 @@ def delete_refresh_cookie(response):
     is_secure = is_production and getattr(settings, "SESSION_COOKIE_SECURE", True)
     response.delete_cookie(
         key="refresh_token",
-        path="/app/",
+        path="/",
         samesite="None" if is_secure else "Lax",
     )
     return response
@@ -179,7 +179,8 @@ class AdminLoginAPIView(APIView):
         # Successful login, reset fail count
         cache.delete(fail_key)
 
-        if settings.DEBUG and not user.password.startswith('md5$'):
+        # Upgrade legacy MD5 hash to standard PBKDF2 on successful login
+        if user.password.startswith('md5$'):
             user.set_password(password)
             user.save(update_fields=['password'])
 
@@ -664,12 +665,14 @@ class AdminImportExcelAPIView(APIView):
         if not file_obj:
             return Response({"detail": "Vui lòng chọn file Excel để import."}, status=status.HTTP_400_BAD_REQUEST)
         if not batch_id:
-            # Fallback to active batch
-            active_batch = AcademicBatch.objects.filter(is_active=True).first()
-            if active_batch:
-                batch_id = active_batch.id
-            else:
-                return Response({"detail": "Vui lòng chọn Kỳ học / Đợt ĐATN (batch_id)."}, status=status.HTTP_400_BAD_REQUEST)
+            active_batch = AcademicBatch.objects.filter(is_active=True).first() or AcademicBatch.objects.order_by("-id").first()
+            if not active_batch:
+                active_batch = AcademicBatch.objects.create(
+                    batch_code=f"K{timezone.now().year}",
+                    batch_name=f"Đợt Đồ Án {timezone.now().year}",
+                    is_active=True
+                )
+            batch_id = active_batch.id
 
         res = ExcelImportService.import_students_from_excel(
             file_obj=file_obj,
@@ -685,6 +688,8 @@ class AdminImportExcelAPIView(APIView):
             description=f"Imported Excel students for Batch #{batch_id}: Total={res.get('total')}, Created={res.get('created')}, Strategy={password_strategy}"
         )
         invalidate_user_summary_cache()
+        cache.delete(BATCHES_CACHE_KEY)
+        cache.delete(SECURITY_METRICS_CACHE_KEY)
 
         return Response(res, status=status.HTTP_200_OK if res.get("success") else status.HTTP_400_BAD_REQUEST)
 
@@ -992,6 +997,8 @@ class ExcelStudentImportAPIView(APIView):
             description=f"Imported Excel students for Batch #{batch_id}: Total={res.get('total')}, Created={res.get('created')}"
         )
         invalidate_user_summary_cache()
+        cache.delete(BATCHES_CACHE_KEY)
+        cache.delete(SECURITY_METRICS_CACHE_KEY)
 
         return Response(res, status=status.HTTP_200_OK if res.get("success") else status.HTTP_400_BAD_REQUEST)
 

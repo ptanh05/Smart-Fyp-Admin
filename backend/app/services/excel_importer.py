@@ -110,7 +110,7 @@ class ExcelImportService:
                 }
             )
 
-            # Find table header row
+            # Find table header row with robust fuzzy & normalized matching
             header_row_idx = None
             col_mssv = None
             col_first_name = None
@@ -121,25 +121,35 @@ class ExcelImportService:
             col_phone = None
             col_email = None
 
+            def _clean_header_cell(val):
+                if not val:
+                    return ""
+                s = str(val).strip().lower()
+                s = s.replace("*", "").replace(":", "").replace("(", " ").replace(")", " ")
+                s = re.sub(r"\s+", " ", s)
+                return s.strip()
+
             for r in range(1, min(15, ws.max_row + 1)):
-                row_vals = [str(ws.cell(r, c).value or "").strip().lower() for c in range(1, ws.max_column + 1)]
+                row_vals = [_clean_header_cell(ws.cell(r, c).value) for c in range(1, ws.max_column + 1)]
                 for c_idx, val in enumerate(row_vals, start=1):
-                    if val in ["mã số sv", "mã sinh viên", "mssv", "mã sv", "masv"]:
+                    if not val:
+                        continue
+                    if any(k in val for k in ["mã sinh viên", "mã số sv", "mssv", "mã sv", "masv", "student id", "ma_sv", "student_id"]):
                         header_row_idx = r
                         col_mssv = c_idx
-                    elif val in ["họ và tên", "họ tên", "tên sinh viên", "hoten"]:
+                    elif any(k in val for k in ["họ và tên", "họ tên", "tên sinh viên", "full name", "fullname", "hoten"]):
                         col_full_name = c_idx
-                    elif val in ["họ và", "họ đệm", "họ"]:
+                    elif any(k in val for k in ["họ đệm", "họ và", "họ lót", "họ", "last name", "lastname"]):
                         col_last_name = c_idx
-                    elif val in ["tên", "tên sv"]:
+                    elif any(k in val for k in ["tên", "tên sv", "first name", "firstname"]) and not any(k in val for k in ["họ", "đệm"]):
                         col_first_name = c_idx
-                    elif val in ["lớp", "lớp sinh viên", "lớp quản lý", "lop"]:
+                    elif any(k in val for k in ["lớp sinh hoạt", "lớp quản lý", "lớp sinh viên", "lớp", "class", "course_class"]):
                         col_class = c_idx
-                    elif val in ["ngành", "chuyên ngành"]:
+                    elif any(k in val for k in ["ngành", "chuyên ngành", "major"]):
                         col_major = c_idx
-                    elif val in ["điện thoại", "sđt", "so dien thoai", "phone"]:
+                    elif any(k in val for k in ["số điện thoại", "điện thoại", "sđt", "sdt", "phone", "mobile", "so dien thoai"]):
                         col_phone = c_idx
-                    elif val in ["email", "hòm thư"]:
+                    elif any(k in val for k in ["email", "hòm thư", "mail"]):
                         col_email = c_idx
 
                 if header_row_idx is not None and col_mssv is not None:
@@ -207,6 +217,27 @@ class ExcelImportService:
                         elif "cử nhân" in combined_text or "cn" in combined_text:
                             student_edu = "BACHELOR"
 
+                        # Map to administrative class (Lớp sinh hoạt) if specified
+                        assigned_course_class = course_class
+                        if student_class_name:
+                            cls_prog = "DAI_TRA"
+                            sc_lower = student_class_name.lower()
+                            if "việt anh" in sc_lower or "việt - anh" in sc_lower:
+                                cls_prog = "VIET_ANH"
+                            elif "khmt" in sc_lower or "khoa học máy tính" in sc_lower or detected_major == "KHMT":
+                                cls_prog = "KHMT"
+
+                            assigned_course_class, _ = CourseClass.objects.update_or_create(
+                                batch=batch,
+                                class_code=student_class_name,
+                                defaults={
+                                    "class_name": student_class_name,
+                                    "class_group": "",
+                                    "program_type": cls_prog,
+                                    "education_program": student_edu
+                                }
+                            )
+
                         if password_strategy == "FIXED" and custom_fixed_password:
                             plain_password = custom_fixed_password.strip()
                         elif password_strategy == "RANDOM":
@@ -239,8 +270,8 @@ class ExcelImportService:
                             user=user,
                             defaults={
                                 "registration_no": mssv,
-                                "department": student_class_name or course_class.class_name,
-                                "course_class": course_class,
+                                "department": student_class_name or assigned_course_class.class_name,
+                                "course_class": assigned_course_class,
                                 "academic_batch": batch,
                                 "batch_no": student_class_name,
                                 "phone_number": phone_number,
@@ -263,7 +294,7 @@ class ExcelImportService:
                             "major": detected_major,
                             "program_type": program_type,
                             "education_program": student_edu,
-                            "class_name": student_class_name or course_class.class_name,
+                            "class_name": student_class_name or assigned_course_class.class_name,
                             "plain_password": plain_password if user_created else "(Không đổi)",
                             "status": action_status
                         })
@@ -271,6 +302,21 @@ class ExcelImportService:
                 except Exception as ex:
                     errors.append(f"Sheet '{sheet_name}', Dòng {r}, MSSV {mssv}: {str(ex)}")
                     skipped_count += 1
+
+        # Delete unused placeholder sheet classes if specific classes were created with students
+        try:
+            CourseClass.objects.filter(batch=batch, students__isnull=True, class_code__in=["Sheet1", "Sheet 1", "Trang 1"]).delete()
+        except Exception:
+            pass
+
+        # Invalidate related caches immediately
+        try:
+            from django.core.cache import cache
+            cache.delete("admin_academic_batches_list")
+            cache.delete("admin_security_metrics_overview")
+            cache.delete("admin_user_summary_counts")
+        except Exception:
+            pass
 
         return {
             "success": True,
