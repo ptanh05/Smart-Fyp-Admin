@@ -93,7 +93,7 @@ if IS_TESTING:
     }
 else:
     db_url = os.environ.get('DATABASE_URL', '').strip()
-    is_placeholder = any(p in db_url for p in ['user:password', 'username:password', '<', 'placeholder', 'ep-old-pine'])
+    is_placeholder = any(p in db_url.lower() for p in ['user:password', 'username:password', '<placeholder>', '<your-', '<password>'])
     if db_url and not is_placeholder:
         DATABASES = {
             'default': env.db('DATABASE_URL')

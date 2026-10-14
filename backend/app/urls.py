@@ -44,6 +44,7 @@ from .views import (
     CloseBatchAPIView,
     ExportFinalSummaryExcelAPIView,
     SupervisorListAPIView,
+    AdminSeedDataAPIView,
 )
 
 urlpatterns = [
@@ -57,6 +58,9 @@ urlpatterns = [
     path("admin/login/", AdminLoginAPIView.as_view(), name="admin-login-direct"),
     path("token/refresh/", AdminCookieTokenRefreshAPIView.as_view(), name="admin-token-refresh"),
     path("token/logout/", AdminCookieLogoutAPIView.as_view(), name="admin-token-logout"),
+
+    # Admin Seed Data (Khôi phục & nạp dữ liệu mẫu)
+    path("admin/seed-data/", AdminSeedDataAPIView.as_view(), name="admin-seed-data"),
 
     # Admin User Management & Advanced Credentials
     path("admin/users/", AdminUserManagementAPIView.as_view(), name="admin-users-list"),
