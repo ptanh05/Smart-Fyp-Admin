@@ -118,6 +118,11 @@ export const usersApi = {
     });
     return response.data;
   },
+
+  async seedDemoData(reset: boolean = false): Promise<{ success: boolean; message: string; stats?: any }> {
+    const response = await apiClient.post<{ success: boolean; message: string; stats?: any }>('/admin/seed-data/', { reset });
+    return response.data;
+  },
 };
 
 
