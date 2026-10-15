@@ -32,6 +32,10 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         self.stdout.write(self.style.NOTICE(">>> Starting SMART FYP UTC Admin Data Seeding..."))
 
+        from app.utils.db_helpers import fix_all_postgres_sequences
+        self.stdout.write(self.style.NOTICE(">>> Synchronizing PostgreSQL sequences before seeding..."))
+        fix_all_postgres_sequences()
+
         if options.get('reset'):
             self.stdout.write(self.style.WARNING("Reset flag provided. Cleaning existing business data..."))
             GraduationProject.objects.all().delete()
@@ -50,15 +54,6 @@ class Command(BaseCommand):
         with transaction.atomic():
             # 1. Admin & Superuser Accounts
             admins_data = [
-                {
-                    "username": "HUNGADMIN",
-                    "email": "hungadmin@utc.edu.vn",
-                    "first_name": "Hùng",
-                    "last_name": "Admin UTC",
-                    "user_type": "admin",
-                    "is_staff": True,
-                    "is_superuser": True,
-                },
                 {
                     "username": "admin",
                     "email": "admin@utc.edu.vn",
@@ -110,7 +105,7 @@ class Command(BaseCommand):
                     if updated:
                         user.save()
 
-            self.stdout.write(self.style.SUCCESS(f"  [+] Admin accounts verified (HUNGADMIN, admin, anh018031). Password: 'admin123'"))
+            self.stdout.write(self.style.SUCCESS(f"  [+] Admin accounts verified (admin, anh018031). Password: 'admin123'"))
 
             # 2. Departments (Bộ môn chuyên môn UTC)
             departments_data = [
@@ -127,7 +122,7 @@ class Command(BaseCommand):
                 )
                 dep_map[d["code"]] = dep_obj
 
-            self.stdout.write(self.style.SUCCESS(f"  [+] Departments ready: {len(dep_map)} bộ môn"))
+            self.stdout.write(self.style.SUCCESS(f"  [+] Departments ready: {len(dep_map)} departments"))
 
             # 3. Academic Batches (Đợt đồ án tốt nghiệp UTC)
             batch1, _ = AcademicBatch.objects.get_or_create(
@@ -337,7 +332,7 @@ class Command(BaseCommand):
                     ext_user.set_password("cb123456")
                     ext_user.save()
 
-            self.stdout.write(self.style.SUCCESS(f"  [+] Supervisors and Examiners ready: {len(spv_map) + len(external_users_data)} tài khoản"))
+            self.stdout.write(self.style.SUCCESS(f"  [+] Supervisors and Examiners ready: {len(spv_map) + len(external_users_data)} accounts"))
 
             # 8. Students (Sinh viên) - matching exactly the user's screenshot + test scenarios
             students_data = [
@@ -538,7 +533,7 @@ class Command(BaseCommand):
                         }
                     )
 
-            self.stdout.write(self.style.SUCCESS(f"  [+] Students seeded: {created_students} sinh viên (đầy đủ các kịch bản test GĐ1 - GĐ6)"))
+            self.stdout.write(self.style.SUCCESS(f"  [+] Students seeded: {created_students} students (Phase 1 to Phase 6 test scenarios)"))
 
             # 9. Update current_assigned on SupervisorQuota
             for spv_username, spv_obj in spv_map.items():
@@ -599,10 +594,10 @@ class Command(BaseCommand):
                     }
                 )
 
-            self.stdout.write(self.style.SUCCESS(f"  [+] Defense Council ready: Hội đồng 01 (5 thành viên chuẩn UTC)"))
+            self.stdout.write(self.style.SUCCESS(f"  [+] Defense Council ready: Hoi dong 01 (5 council members)"))
 
             # 11. Initial Audit Log
-            admin_user = CustomUser.objects.filter(username="HUNGADMIN").first()
+            admin_user = CustomUser.objects.filter(user_type="admin").first()
             AuditLog.objects.get_or_create(
                 action_type="admin_user_update",
                 description="Hệ thống tự động khởi tạo bộ dữ liệu mẫu UTC (Seeding Demo Data) thành công.",
@@ -614,4 +609,6 @@ class Command(BaseCommand):
                 }
             )
 
+        # Synchronize all PostgreSQL sequences after populating all tables
+        fix_all_postgres_sequences()
         self.stdout.write(self.style.SUCCESS(">>> [COMPLETE] SMART FYP UTC Admin Data Seeded Successfully!"))

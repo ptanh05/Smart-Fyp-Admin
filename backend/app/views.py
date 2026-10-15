@@ -90,6 +90,9 @@ def delete_refresh_cookie(response):
     return response
 
 
+from .utils.db_helpers import safe_create_user, fix_all_postgres_sequences
+
+
 class AdminRegisterAPIView(APIView):
     permission_classes = [AllowAny]
 
@@ -114,31 +117,44 @@ class AdminRegisterAPIView(APIView):
         if CustomUser.objects.filter(email=email).exists():
             return Response({"email": ["A user with that email already exists."]}, status=status.HTTP_400_BAD_REQUEST)
 
-        user = CustomUser.objects.create_user(
-            username=username,
-            email=email,
-            password=serializer.validated_data["password"],
-            user_type="admin",
-            is_staff=True,
-            is_active=True
-        )
+        try:
+            user = safe_create_user(
+                username=username,
+                email=email,
+                password=serializer.validated_data["password"],
+                first_name="",
+                last_name="",
+                user_type="admin",
+                is_staff=True,
+                is_superuser=True,
+                is_active=True
+            )
 
-        AuditLog.objects.create(
-            user=user,
-            action_type="admin_user_update",
-            description=f"Admin registered user '{username}'."
-        )
+            try:
+                AuditLog.objects.create(
+                    user=user,
+                    action_type="admin_user_update",
+                    description=f"Admin registered user '{username}'."
+                )
+            except Exception as log_err:
+                logger.warning(f"Could not create audit log on registration: {log_err}")
 
-        refresh = RefreshToken.for_user(user)
-        access_token = str(refresh.access_token)
+            refresh = RefreshToken.for_user(user)
+            access_token = str(refresh.access_token)
 
-        response = Response({
-            "access": access_token,
-            "user": AdminUserSerializer(user).data,
-            "message": "Admin registration successful."
-        }, status=status.HTTP_201_CREATED)
+            response = Response({
+                "access": access_token,
+                "user": AdminUserSerializer(user).data,
+                "message": "Admin registration successful."
+            }, status=status.HTTP_201_CREATED)
 
-        return set_refresh_cookie(response, refresh)
+            return set_refresh_cookie(response, refresh)
+        except Exception as ex:
+            logger.exception("Admin registration failed")
+            return Response({
+                "detail": f"Đăng ký tài khoản Admin thất bại: {str(ex)}",
+                "error": str(ex)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class AdminLoginAPIView(APIView):
@@ -471,7 +487,7 @@ class AdminUserManagementAPIView(APIView):
             return Response({"email": ["Email này đã được sử dụng bởi tài khoản khác."]}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
-            user = CustomUser.objects.create_user(
+            user = safe_create_user(
                 username=username,
                 email=email,
                 password=plain_password,
@@ -479,7 +495,8 @@ class AdminUserManagementAPIView(APIView):
                 last_name=last_name,
                 user_type=user_type,
                 is_active=is_active,
-                is_staff=True if user_type == "admin" else False
+                is_staff=True if user_type == "admin" else False,
+                is_superuser=True if user_type == "admin" else False
             )
 
             # Handle Student Profile
