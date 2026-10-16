@@ -535,6 +535,14 @@ export const UserManagementPage: React.FC = () => {
           </button>
 
           <button
+            className={`role-tab-item ${activeTab === 'academic_staff' ? 'active' : ''}`}
+            onClick={() => handleTabSwitch('academic_staff')}
+          >
+            <span>💼</span> Giáo Vụ Khoa
+            <span className="tab-badge">{counts.academic_staff || 0}</span>
+          </button>
+
+          <button
             className={`role-tab-item ${activeTab === 'admin' ? 'active' : ''}`}
             onClick={() => handleTabSwitch('admin')}
           >
@@ -1094,6 +1102,7 @@ export const UserManagementPage: React.FC = () => {
                         { role: 'supervisor', label: '👨‍🏫 Giảng Viên' },
                         { role: 'committee_member', label: '⚖️ Hội Đồng' },
                         { role: 'external_examiner', label: '📝 Cán Bộ Ngoài' },
+                        { role: 'academic_staff', label: '💼 Giáo Vụ Khoa' },
                         { role: 'admin', label: '🛡️ Quản Trị Viên' },
                       ].map((item) => (
                         <button

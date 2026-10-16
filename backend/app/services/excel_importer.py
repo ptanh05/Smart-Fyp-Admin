@@ -615,12 +615,12 @@ class ExcelImportService:
         for r in range(1, min(10, ws.max_row + 1)):
             for c in range(1, ws.max_column + 1):
                 v = str(ws.cell(r, c).value or "").strip().lower()
-                if v in ["mssv", "mã sv", "mã sinh viên"]:
+                if v in ["mssv", "mã sv", "mã sinh viên", "mã số sinh viên", "masv"]:
                     col_mssv = c
                     header_row = r
-                elif v in ["gpa", "điểm tích lũy", "điểm tl"]:
+                elif "gpa" in v or "tích lũy" in v or "điểm tl" in v:
                     col_gpa = c
-                elif v in ["tín chỉ nợ", "tc nợ", "nợ tín chỉ"]:
+                elif "nợ" in v or "tín chỉ nợ" in v or "tc nợ" in v or "debt" in v:
                     col_credits = c
                 elif v in ["kết luận", "điều kiện", "kết quả", "trạng thái"]:
                     col_verdict = c
@@ -663,16 +663,20 @@ class ExcelImportService:
                 if col_reason and ws.cell(r, col_reason).value:
                     reason_str = str(ws.cell(r, col_reason).value).strip()
 
-                is_eligible = True
-                if "không" in verdict_str or "trượt" in verdict_str or "loại" in verdict_str or (debt_cred > 8) or (gpa < 1.9 and gpa > 0):
+                # Xét điều kiện theo quy chế UTC: Nợ < 10 tín chỉ: Đủ điều kiện; Nợ >= 10 tín chỉ: Không đủ điều kiện (chờ Khoa xét)
+                is_eligible = (debt_cred < 10)
+                if "không" in verdict_str or "trượt" in verdict_str or "loại" in verdict_str:
                     is_eligible = False
-                    if not reason_str:
-                        reason_str = f"Nợ {debt_cred} tín chỉ / GPA {gpa} không đạt chuẩn"
 
-                status_val = "ELIGIBLE" if is_eligible else "INELIGIBLE"
                 if is_eligible:
+                    status_val = "ELIGIBLE"
+                    if not reason_str:
+                        reason_str = f"Nợ {debt_cred} tín chỉ (< 10 TC) - Đủ điều kiện chuyển sang bước giao task đồ án"
                     eligible_count += 1
                 else:
+                    status_val = "INELIGIBLE"
+                    if not reason_str:
+                        reason_str = f"Nợ {debt_cred} tín chỉ (>= 10 TC theo quy định), chờ Ban Chủ nhiệm Khoa xét Force Approve hoặc Loại khỏi đợt"
                     ineligible_count += 1
 
                 proj = getattr(student, "graduation_project", None)
@@ -681,7 +685,15 @@ class ExcelImportService:
                     proj.debt_credits = debt_cred
                     proj.initial_eligibility = status_val
                     proj.ineligibility_reason = reason_str
-                    proj.save(update_fields=["gpa_score", "debt_credits", "initial_eligibility", "ineligibility_reason"])
+
+                    # Nếu nợ < 10 tín chỉ: Cho phép chuyển sang bước giao task đồ án (IN_PROGRESS)
+                    if is_eligible:
+                        proj.status = "IN_PROGRESS"
+                    else:
+                        if proj.status == "IN_PROGRESS":
+                            proj.status = "OUTLINE_APPROVED"
+
+                    proj.save(update_fields=["gpa_score", "debt_credits", "initial_eligibility", "ineligibility_reason", "status"])
 
                     updated_projects.append({
                         "student_name": student.user.get_full_name(),
@@ -689,6 +701,7 @@ class ExcelImportService:
                         "gpa": gpa,
                         "debt_credits": debt_cred,
                         "status": status_val,
+                        "project_status": proj.status,
                         "reason": reason_str
                     })
 

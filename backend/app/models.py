@@ -21,6 +21,7 @@ class CustomUser(AbstractUser):
         ("committee_member", "Committee Member"),
         ("external_examiner", "External Examiner"),
         ("admin", "Admin"),
+        ("academic_staff", "Academic Staff"),
     )
     user_type = models.CharField(max_length=50, choices=USER_TYPE_CHOICES, db_index=True)
 
@@ -40,6 +41,10 @@ class CustomUser(AbstractUser):
     @property
     def admin_supervisor_profile(self):
         return getattr(self, "supervisor_profile", None)
+
+    @property
+    def admin_academic_staff_profile(self):
+        return getattr(self, "academic_staff_profile", None)
 
 
 class Department(models.Model):
@@ -265,6 +270,25 @@ class Supervisor(models.Model):
         """Kiểm tra giảng viên có đạt học vị tối thiểu (TS trở lên) để hướng dẫn SV Kỹ sư không"""
         title = (self.academic_title or "").upper()
         return ("TS" in title or "TIẾN SĨ" in title or "PGS" in title or "GS" in title)
+
+
+class AcademicStaff(models.Model):
+    """Hồ sơ Giáo vụ Khoa CNTT UTC"""
+    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name="academic_staff_profile")
+    staff_id = models.CharField(max_length=50, unique=True)
+    phone_number = models.CharField(max_length=30, blank=True, null=True)
+    office_location = models.CharField(max_length=100, blank=True, null=True, default="Văn phòng Khoa CNTT (P.405-A9)")
+    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name="academic_staffs")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "app_academicstaff"
+        ordering = ["staff_id"]
+        verbose_name = "Giáo vụ khoa"
+        verbose_name_plural = "Danh sách Giáo vụ khoa"
+
+    def __str__(self):
+        return f"{self.user.get_full_name() or self.user.username} ({self.staff_id})"
 
 
 # ==============================================================================

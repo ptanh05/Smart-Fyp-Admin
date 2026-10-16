@@ -186,10 +186,10 @@ class AdminLoginAPIView(APIView):
         if not user.is_active:
             return Response({"detail": "Account is disabled."}, status=status.HTTP_403_FORBIDDEN)
 
-        if not (user.is_staff or user.is_superuser or user.user_type == "admin"):
-            return Response({"detail": "Forbidden: You do not have admin access privileges."}, status=status.HTTP_403_FORBIDDEN)
+        if not (user.is_staff or user.is_superuser or user.user_type in ["admin", "academic_staff"]):
+            return Response({"detail": "Forbidden: You do not have admin or academic staff access privileges."}, status=status.HTTP_403_FORBIDDEN)
 
-        if user.user_type != "admin" and (user.is_staff or user.is_superuser):
+        if user.user_type not in ["admin", "academic_staff"] and (user.is_staff or user.is_superuser):
             user.user_type = "admin"
             user.save(update_fields=["user_type"])
 
@@ -225,13 +225,14 @@ class AdminCookieTokenRefreshAPIView(APIView):
             user_id = refresh.payload.get("user_id")
             user = CustomUser.objects.filter(id=user_id).first()
 
-            if not user or not user.is_active or not (user.is_staff or user.is_superuser or user.user_type == "admin"):
+            if not user or not user.is_active or not (user.is_staff or user.is_superuser or user.user_type in ["admin", "academic_staff"]):
                 response = Response({"detail": "Invalid session or unauthorized."}, status=status.HTTP_403_FORBIDDEN)
                 return delete_refresh_cookie(response)
 
             access_token = str(refresh.access_token)
             return Response({
                 "access": access_token,
+                "user_type": user.user_type,
                 "user": AdminUserSerializer(user).data
             }, status=status.HTTP_200_OK)
         except Exception:
@@ -266,6 +267,7 @@ class AdminUserManagementAPIView(APIView):
             total_committee=Count('id', filter=Q(user_type="committee_member")),
             total_external=Count('id', filter=Q(user_type="external_examiner")),
             total_admins=Count('id', filter=Q(user_type="admin")),
+            total_academic_staff=Count('id', filter=Q(user_type="academic_staff")),
             total_active=Count('id', filter=Q(is_active=True)),
             total_deactivated=Count('id', filter=Q(is_active=False)),
         )
@@ -274,6 +276,7 @@ class AdminUserManagementAPIView(APIView):
         total_committee = user_counts["total_committee"] or 0
         total_external = user_counts["total_external"] or 0
         total_admins = user_counts["total_admins"] or 0
+        total_academic_staff = user_counts["total_academic_staff"] or 0
         total_active = user_counts["total_active"] or 0
         total_deactivated = user_counts["total_deactivated"] or 0
 
@@ -283,12 +286,14 @@ class AdminUserManagementAPIView(APIView):
         ).count()
         cntt_students_count = max(0, total_students - khmt_students_count)
 
+        all_total = total_students + total_supervisors + total_committee + total_external + total_admins + total_academic_staff
+
         if summary_only:
             summary_data = {
                 "users": [],
-                "total": total_students + total_supervisors + total_committee + total_external + total_admins,
+                "total": all_total,
                 "counts": {
-                    "total": total_students + total_supervisors + total_committee + total_external + total_admins,
+                    "total": all_total,
                     "active": total_active,
                     "deactivated": total_deactivated,
                     "students": total_students,
@@ -296,6 +301,7 @@ class AdminUserManagementAPIView(APIView):
                     "committee": total_committee,
                     "external": total_external,
                     "admins": total_admins,
+                    "academic_staff": total_academic_staff,
                     "cntt_students": cntt_students_count,
                     "khmt_students": khmt_students_count,
                 }
@@ -312,7 +318,9 @@ class AdminUserManagementAPIView(APIView):
             "student_profile__graduation_project",
             "student_profile__graduation_project__supervisor",
             "student_profile__graduation_project__supervisor__user",
-            "supervisor_profile"
+            "supervisor_profile",
+            "academic_staff_profile",
+            "academic_staff_profile__department"
         ).prefetch_related(
             "council_roles",
             "supervisor_profile__quotas"
@@ -2003,4 +2011,222 @@ class ExportFinalSummaryExcelAPIView(APIView):
             return response
         except Exception as ex:
             return Response({"detail": f"Error generating document: {str(ex)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ==============================================================================
+# PHÂN HỆ GIÁO VỤ (ACADEMIC STAFF MODULE) - TỔNG HỢP & XUẤT ĐIỂM THEO LỚP
+# ==============================================================================
+
+class AcademicStaffFinalGradesAPIView(APIView):
+    """
+    Chức năng cuối kỳ cho Giáo vụ:
+    - Nhận dữ liệu tổng hợp điểm cuối kỳ theo từng lớp hoặc toàn đợt.
+    - Trả về thống kê số lượng đạt, trượt, bảo lưu, điểm trung bình.
+    """
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def get(self, request):
+        batch_id = request.query_params.get("batch_id")
+        class_id = request.query_params.get("class_id")
+        search = (request.query_params.get("search") or "").strip().lower()
+
+        if not batch_id:
+            batch = AcademicBatch.objects.filter(is_active=True).first() or AcademicBatch.objects.first()
+            if not batch:
+                return Response({"detail": "Chưa có đợt đồ án nào trong hệ thống."}, status=status.HTTP_404_NOT_FOUND)
+            batch_id = batch.id
+        else:
+            batch = get_object_or_404(AcademicBatch, id=batch_id)
+
+        # Lấy danh sách các lớp học phần trong đợt
+        classes_qs = CourseClass.objects.filter(batch=batch).order_by("class_code")
+        classes_data = []
+        for c in classes_qs:
+            st_count = Student.objects.filter(course_class=c).count()
+            classes_data.append({
+                "id": c.id,
+                "class_code": c.class_code,
+                "class_name": c.class_name,
+                "program_type": c.program_type,
+                "program_display": c.get_program_type_display(),
+                "student_count": st_count,
+            })
+
+        # Lấy danh sách đồ án tốt nghiệp
+        projects_qs = GraduationProject.objects.filter(batch=batch).select_related(
+            "student__user",
+            "student__course_class",
+            "supervisor__user",
+            "reviewer__user",
+            "council",
+            "final_grade_summary"
+        ).order_by("student__course_class__class_code", "student__registration_no")
+
+        if class_id:
+            projects_qs = projects_qs.filter(student__course_class_id=class_id)
+
+        if search:
+            projects_qs = projects_qs.filter(
+                Q(student__registration_no__icontains=search) |
+                Q(student__user__first_name__icontains=search) |
+                Q(student__user__last_name__icontains=search) |
+                Q(topic_title_vi__icontains=search)
+            )
+
+        grades_list = []
+        passed_count = 0
+        failed_count = 0
+        deferred_count = 0
+        scores_10 = []
+
+        for p in projects_qs:
+            std = p.student
+            usr = std.user
+            summary = getattr(p, "final_grade_summary", None)
+            is_deferred = (p.deferral_status == "APPROVED")
+
+            # Auto calculate if missing
+            if not summary and (p.supervisor_score is not None or p.reviewer_score is not None):
+                summary, _ = FinalGradeSummary.objects.get_or_create(project=p)
+                summary.supervisor_score = p.supervisor_score
+                summary.reviewer_score = p.reviewer_score
+                scores = list(CouncilLiveScore.objects.filter(project=p))
+                if scores:
+                    summary.council_avg_score = round(sum(s.total_score for s in scores) / len(scores), 2)
+                summary.calculate_and_save()
+
+            if is_deferred:
+                deferred_count += 1
+                verdict = "Bảo lưu"
+            elif summary and summary.is_passed:
+                passed_count += 1
+                verdict = "Đạt"
+                if summary.final_score_10 is not None:
+                    scores_10.append(summary.final_score_10)
+            else:
+                failed_count += 1
+                verdict = "Không đạt"
+                if summary and summary.final_score_10 is not None:
+                    scores_10.append(summary.final_score_10)
+
+            c_code = std.course_class.class_code if std.course_class else ""
+            c_name = std.course_class.class_name if std.course_class else (std.department or "CNTT")
+
+            grades_list.append({
+                "project_id": p.id,
+                "student_id": std.id,
+                "registration_no": std.registration_no,
+                "student_name": usr.get_full_name() or usr.username,
+                "course_class_id": std.course_class_id,
+                "class_code": c_code,
+                "class_name": c_name,
+                "education_program": std.education_program,
+                "education_program_display": std.get_education_program_display(),
+                "topic_title_vi": p.topic_title_vi,
+                "supervisor_name": f"{p.supervisor.academic_title or ''} {p.supervisor.user.get_full_name()}".strip() if p.supervisor else "",
+                "reviewer_name": f"{p.reviewer.academic_title or ''} {p.reviewer.user.get_full_name()}".strip() if p.reviewer else "",
+                "council_name": p.council.council_name if p.council else "",
+                "supervisor_score": summary.supervisor_score if summary else p.supervisor_score,
+                "reviewer_score": summary.reviewer_score if summary else p.reviewer_score,
+                "council_avg_score": summary.council_avg_score if summary else None,
+                "final_score_10": summary.final_score_10 if (summary and not is_deferred) else None,
+                "final_score_4": summary.final_score_4 if (summary and not is_deferred) else None,
+                "final_letter_grade": summary.final_letter_grade if (summary and not is_deferred) else "",
+                "classification": summary.classification if (summary and not is_deferred) else "",
+                "is_passed": summary.is_passed if (summary and not is_deferred) else False,
+                "is_deferred": is_deferred,
+                "deferral_reason": p.deferral_reason or "",
+                "verdict": verdict,
+                "debt_credits": p.debt_credits,
+                "status": p.status,
+            })
+
+        total_st = len(grades_list)
+        avg_score = round(sum(scores_10) / len(scores_10), 2) if scores_10 else 0.0
+        pass_rate = round((passed_count / total_st) * 100, 1) if total_st > 0 else 0.0
+
+        return Response({
+            "batch": {
+                "id": batch.id,
+                "batch_code": batch.batch_code,
+                "batch_name": batch.batch_name,
+                "program_type": batch.program_type,
+                "current_stage": batch.current_stage,
+                "is_closed": batch.is_closed,
+            },
+            "classes": classes_data,
+            "selected_class_id": int(class_id) if class_id else None,
+            "grades": grades_list,
+            "stats": {
+                "total_students": total_st,
+                "passed_count": passed_count,
+                "failed_count": failed_count,
+                "deferred_count": deferred_count,
+                "pass_rate": pass_rate,
+                "average_score": avg_score,
+            }
+        }, status=status.HTTP_200_OK)
+
+
+class AcademicStaffExportClassGradesExcelAPIView(APIView):
+    """
+    Xuất danh sách điểm đồ án tốt nghiệp theo từng lớp (hoặc toàn đợt) ra file Excel.
+    """
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def get(self, request):
+        batch_id = request.query_params.get("batch_id")
+        class_id = request.query_params.get("class_id")
+
+        if not batch_id:
+            batch = AcademicBatch.objects.filter(is_active=True).first() or AcademicBatch.objects.first()
+            if not batch:
+                return Response({"detail": "batch_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+            batch_id = batch.id
+
+        try:
+            buffer = DocumentGenerationService.generate_class_grades_excel(batch_id, class_id)
+            batch = AcademicBatch.objects.get(id=batch_id)
+            c_tag = f"_Lop_{class_id}" if class_id else "_Toan_Dot"
+            filename = f"Bang_Diem_Do_An_{batch.batch_code}{c_tag}.xlsx"
+
+            response = HttpResponse(
+                buffer.getvalue(),
+                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+            response["Content-Disposition"] = f'attachment; filename="{filename}"'
+            return response
+        except Exception as ex:
+            return Response({"detail": f"Lỗi tạo file bảng điểm: {str(ex)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class AcademicStaffCompleteBatchAPIView(APIView):
+    """
+    Giáo vụ / Ban Chủ nhiệm Khoa hoàn tất và đóng đợt đồ án tốt nghiệp.
+    """
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def post(self, request):
+        batch_id = request.data.get("batch_id")
+        if not batch_id:
+            return Response({"detail": "batch_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        batch = get_object_or_404(AcademicBatch, id=batch_id)
+        batch.current_stage = "COMPLETED"
+        batch.is_closed = True
+        batch.save(update_fields=["current_stage", "is_closed"])
+
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="group_status_change",
+            description=f"Giáo vụ Khoa hoàn tất và đóng đợt đồ án {batch.batch_code}."
+        )
+
+        return Response({
+            "message": f"Đợt đồ án '{batch.batch_name}' ({batch.batch_code}) đã được Giáo vụ hoàn tất và khóa sổ thành công.",
+            "batch_id": batch.id,
+            "current_stage": "COMPLETED",
+            "is_closed": True
+        }, status=status.HTTP_200_OK)
+
 

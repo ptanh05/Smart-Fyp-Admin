@@ -39,7 +39,8 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         if (isMounted && res && res.access) {
           setAccessToken(res.access);
           setIsAuthenticated(true);
-          setUserType('admin');
+          const role = (res as any).user_type || (res as any).user?.user_type || 'admin';
+          setUserType(role as UserType);
         } else if (isMounted) {
           setAccessToken(null);
           setIsAuthenticated(false);
@@ -66,13 +67,13 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const login = async (email: string, password: string) => {
     const res = await authApi.login(email, password);
-    if (res.user_type !== 'admin') {
+    if (res.user_type !== 'admin' && res.user_type !== 'academic_staff') {
       await authApi.logout();
-      throw new Error('Truy cập bị từ chối: Tài khoản không có quyền Admin.');
+      throw new Error('Truy cập bị từ chối: Tài khoản không có quyền Quản trị hoặc Giáo vụ.');
     }
     setAccessToken(res.access);
     setIsAuthenticated(true);
-    setUserType('admin');
+    setUserType((res.user_type || 'admin') as UserType);
   };
 
   const register = async (username: string, email: string, password: string, adminSecret: string) => {

@@ -48,17 +48,17 @@ export const AdminLoginPage: React.FC = () => {
     }
   };
 
-  const handleFillDemo = (usernameToFill: string, autoSubmit = false) => {
+  const handleFillDemo = (usernameToFill: string, autoSubmit = false, customPass = 'Admin@123456') => {
     setEmail(usernameToFill);
-    setPassword('Admin@123456');
+    setPassword(customPass);
     setError(null);
-    setFilledMsg(`✓ Đã điền: ${usernameToFill} • Mật khẩu: Admin@123456`);
+    setFilledMsg(`✓ Đã điền: ${usernameToFill} • Mật khẩu: ${customPass}`);
     setTimeout(() => setFilledMsg(null), 4000);
 
     if (autoSubmit) {
       setLoading(true);
-      login(usernameToFill, 'Admin@123456')
-        .then(() => navigate('/dashboard'))
+      login(usernameToFill, customPass)
+        .then(() => navigate(usernameToFill === 'giao_vu' ? '/academic-staff' : '/dashboard'))
         .catch((err: any) => {
           const msg = err.response?.data?.detail || err.response?.data?.message || err.message || 'Đăng nhập thất bại.';
           setError(msg);
@@ -73,7 +73,7 @@ export const AdminLoginPage: React.FC = () => {
         <div className="admin-login-header">
           <span style={{ fontSize: '3rem' }}>🎓</span>
           <h1>UTC ADMIN PORTAL</h1>
-          <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Quản trị hệ thống Đồ án Tốt nghiệp</p>
+          <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Quản trị hệ thống Đồ án Tốt nghiệp & Giáo vụ Khoa CNTT</p>
         </div>
 
         {/* Quick Demo Fill Box */}
@@ -94,10 +94,20 @@ export const AdminLoginPage: React.FC = () => {
             <button
               type="button"
               className="admin-demo-chip"
-              onClick={() => handleFillDemo('admin@utc.edu.vn')}
-              title="Điền email: admin@utc.edu.vn | Mật khẩu: Admin@123456"
+              onClick={() => handleFillDemo('giao_vu', false, 'Giaovu@123456')}
+              style={{ background: '#f0fdf4', borderColor: '#86efac', color: '#166534' }}
+              title="Điền tài khoản Giáo vụ: giao_vu | Mật khẩu: Giaovu@123456"
             >
-              ✉️ Điền: <strong>admin@utc.edu.vn</strong>
+              💼 Điền: <strong>giao_vu</strong>
+            </button>
+            <button
+              type="button"
+              className="admin-demo-chip instant"
+              onClick={() => handleFillDemo('giao_vu', true, 'Giaovu@123456')}
+              style={{ background: '#16a34a' }}
+              title="Tự điền và Đăng nhập ngay lập tức với quyền Giáo vụ"
+            >
+              🚀 <strong>Giáo vụ (1-Click)</strong>
             </button>
             <button
               type="button"
@@ -105,7 +115,7 @@ export const AdminLoginPage: React.FC = () => {
               onClick={() => handleFillDemo('admin', true)}
               title="Tự điền và Đăng nhập ngay lập tức vào Admin Dashboard"
             >
-              🚀 <strong>Đăng nhập ngay (1-Click)</strong>
+              ⚡ <strong>Admin (1-Click)</strong>
             </button>
           </div>
           {filledMsg && <div className="admin-demo-success">{filledMsg}</div>}

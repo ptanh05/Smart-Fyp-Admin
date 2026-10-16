@@ -4,7 +4,7 @@ import { useAdminAuth } from '../../auth/AdminAuthContext';
 import './AdminLayout.css';
 
 export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { logout } = useAdminAuth();
+  const { logout, userType } = useAdminAuth();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -26,6 +26,9 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
         <nav className="admin-nav">
           <NavLink to="/dashboard" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
             <span>📊</span> Tổng Quan Dashboard
+          </NavLink>
+          <NavLink to="/academic-staff" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`} style={{ background: 'rgba(0, 51, 102, 0.08)', fontWeight: 700 }}>
+            <span>💼</span> Phân Hệ Giáo Vụ (Mới)
           </NavLink>
           <NavLink to="/users" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
             <span>👥</span> Quản Lý Tài Khoản
@@ -70,7 +73,7 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
         <header className="admin-header">
           <div className="admin-header-title">Hệ Thống Quản Trị Dữ Liệu Đồ Án Tốt Nghiệp UTC</div>
           <div className="admin-header-user">
-            <span>🛡️ Administrator</span>
+            <span>{userType === 'academic_staff' ? '💼 Giáo vụ Khoa CNTT' : '🛡️ Administrator'}</span>
             <button className="admin-logout-btn" onClick={handleLogout}>Đăng Xuất</button>
           </div>
         </header>

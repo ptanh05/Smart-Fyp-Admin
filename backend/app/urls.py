@@ -45,6 +45,9 @@ from .views import (
     CloseBatchAPIView,
     ExportFinalSummaryExcelAPIView,
     SupervisorListAPIView,
+    AcademicStaffFinalGradesAPIView,
+    AcademicStaffExportClassGradesExcelAPIView,
+    AcademicStaffCompleteBatchAPIView,
 )
 
 urlpatterns = [
@@ -138,4 +141,9 @@ urlpatterns = [
     path("admin/export/to-trinh-word/", ExportToTrinhWordAPIView.as_view(), name="admin-export-to-trinh-word"),
     path("admin/export/bien-ban-excel/", ExportBienBanExcelAPIView.as_view(), name="admin-export-bien-ban-excel"),
     path("admin/export/final-summary-excel/", ExportFinalSummaryExcelAPIView.as_view(), name="admin-export-final-summary-excel"),
+
+    # Phân hệ Giáo vụ (Academic Staff Module)
+    path("admin/academic-staff/final-grades/", AcademicStaffFinalGradesAPIView.as_view(), name="admin-academic-staff-final-grades"),
+    path("admin/academic-staff/export-class-grades-excel/", AcademicStaffExportClassGradesExcelAPIView.as_view(), name="admin-academic-staff-export-class-grades"),
+    path("admin/academic-staff/complete-batch/", AcademicStaffCompleteBatchAPIView.as_view(), name="admin-academic-staff-complete-batch"),
 ]

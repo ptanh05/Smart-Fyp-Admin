@@ -13,7 +13,9 @@ from app.models import (
     GraduationProject,
     FinalGradeSummary,
     CouncilLiveScore,
-    AcademicBatch
+    AcademicBatch,
+    CourseClass,
+    Student
 )
 
 class DocumentGenerationService:
@@ -439,6 +441,267 @@ class DocumentGenerationService:
                     c.fill = PatternFill(start_color="FEF3C7", end_color="FEF3C7", fill_type="solid")
                 if c_idx in [1, 2, 4, 7, 8, 9, 10]:
                     c.alignment = Alignment(horizontal="center", vertical="center")
+
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        return buffer
+
+    @staticmethod
+    def generate_class_grades_excel(batch_id, course_class_id=None):
+        """
+        Chức năng cuối kỳ cho Giáo vụ:
+        Xuất danh sách điểm đồ án tốt nghiệp chi tiết theo từng lớp (CourseClass).
+        Nếu có course_class_id: xuất file cho lớp đó.
+        Nếu không có: xuất file có nhiều sheet (mỗi sheet 1 lớp) + 1 sheet tổng hợp toàn đợt.
+        """
+        batch = AcademicBatch.objects.get(id=batch_id)
+
+        if course_class_id:
+            classes = list(CourseClass.objects.filter(id=course_class_id, batch=batch))
+        else:
+            classes = list(CourseClass.objects.filter(batch=batch).order_by("class_code"))
+
+        wb = openpyxl.Workbook()
+        # Remove default sheet
+        wb.remove(wb.active)
+
+        font_univ = Font(name="Times New Roman", size=11, bold=True)
+        font_title = Font(name="Times New Roman", size=13, bold=True)
+        font_subtitle = Font(name="Times New Roman", size=11, italic=True)
+        font_header = Font(name="Times New Roman", size=10, bold=True, color="FFFFFF")
+        font_data = Font(name="Times New Roman", size=10)
+        font_bold = Font(name="Times New Roman", size=10, bold=True)
+        fill_header = PatternFill(start_color="003366", end_color="003366", fill_type="solid")
+        fill_deferred = PatternFill(start_color="FEF3C7", end_color="FEF3C7", fill_type="solid")
+        fill_failed = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid")
+        fill_passed = PatternFill(start_color="DCFCE7", end_color="DCFCE7", fill_type="solid")
+
+        align_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        align_left = Alignment(horizontal="left", vertical="center")
+        align_right = Alignment(horizontal="right", vertical="center")
+        thin_border = Border(
+            left=Side(style="thin", color="CBD5E1"),
+            right=Side(style="thin", color="CBD5E1"),
+            top=Side(style="thin", color="CBD5E1"),
+            bottom=Side(style="thin", color="CBD5E1")
+        )
+
+        headers = [
+            ("STT", 6),
+            ("Mã SV", 13),
+            ("Họ và Tên", 22),
+            ("Hệ ĐT", 12),
+            ("Tên đề tài tốt nghiệp", 38),
+            ("GV Hướng Dẫn", 20),
+            ("GV Phản Biện", 20),
+            ("Hội Đồng", 14),
+            ("Điểm GVHD", 11),
+            ("Điểm GVPB", 11),
+            ("Điểm HĐ", 11),
+            ("Điểm Hệ 10", 11),
+            ("Điểm Hệ 4", 10),
+            ("Điểm Chữ", 10),
+            ("Xếp loại", 14),
+            ("Kết luận", 12),
+            ("Ghi chú", 22)
+        ]
+
+        def render_sheet_content(ws, title_text, subtitle_text, projects_list):
+            # Banner
+            ws.merge_cells("A1:G1")
+            c_u1 = ws["A1"]
+            c_u1.value = "TRƯỜNG ĐẠI HỌC GIAO THÔNG VẬN TẢI\nKHOA CÔNG NGHỆ THÔNG TIN"
+            c_u1.font = font_univ
+            c_u1.alignment = align_center
+
+            ws.merge_cells("H1:Q1")
+            c_u2 = ws["H1"]
+            c_u2.value = "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM\nĐộc lập - Tự do - Hạnh phúc"
+            c_u2.font = font_univ
+            c_u2.alignment = align_center
+
+            # Title
+            ws.merge_cells("A3:Q3")
+            c_t = ws["A3"]
+            c_t.value = title_text
+            c_t.font = font_title
+            c_t.alignment = align_center
+
+            ws.merge_cells("A4:Q4")
+            c_sub = ws["A4"]
+            c_sub.value = subtitle_text
+            c_sub.font = font_subtitle
+            c_sub.alignment = align_center
+
+            # Header Row
+            row_idx = 6
+            for col_idx, (hdr_text, col_w) in enumerate(headers, start=1):
+                cell = ws.cell(row=row_idx, column=col_idx, value=hdr_text)
+                cell.font = font_header
+                cell.fill = fill_header
+                cell.alignment = align_center
+                col_letter = get_column_letter(col_idx)
+                ws.column_dimensions[col_letter].width = col_w
+
+            passed_count = 0
+            failed_count = 0
+            deferred_count = 0
+            scores_10_list = []
+
+            for stt, proj in enumerate(projects_list, start=1):
+                row_idx += 1
+                std = proj.student
+                user = std.user
+                full_name = user.get_full_name() or user.username
+                sup_name = proj.supervisor.user.get_full_name() if proj.supervisor else ""
+                rev_name = proj.reviewer.user.get_full_name() if proj.reviewer else ""
+                council_name = proj.council.council_name if proj.council else ""
+
+                summary = getattr(proj, "final_grade_summary", None)
+                if not summary and (proj.supervisor_score is not None or proj.reviewer_score is not None):
+                    summary, _ = FinalGradeSummary.objects.get_or_create(project=proj)
+                    summary.supervisor_score = proj.supervisor_score
+                    summary.reviewer_score = proj.reviewer_score
+                    scores = list(CouncilLiveScore.objects.filter(project=proj))
+                    if scores:
+                        summary.council_avg_score = round(sum(s.total_score for s in scores) / len(scores), 2)
+                    summary.calculate_and_save()
+
+                is_deferred = (proj.deferral_status == "APPROVED")
+                if is_deferred:
+                    deferred_count += 1
+                    verdict = "Bảo lưu"
+                    note = f"Đơn bảo lưu: {proj.deferral_reason or 'Đã duyệt'}"
+                elif summary and summary.is_passed:
+                    passed_count += 1
+                    verdict = "Đạt"
+                    note = proj.ineligibility_reason or ""
+                    if summary.final_score_10 is not None:
+                        scores_10_list.append(summary.final_score_10)
+                else:
+                    failed_count += 1
+                    verdict = "Không đạt"
+                    note = proj.ineligibility_reason or ""
+                    if summary and summary.final_score_10 is not None:
+                        scores_10_list.append(summary.final_score_10)
+
+                row_data = [
+                    stt,
+                    std.registration_no,
+                    full_name,
+                    std.get_education_program_display(),
+                    proj.topic_title_vi,
+                    sup_name,
+                    rev_name,
+                    council_name,
+                    summary.supervisor_score if summary and summary.supervisor_score is not None else "",
+                    summary.reviewer_score if summary and summary.reviewer_score is not None else "",
+                    summary.council_avg_score if summary and summary.council_avg_score is not None else "",
+                    summary.final_score_10 if (summary and not is_deferred and summary.final_score_10 is not None) else "",
+                    summary.final_score_4 if (summary and not is_deferred and summary.final_score_4 is not None) else "",
+                    summary.final_letter_grade if (summary and not is_deferred) else "",
+                    summary.classification if (summary and not is_deferred) else "",
+                    verdict,
+                    note
+                ]
+
+                for c_idx, val in enumerate(row_data, start=1):
+                    c = ws.cell(row=row_idx, column=c_idx, value=val)
+                    c.font = font_data
+                    c.border = thin_border
+                    if is_deferred:
+                        c.fill = fill_deferred
+                    elif verdict == "Đạt":
+                        if c_idx in [12, 13, 14, 16]:
+                            c.fill = fill_passed
+                    elif verdict == "Không đạt":
+                        if c_idx in [12, 13, 14, 16]:
+                            c.fill = fill_failed
+
+                    if c_idx in [1, 2, 4, 8, 9, 10, 11, 12, 13, 14, 15, 16]:
+                        c.alignment = align_center
+                    elif c_idx in [3, 5, 6, 7, 17]:
+                        c.alignment = align_left
+
+            # Summary stats block
+            total_students = len(projects_list)
+            avg_score = round(sum(scores_10_list) / len(scores_10_list), 2) if scores_10_list else 0.0
+            pass_rate = round((passed_count / total_students) * 100, 1) if total_students > 0 else 0.0
+
+            row_idx += 2
+            ws.merge_cells(f"A{row_idx}:Q{row_idx}")
+            c_stat = ws[f"A{row_idx}"]
+            c_stat.value = (
+                f"THỐNG KÊ: Tổng số: {total_students} sinh viên | "
+                f"Đạt: {passed_count} ({pass_rate}%) | "
+                f"Không đạt: {failed_count} | "
+                f"Bảo lưu: {deferred_count} | "
+                f"Điểm TB khóa/lớp: {avg_score} / 10"
+            )
+            c_stat.font = font_bold
+            c_stat.alignment = align_left
+
+            # Signatures block
+            row_idx += 2
+            today = timezone.now()
+            ws.merge_cells(f"M{row_idx}:Q{row_idx}")
+            c_date = ws[f"M{row_idx}"]
+            c_date.value = f"Hà Nội, ngày {today.day} tháng {today.month} năm {today.year}"
+            c_date.font = font_subtitle
+            c_date.alignment = align_center
+
+            row_idx += 1
+            ws.merge_cells(f"B{row_idx}:E{row_idx}")
+            c_s1 = ws[f"B{row_idx}"]
+            c_s1.value = "NGƯỜI LẬP BẢNG\n(Giáo vụ Khoa CNTT)\n\n\n\n\n(Ký và ghi rõ họ tên)"
+            c_s1.font = font_bold
+            c_s1.alignment = align_center
+
+            ws.merge_cells(f"G{row_idx}:J{row_idx}")
+            c_s2 = ws[f"G{row_idx}"]
+            c_s2.value = "TRƯỞNG BỘ MÔN\n\n\n\n\n\n(Ký và ghi rõ họ tên)"
+            c_s2.font = font_bold
+            c_s2.alignment = align_center
+
+            ws.merge_cells(f"L{row_idx}:P{row_idx}")
+            c_s3 = ws[f"L{row_idx}"]
+            c_s3.value = "TRƯỞNG KHOA CÔNG NGHỆ THÔNG TIN\n\n\n\n\n\n(Ký và ghi rõ họ tên)"
+            c_s3.font = font_bold
+            c_s3.alignment = align_center
+
+        # If specific class or multiple classes:
+        if course_class_id and classes:
+            target_cls = classes[0]
+            ws = wb.create_sheet(title=f"Lớp {target_cls.class_code[:25]}")
+            projs = list(
+                GraduationProject.objects.filter(batch=batch, student__course_class=target_cls)
+                .select_related("student__user", "supervisor__user", "reviewer__user", "council", "final_grade_summary")
+                .order_by("student__registration_no")
+            )
+            title = f"BẢNG TỔNG HỢP ĐIỂM ĐỒ ÁN TỐT NGHIỆP - LỚP {target_cls.class_code.upper()}"
+            sub = f"Đợt: {batch.batch_name} | Lớp: {target_cls.class_name} | Chương trình: {target_cls.get_program_type_display()}"
+            render_sheet_content(ws, title, sub, projs)
+        else:
+            # Sheet 1: Tổng hợp toàn đợt
+            ws_all = wb.create_sheet(title="Toàn đợt")
+            all_projs = list(
+                GraduationProject.objects.filter(batch=batch)
+                .select_related("student__user", "supervisor__user", "reviewer__user", "council", "final_grade_summary", "student__course_class")
+                .order_by("student__course_class__class_code", "student__registration_no")
+            )
+            title_all = f"BẢNG TỔNG HỢP ĐIỂM ĐỒ ÁN TỐT NGHIỆP TOÀN ĐỢT - {batch.batch_name.upper()}"
+            sub_all = f"Học kỳ / Năm học: {batch.batch_name} ({batch.batch_code}) | Tất cả các lớp"
+            render_sheet_content(ws_all, title_all, sub_all, all_projs)
+
+            # Sheet per class
+            for c in classes:
+                clean_title = f"Lớp {c.class_code}"[:30].replace("/", "-").replace("\\", "-")
+                ws_c = wb.create_sheet(title=clean_title)
+                c_projs = [p for p in all_projs if p.student.course_class_id == c.id]
+                title_c = f"BẢNG TỔNG HỢP ĐIỂM ĐỒ ÁN TỐT NGHIỆP - LỚP {c.class_code.upper()}"
+                sub_c = f"Đợt: {batch.batch_name} | Lớp học phần: {c.class_name} | Hệ: {c.get_program_type_display()}"
+                render_sheet_content(ws_c, title_c, sub_c, c_projs)
 
         buffer = io.BytesIO()
         wb.save(buffer)

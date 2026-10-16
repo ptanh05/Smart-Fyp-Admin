@@ -17,7 +17,8 @@ from .models import (
     FinalGradeSummary,
     EvaluationPolicy,
     OutlineReviewGroup,
-    OutlineReview
+    OutlineReview,
+    AcademicStaff
 )
 
 class DepartmentSerializer(serializers.ModelSerializer):
@@ -148,10 +149,29 @@ class CouncilRoleDetailSerializer(serializers.ModelSerializer):
         fields = ["id", "council", "council_name", "council_number", "role", "external_institution"]
 
 
+class AcademicStaffDetailSerializer(serializers.ModelSerializer):
+    department_name = serializers.CharField(source="department.name", read_only=True)
+    department_code = serializers.CharField(source="department.code", read_only=True)
+
+    class Meta:
+        model = AcademicStaff
+        fields = [
+            "id",
+            "staff_id",
+            "phone_number",
+            "office_location",
+            "department",
+            "department_name",
+            "department_code",
+            "created_at",
+        ]
+
+
 class AdminUserSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
     student_profile = serializers.SerializerMethodField()
     supervisor_profile = serializers.SerializerMethodField()
+    academic_staff_profile = serializers.SerializerMethodField()
     council_roles = serializers.SerializerMethodField()
 
     class Meta:
@@ -170,6 +190,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "date_joined",
             "student_profile",
             "supervisor_profile",
+            "academic_staff_profile",
             "council_roles",
         ]
 
@@ -192,6 +213,15 @@ class AdminUserSerializer(serializers.ModelSerializer):
             spv = getattr(obj, "admin_supervisor_profile", None)
             if spv:
                 return SupervisorDetailSerializer(spv).data
+        except Exception:
+            return None
+        return None
+
+    def get_academic_staff_profile(self, obj):
+        try:
+            asp = getattr(obj, "admin_academic_staff_profile", None)
+            if asp:
+                return AcademicStaffDetailSerializer(asp).data
         except Exception:
             return None
         return None
