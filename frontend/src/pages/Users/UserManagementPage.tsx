@@ -96,6 +96,7 @@ export const UserManagementPage: React.FC = () => {
   const [resetCustomPassword, setResetCustomPassword] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
   const [resetSuccessInfo, setResetSuccessInfo] = useState<{ username: string; password: string } | null>(null);
+  const [seedLoading, setSeedLoading] = useState(false);
 
   // Vietnamese Collation Sort State
   const [nameSortOrder, setNameSortOrder] = useState<'none' | 'asc' | 'desc'>('none');
@@ -455,6 +456,32 @@ export const UserManagementPage: React.FC = () => {
     }
   };
 
+  // Seed Demo Data UTC
+  const handleSeedDemoData = async () => {
+    const confirm = window.confirm(
+      'Hệ thống sẽ nạp/cập nhật bộ dữ liệu mẫu UTC đầy đủ gồm:\n' +
+      '• Tài khoản Admin (HUNGADMIN, admin)\n' +
+      '• 5 Giảng viên hướng dẫn & Quota các bộ môn (CNPM, KHMT, HTTT, MMT)\n' +
+      '• 8 Sinh viên K62 đầy đủ các trạng thái để test các giai đoạn (GĐ1 - GĐ6)\n' +
+      '• 2 Đợt đồ án (Cử nhân & Kỹ sư) & Lớp học phần\n' +
+      '• Hội đồng bảo vệ chuẩn UTC (5 thành viên)\n\n' +
+      'Bạn có muốn tiếp tục?'
+    );
+    if (!confirm) return;
+
+    setSeedLoading(true);
+    try {
+      const res = await usersApi.seedDemoData();
+      alert(res.message || 'Nạp dữ liệu mẫu UTC thành công!');
+      fetchUsers();
+    } catch (err: any) {
+      const msg = err.response?.data?.error || err.message || 'Lỗi khi nạp dữ liệu mẫu.';
+      alert('Không thể nạp dữ liệu mẫu: ' + msg);
+    } finally {
+      setSeedLoading(false);
+    }
+  };
+
   return (
     <AdminLayout>
       <div className="utc-admin-portal">
@@ -496,6 +523,15 @@ export const UserManagementPage: React.FC = () => {
 
             <button className="btn-action-outline" onClick={handleExportUsers} title="Xuất dữ liệu hiện tại ra file Excel">
               <span>📤</span> Xuất Excel
+            </button>
+
+            <button
+              className="btn-action-seed"
+              onClick={handleSeedDemoData}
+              disabled={seedLoading}
+              title="Khôi phục hoặc nạp nhanh bộ dữ liệu mẫu UTC đầy đủ các giai đoạn (GĐ1 - GĐ6)"
+            >
+              <span>⚡</span> {seedLoading ? 'Đang nạp...' : 'Nạp Dữ Liệu Mẫu'}
             </button>
           </div>
         </div>
@@ -814,7 +850,30 @@ export const UserManagementPage: React.FC = () => {
                   </button>
                 </div>
               ) : (
-                <small>Bạn có thể nhấn nút "Tạo Tài Khoản Mới" hoặc "Import Excel Hàng Loạt" để thêm tài khoản vào hệ thống.</small>
+                <div style={{ marginTop: '0.75rem' }}>
+                  <small style={{ display: 'block', marginBottom: '0.75rem', color: '#64748b' }}>
+                    Hiện chưa có dữ liệu trong mục này. Bạn có thể nhấn nút "Tạo Tài Khoản Mới", "Import Excel Hàng Loạt" hoặc nhấn nút dưới đây để nạp nhanh bộ dữ liệu mẫu test:
+                  </small>
+                  <button
+                    onClick={handleSeedDemoData}
+                    disabled={seedLoading}
+                    style={{
+                      background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                      color: '#ffffff',
+                      border: 'none',
+                      padding: '0.65rem 1.4rem',
+                      borderRadius: '8px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      boxShadow: '0 4px 12px rgba(2, 132, 199, 0.25)'
+                    }}
+                  >
+                    <span>⚡</span> {seedLoading ? 'Đang nạp dữ liệu...' : 'Nạp Dữ Liệu Mẫu UTC Ngay'}
+                  </button>
+                </div>
               )}
             </div>
           ) : (

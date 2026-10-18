@@ -12,6 +12,9 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
     navigate('/login');
   };
 
+  const displayName = currentUser?.full_name || currentUser?.username || 'Administrator';
+  const displayUsername = currentUser?.username ? `@${currentUser.username}` : '';
+
   return (
     <div className="admin-layout-wrapper">
       <aside className="admin-sidebar">

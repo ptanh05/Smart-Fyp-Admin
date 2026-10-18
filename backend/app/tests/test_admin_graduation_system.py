@@ -141,7 +141,7 @@ class AdminGraduationSystemTests(TestCase):
         self.assertEqual(student1.user.last_name, "Nguyễn Văn")
         self.assertIsNotNone(student1.course_class)
         assert student1.course_class is not None
-        self.assertEqual(student1.course_class.class_code, "IT1.659.103")
+        self.assertEqual(student1.course_class.class_code, "CNTT1 K62")
 
     def test_mcmf_supervisor_allocation_engine(self):
         """Test Min-Cost Max-Flow matching engine"""

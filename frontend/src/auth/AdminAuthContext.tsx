@@ -1,13 +1,14 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authApi } from '../api/auth';
 import { setAccessToken } from '../api/client';
-import type { UserType } from '../types';
+import type { UserType, AdminUser } from '../types';
 
 interface AdminAuthContextType {
   isAuthenticated: boolean;
+  currentUser: AdminUser | null;
   userType: UserType | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (identifier: string, password: string) => Promise<void>;
   register: (username: string, email: string, password: string, adminSecret: string) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -24,6 +25,14 @@ export const useAdminAuth = () => {
 
 export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [currentUser, setCurrentUser] = useState<AdminUser | null>(() => {
+    try {
+      const saved = localStorage.getItem('admin_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
   const [userType, setUserType] = useState<UserType | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -32,7 +41,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const initAuth = async () => {
       try {
         const refreshPromise = authApi.refreshToken();
-        const timeoutPromise = new Promise<{ access: string }>((_, reject) =>
+        const timeoutPromise = new Promise<{ access: string; user?: AdminUser }>((_, reject) =>
           setTimeout(() => reject(new Error('Auth init timeout')), 8000)
         );
         const res = await Promise.race([refreshPromise, timeoutPromise]);
@@ -45,12 +54,16 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           setAccessToken(null);
           setIsAuthenticated(false);
           setUserType(null);
+          setCurrentUser(null);
+          localStorage.removeItem('admin_user');
         }
       } catch (err) {
         if (isMounted) {
           setAccessToken(null);
           setIsAuthenticated(false);
           setUserType(null);
+          setCurrentUser(null);
+          localStorage.removeItem('admin_user');
         }
       } finally {
         if (isMounted) {
@@ -90,10 +103,12 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setAccessToken(null);
     setIsAuthenticated(false);
     setUserType(null);
+    setCurrentUser(null);
+    localStorage.removeItem('admin_user');
   };
 
   return (
-    <AdminAuthContext.Provider value={{ isAuthenticated, userType, loading, login, register, logout }}>
+    <AdminAuthContext.Provider value={{ isAuthenticated, currentUser, userType, loading, login, register, logout }}>
       {children}
     </AdminAuthContext.Provider>
   );

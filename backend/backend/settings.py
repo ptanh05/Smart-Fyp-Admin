@@ -93,7 +93,7 @@ if IS_TESTING:
     }
 else:
     db_url = os.environ.get('DATABASE_URL', '').strip()
-    is_placeholder = any(p in db_url for p in ['user:password', 'username:password', '<', 'placeholder', 'ep-old-pine'])
+    is_placeholder = any(p in db_url.lower() for p in ['user:password', 'username:password', '<placeholder>', '<your-', '<password>'])
     if db_url and not is_placeholder:
         DATABASES = {
             'default': env.db('DATABASE_URL')
@@ -130,15 +130,14 @@ CSRF_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_SAMESITE = 'Lax'
 
-# Optimize password hashing speed for local development
-if DEBUG:
-    PASSWORD_HASHERS = [
-        'django.contrib.auth.hashers.MD5PasswordHasher',
-        'django.contrib.auth.hashers.PBKDF2PasswordHasher',
-        'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
-        'django.contrib.auth.hashers.Argon2PasswordHasher',
-        'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
-    ]
+# Standardized, robust password hashing: PBKDF2 default with MD5 backward compatibility
+PASSWORD_HASHERS = [
+    'django.contrib.auth.hashers.PBKDF2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
+    'django.contrib.auth.hashers.Argon2PasswordHasher',
+    'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
+    'django.contrib.auth.hashers.MD5PasswordHasher',
+]
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator', 'OPTIONS': {'min_length': 8}},

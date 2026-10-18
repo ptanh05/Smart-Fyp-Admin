@@ -110,6 +110,37 @@ export const BatchesPage: React.FC = () => {
   const [supMultiplier, setSupMultiplier] = useState(1.0);
   const [supInterest, setSupInterest] = useState('');
 
+  // View Students in Batch Modal
+  const [showStudentsModal, setShowStudentsModal] = useState(false);
+  const [studentsModalBatch, setStudentsModalBatch] = useState<AcademicBatch | null>(null);
+  const [studentsList, setStudentsList] = useState<any[]>([]);
+  const [studentsLoading, setStudentsLoading] = useState(false);
+  const [studentsSearch, setStudentsSearch] = useState('');
+  const [studentsFilterClass, setStudentsFilterClass] = useState<string>('ALL');
+
+  const handleOpenStudentsModal = async (batch: AcademicBatch, filterClass: string = 'ALL') => {
+    setStudentsModalBatch(batch);
+    setStudentsFilterClass(filterClass);
+    setStudentsSearch('');
+    setShowStudentsModal(true);
+    setStudentsLoading(true);
+    try {
+      const res = await apiClient.get('/admin/users/', {
+        params: {
+          user_type: 'student',
+          batch_id: batch.id,
+        },
+      });
+      const list = Array.isArray(res.data) ? res.data : (res.data?.users || res.data?.results || []);
+      setStudentsList(list);
+    } catch (err) {
+      console.error('Lỗi tải danh sách sinh viên đợt:', err);
+      setStudentsList([]);
+    } finally {
+      setStudentsLoading(false);
+    }
+  };
+
   const fetchBatches = async () => {
     try {
       setLoading(true);
@@ -924,11 +955,26 @@ export const BatchesPage: React.FC = () => {
                 </div>
 
                 {importResult && (
-                  <div className="utc-alert-box">
-                    <strong>Kết quả import:</strong>
-                    <div>Tổng sinh viên: {importResult.total}</div>
-                    <div style={{ color: '#059669' }}>Tạo mới thành công: {importResult.created}</div>
-                    <div style={{ color: '#2563eb' }}>Cập nhật: {importResult.updated}</div>
+                  <div className="utc-alert-box" style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '1rem', borderRadius: 8, margin: '1rem 0' }}>
+                    <strong style={{ color: '#065f46' }}>✅ Kết quả import Excel:</strong>
+                    <div style={{ marginTop: '0.25rem' }}>Tổng số dòng dữ liệu: <strong>{importResult.total}</strong></div>
+                    <div style={{ color: '#059669' }}>Tạo mới thành công: <strong>{importResult.created}</strong> sinh viên</div>
+                    <div style={{ color: '#2563eb' }}>Cập nhật: <strong>{importResult.updated}</strong> sinh viên</div>
+                    {importResult.skipped > 0 && <div style={{ color: '#d97706' }}>Bỏ qua: <strong>{importResult.skipped}</strong></div>}
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <button
+                        type="button"
+                        className="utc-btn-primary"
+                        style={{ fontSize: '0.82rem', padding: '0.4rem 0.8rem' }}
+                        onClick={() => {
+                          setShowImportModal(false);
+                          const b = batches.find((x) => x.id === selectedBatchId);
+                          if (b) handleOpenStudentsModal(b);
+                        }}
+                      >
+                        👥 Xem danh sách sinh viên đợt
+                      </button>
+                    </div>
                   </div>
                 )}
 

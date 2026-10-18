@@ -88,6 +88,19 @@
   gap: 1rem;
 }
 
+.admin-user-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  color: #0369a1;
+  padding: 0.35rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
 .admin-logout-btn {
   background: #ef4444;
   color: #ffffff;

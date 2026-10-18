@@ -22,7 +22,7 @@ const EyeOffIcon = () => (
 export const AdminLoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { login } = useAdminAuth();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +34,7 @@ export const AdminLoginPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      await login(email, password);
+      await login(identifier.trim(), password);
       navigate('/dashboard');
     } catch (err: any) {
       const msg =
