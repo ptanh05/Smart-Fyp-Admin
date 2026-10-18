@@ -1,4 +1,4 @@
-export type UserType = 'student' | 'supervisor' | 'committee_member' | 'external_examiner' | 'admin';
+export type UserType = 'student' | 'supervisor' | 'committee_member' | 'external_examiner' | 'admin' | 'academic_staff';
 export type MajorType = 'CNTT' | 'KHMT';
 export type ProgramType = 'VIET_ANH' | 'DAI_TRA' | 'KHMT' | 'KHOA_CU';
 export type PasswordStrategy = 'MSSV' | 'FIXED' | 'RANDOM' | 'CUSTOM';
@@ -39,6 +39,17 @@ export interface SupervisorProfileDetail {
   };
 }
 
+export interface AcademicStaffProfileDetail {
+  id: number;
+  staff_id: string;
+  phone_number: string | null;
+  office_location: string | null;
+  department: number | null;
+  department_name?: string | null;
+  department_code?: string | null;
+  created_at?: string;
+}
+
 export interface CouncilRoleDetail {
   id: number;
   council: number;
@@ -62,6 +73,7 @@ export interface AdminUser {
   date_joined?: string;
   student_profile?: StudentProfileDetail | null;
   supervisor_profile?: SupervisorProfileDetail | null;
+  academic_staff_profile?: AcademicStaffProfileDetail | null;
   council_roles?: CouncilRoleDetail[];
 }
 
@@ -74,6 +86,7 @@ export interface UserCounts {
   committee: number;
   external: number;
   admins: number;
+  academic_staff?: number;
   cntt_students: number;
   khmt_students: number;
 }

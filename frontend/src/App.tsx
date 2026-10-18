@@ -19,6 +19,7 @@ const UserManagementPage = lazy(() => import('./pages/Users/UserManagementPage')
 const SupervisorsPage = lazy(() => import('./pages/Supervisors/SupervisorsPage').then(m => ({ default: m.SupervisorsPage })));
 const SecurityCenterPage = lazy(() => import('./pages/Security/SecurityCenterPage').then(m => ({ default: m.SecurityCenterPage })));
 const AuditLogsPage = lazy(() => import('./pages/AuditLogs/AuditLogsPage').then(m => ({ default: m.AuditLogsPage })));
+const AcademicStaffPage = lazy(() => import('./pages/AcademicStaff/AcademicStaffPage').then(m => ({ default: m.AcademicStaffPage })));
 
 const AdminLoadingFallback: React.FC = () => (
   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: '12px' }}>
@@ -159,6 +160,24 @@ export const App: React.FC = () => {
               element={
                 <ProtectedAdminRoute>
                   <AuditLogsPage />
+                </ProtectedAdminRoute>
+              }
+            />
+
+            <Route
+              path="/academic-staff"
+              element={
+                <ProtectedAdminRoute>
+                  <AcademicStaffPage />
+                </ProtectedAdminRoute>
+              }
+            />
+
+            <Route
+              path="/giao-vu"
+              element={
+                <ProtectedAdminRoute>
+                  <AcademicStaffPage />
                 </ProtectedAdminRoute>
               }
             />

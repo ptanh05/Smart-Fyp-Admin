@@ -203,10 +203,10 @@ class AdminLoginAPIView(APIView):
         if not user.is_active:
             return Response({"detail": "Account is disabled."}, status=status.HTTP_403_FORBIDDEN)
 
-        if not (user.is_staff or user.is_superuser or user.user_type == "admin"):
-            return Response({"detail": "Forbidden: You do not have admin access privileges."}, status=status.HTTP_403_FORBIDDEN)
+        if not (user.is_staff or user.is_superuser or user.user_type in ["admin", "academic_staff"]):
+            return Response({"detail": "Forbidden: You do not have admin or academic staff access privileges."}, status=status.HTTP_403_FORBIDDEN)
 
-        if user.user_type != "admin" and (user.is_staff or user.is_superuser):
+        if user.user_type not in ["admin", "academic_staff"] and (user.is_staff or user.is_superuser):
             user.user_type = "admin"
             user.save(update_fields=["user_type"])
 
@@ -242,13 +242,14 @@ class AdminCookieTokenRefreshAPIView(APIView):
             user_id = refresh.payload.get("user_id")
             user = CustomUser.objects.filter(id=user_id).first()
 
-            if not user or not user.is_active or not (user.is_staff or user.is_superuser or user.user_type == "admin"):
+            if not user or not user.is_active or not (user.is_staff or user.is_superuser or user.user_type in ["admin", "academic_staff"]):
                 response = Response({"detail": "Invalid session or unauthorized."}, status=status.HTTP_403_FORBIDDEN)
                 return delete_refresh_cookie(response)
 
             access_token = str(refresh.access_token)
             return Response({
                 "access": access_token,
+                "user_type": user.user_type,
                 "user": AdminUserSerializer(user).data
             }, status=status.HTTP_200_OK)
         except Exception:
@@ -283,6 +284,7 @@ class AdminUserManagementAPIView(APIView):
             total_committee=Count('id', filter=Q(user_type="committee_member")),
             total_external=Count('id', filter=Q(user_type="external_examiner")),
             total_admins=Count('id', filter=Q(user_type="admin")),
+            total_academic_staff=Count('id', filter=Q(user_type="academic_staff")),
             total_active=Count('id', filter=Q(is_active=True)),
             total_deactivated=Count('id', filter=Q(is_active=False)),
         )
@@ -291,6 +293,7 @@ class AdminUserManagementAPIView(APIView):
         total_committee = user_counts["total_committee"] or 0
         total_external = user_counts["total_external"] or 0
         total_admins = user_counts["total_admins"] or 0
+        total_academic_staff = user_counts["total_academic_staff"] or 0
         total_active = user_counts["total_active"] or 0
         total_deactivated = user_counts["total_deactivated"] or 0
 
@@ -300,12 +303,14 @@ class AdminUserManagementAPIView(APIView):
         ).count()
         cntt_students_count = max(0, total_students - khmt_students_count)
 
+        all_total = total_students + total_supervisors + total_committee + total_external + total_admins + total_academic_staff
+
         if summary_only:
             summary_data = {
                 "users": [],
-                "total": total_students + total_supervisors + total_committee + total_external + total_admins,
+                "total": all_total,
                 "counts": {
-                    "total": total_students + total_supervisors + total_committee + total_external + total_admins,
+                    "total": all_total,
                     "active": total_active,
                     "deactivated": total_deactivated,
                     "students": total_students,
@@ -313,6 +318,7 @@ class AdminUserManagementAPIView(APIView):
                     "committee": total_committee,
                     "external": total_external,
                     "admins": total_admins,
+                    "academic_staff": total_academic_staff,
                     "cntt_students": cntt_students_count,
                     "khmt_students": khmt_students_count,
                 }
@@ -323,16 +329,18 @@ class AdminUserManagementAPIView(APIView):
             return res
 
         users = CustomUser.objects.all().select_related(
-            "admin_student_profile",
-            "admin_student_profile__course_class",
-            "admin_student_profile__academic_batch",
-            "admin_student_profile__graduation_project",
-            "admin_student_profile__graduation_project__supervisor",
-            "admin_student_profile__graduation_project__supervisor__user",
-            "admin_supervisor_profile"
+            "student_profile",
+            "student_profile__course_class",
+            "student_profile__academic_batch",
+            "student_profile__graduation_project",
+            "student_profile__graduation_project__supervisor",
+            "student_profile__graduation_project__supervisor__user",
+            "supervisor_profile",
+            "academic_staff_profile",
+            "academic_staff_profile__department"
         ).prefetch_related(
             "council_roles",
-            "admin_supervisor_profile__quotas"
+            "supervisor_profile__quotas"
         ).order_by("-id")
 
         # Filters
@@ -352,40 +360,40 @@ class AdminUserManagementAPIView(APIView):
         if major:
             if major.upper() == "KHMT":
                 users = users.filter(
-                    Q(admin_student_profile__course_class__program_type="KHMT") |
-                    Q(admin_student_profile__department__icontains="Khoa học máy tính") |
-                    Q(admin_student_profile__department__icontains="KHMT")
+                    Q(student_profile__course_class__program_type="KHMT") |
+                    Q(student_profile__department__icontains="Khoa học máy tính") |
+                    Q(student_profile__department__icontains="KHMT")
                 )
             elif major.upper() == "CNTT":
                 users = users.exclude(
-                    Q(admin_student_profile__course_class__program_type="KHMT") |
-                    Q(admin_student_profile__department__icontains="Khoa học máy tính") |
-                    Q(admin_student_profile__department__icontains="KHMT")
+                    Q(student_profile__course_class__program_type="KHMT") |
+                    Q(student_profile__department__icontains="Khoa học máy tính") |
+                    Q(student_profile__department__icontains="KHMT")
                 )
 
         if program_type:
-            users = users.filter(admin_student_profile__course_class__program_type=program_type)
+            users = users.filter(student_profile__course_class__program_type=program_type)
 
         if class_id:
-            users = users.filter(admin_student_profile__course_class_id=class_id)
+            users = users.filter(student_profile__course_class_id=class_id)
 
         if batch_id:
             users = users.filter(
-                Q(admin_student_profile__academic_batch_id=batch_id) |
-                Q(admin_supervisor_profile__quotas__batch_id=batch_id)
+                Q(student_profile__academic_batch_id=batch_id) |
+                Q(supervisor_profile__quotas__batch_id=batch_id)
             ).distinct()
 
         if supervisor_id:
             if supervisor_id == "unassigned":
-                users = users.filter(admin_student_profile__graduation_project__supervisor__isnull=True)
+                users = users.filter(student_profile__graduation_project__supervisor__isnull=True)
             else:
-                users = users.filter(admin_student_profile__graduation_project__supervisor_id=supervisor_id)
+                users = users.filter(student_profile__graduation_project__supervisor_id=supervisor_id)
 
         if has_supervisor is not None and has_supervisor != "":
             if str(has_supervisor).lower() in ["true", "1"]:
-                users = users.filter(admin_student_profile__graduation_project__supervisor__isnull=False)
+                users = users.filter(student_profile__graduation_project__supervisor__isnull=False)
             elif str(has_supervisor).lower() in ["false", "0"]:
-                users = users.filter(admin_student_profile__graduation_project__supervisor__isnull=True)
+                users = users.filter(student_profile__graduation_project__supervisor__isnull=True)
 
         if is_active is not None and is_active != "":
             if str(is_active).lower() in ["true", "1"]:
@@ -399,12 +407,12 @@ class AdminUserManagementAPIView(APIView):
                 Q(email__icontains=search) |
                 Q(first_name__icontains=search) |
                 Q(last_name__icontains=search) |
-                Q(admin_student_profile__registration_no__icontains=search) |
-                Q(admin_student_profile__department__icontains=search) |
-                Q(admin_student_profile__phone_number__icontains=search) |
-                Q(admin_supervisor_profile__supervisor_id__icontains=search) |
-                Q(admin_supervisor_profile__department_name__icontains=search) |
-                Q(admin_supervisor_profile__academic_title__icontains=search) |
+                Q(student_profile__registration_no__icontains=search) |
+                Q(student_profile__department__icontains=search) |
+                Q(student_profile__phone_number__icontains=search) |
+                Q(supervisor_profile__supervisor_id__icontains=search) |
+                Q(supervisor_profile__department_name__icontains=search) |
+                Q(supervisor_profile__academic_title__icontains=search) |
                 Q(council_roles__external_institution__icontains=search) |
                 Q(council_roles__council__council_name__icontains=search)
             ).distinct()
@@ -519,10 +527,20 @@ class AdminUserManagementAPIView(APIView):
                 else:
                     batch = AcademicBatch.objects.filter(is_active=True).first()
 
-                Student.objects.create(
+                edu_prog = data.get("education_program")
+                if not edu_prog:
+                    if course_class and course_class.education_program:
+                        edu_prog = course_class.education_program
+                    elif batch and batch.program_type in ["BACHELOR", "ENGINEER"]:
+                        edu_prog = batch.program_type
+                    else:
+                        edu_prog = "BACHELOR"
+
+                student = Student.objects.create(
                     user=user,
                     registration_no=reg_no,
                     department=class_name or (course_class.class_name if course_class else ""),
+                    education_program=edu_prog,
                     course_class=course_class,
                     academic_batch=batch,
                     batch_no=class_name,
@@ -601,8 +619,8 @@ class AdminUserManagementAPIView(APIView):
         user.save()
 
         # Update associated Student profile if any
-        if hasattr(user, "admin_student_profile"):
-            std = user.admin_student_profile
+        std = getattr(user, "student_profile", None)
+        if std:
             phone_number = request.data.get("phone_number")
             class_name = request.data.get("class_name")
             course_class_id = request.data.get("course_class_id")
@@ -620,8 +638,8 @@ class AdminUserManagementAPIView(APIView):
             std.save()
 
         # Update associated Supervisor profile if any
-        if hasattr(user, "admin_supervisor_profile"):
-            spv = user.admin_supervisor_profile
+        spv = getattr(user, "supervisor_profile", None)
+        if spv:
             academic_title = request.data.get("academic_title")
             department_name = request.data.get("department_name")
             phone_number = request.data.get("phone_number")
@@ -729,13 +747,13 @@ class AdminExportUsersExcelAPIView(APIView):
 
     def get(self, request):
         users = CustomUser.objects.all().select_related(
-            "admin_student_profile",
-            "admin_student_profile__course_class",
-            "admin_student_profile__academic_batch",
-            "admin_student_profile__graduation_project",
-            "admin_student_profile__graduation_project__supervisor",
-            "admin_student_profile__graduation_project__supervisor__user",
-            "admin_supervisor_profile"
+            "student_profile",
+            "student_profile__course_class",
+            "student_profile__academic_batch",
+            "student_profile__graduation_project",
+            "student_profile__graduation_project__supervisor",
+            "student_profile__graduation_project__supervisor__user",
+            "supervisor_profile"
         ).order_by("-id")
 
         user_type = request.query_params.get("user_type") or request.query_params.get("role")
@@ -751,39 +769,39 @@ class AdminExportUsersExcelAPIView(APIView):
         if major:
             if major.upper() == "KHMT":
                 users = users.filter(
-                    Q(admin_student_profile__course_class__program_type="KHMT") |
-                    Q(admin_student_profile__department__icontains="Khoa học máy tính") |
-                    Q(admin_student_profile__department__icontains="KHMT")
+                    Q(student_profile__course_class__program_type="KHMT") |
+                    Q(student_profile__department__icontains="Khoa học máy tính") |
+                    Q(student_profile__department__icontains="KHMT")
                 )
             elif major.upper() == "CNTT":
                 users = users.exclude(
-                    Q(admin_student_profile__course_class__program_type="KHMT") |
-                    Q(admin_student_profile__department__icontains="Khoa học máy tính") |
-                    Q(admin_student_profile__department__icontains="KHMT")
+                    Q(student_profile__course_class__program_type="KHMT") |
+                    Q(student_profile__department__icontains="Khoa học máy tính") |
+                    Q(student_profile__department__icontains="KHMT")
                 )
         if program_type:
-            users = users.filter(admin_student_profile__course_class__program_type=program_type)
+            users = users.filter(student_profile__course_class__program_type=program_type)
         if class_id:
-            users = users.filter(admin_student_profile__course_class_id=class_id)
+            users = users.filter(student_profile__course_class_id=class_id)
         if batch_id:
             users = users.filter(
-                Q(admin_student_profile__academic_batch_id=batch_id) |
-                Q(admin_supervisor_profile__quotas__batch_id=batch_id)
+                Q(student_profile__academic_batch_id=batch_id) |
+                Q(supervisor_profile__quotas__batch_id=batch_id)
             ).distinct()
         if supervisor_id:
             if supervisor_id == "unassigned":
-                users = users.filter(admin_student_profile__graduation_project__supervisor__isnull=True)
+                users = users.filter(student_profile__graduation_project__supervisor__isnull=True)
             else:
-                users = users.filter(admin_student_profile__graduation_project__supervisor_id=supervisor_id)
+                users = users.filter(student_profile__graduation_project__supervisor_id=supervisor_id)
         if search:
             users = users.filter(
                 Q(username__icontains=search) |
                 Q(email__icontains=search) |
                 Q(first_name__icontains=search) |
                 Q(last_name__icontains=search) |
-                Q(admin_student_profile__registration_no__icontains=search) |
-                Q(admin_student_profile__department__icontains=search) |
-                Q(admin_supervisor_profile__supervisor_id__icontains=search)
+                Q(student_profile__registration_no__icontains=search) |
+                Q(student_profile__department__icontains=search) |
+                Q(supervisor_profile__supervisor_id__icontains=search)
             ).distinct()
 
         buffer = ExcelImportService.export_users_to_excel(users, role=user_type or "all")
@@ -1020,6 +1038,33 @@ class ExcelStudentImportAPIView(APIView):
         return Response(res, status=status.HTTP_200_OK if res.get("success") else status.HTTP_400_BAD_REQUEST)
 
 
+class ExcelStudentExportAPIView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def get(self, request):
+        batch_id = request.query_params.get("batch_id")
+        if batch_id:
+            try:
+                batch = AcademicBatch.objects.get(id=batch_id)
+            except AcademicBatch.DoesNotExist:
+                batch = AcademicBatch.objects.filter(is_active=True).first()
+        else:
+            batch = AcademicBatch.objects.filter(is_active=True).first() or AcademicBatch.objects.order_by("-id").first()
+
+        if not batch:
+            return Response({"detail": "Chưa có đợt đồ án nào để xuất danh sách sinh viên."}, status=status.HTTP_404_NOT_FOUND)
+
+        buffer = ExcelImportService.export_students_import_format(batch.id)
+        filename = f"Danh_Sach_Sinh_Vien_Dot_{batch.batch_code}.xlsx"
+
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+
 # ==============================================================================
 # SUPERVISOR QUOTA & ALLOCATION VIEWS
 # ==============================================================================
@@ -1029,6 +1074,27 @@ class SupervisorQuotaListUpdateAPIView(APIView):
 
     def get(self, request):
         batch_id = request.query_params.get("batch_id")
+        if batch_id:
+            batch = AcademicBatch.objects.filter(id=batch_id).first()
+            if batch and not SupervisorQuota.objects.filter(batch=batch).exists():
+                active_supervisors = Supervisor.objects.filter(user__is_active=True).select_related('user')
+                for sup in active_supervisors:
+                    mult = sup.academic_rank_multiplier or 1.0
+                    base_quota = 5
+                    max_q = int(round(base_quota * mult))
+                    SupervisorQuota.objects.get_or_create(
+                        supervisor=sup,
+                        batch=batch,
+                        defaults={
+                            "department": sup.department_name or "",
+                            "base_quota": base_quota,
+                            "rank_multiplier": mult,
+                            "max_total_quota": max_q,
+                            "general_cntt_quota": max_q,
+                            "viet_anh_quota": 2 if sup.is_eligible_for_engineer() else 0,
+                            "current_assigned": 0
+                        }
+                    )
         quotas = SupervisorQuota.objects.all().select_related("supervisor__user")
         if batch_id:
             quotas = quotas.filter(batch_id=batch_id)
@@ -1067,7 +1133,7 @@ class AutoSupervisorAllocationAPIView(APIView):
     def post(self, request):
         batch_id = request.data.get("batch_id")
         if not batch_id:
-            return Response({"detail": "batch_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "batch_id is required.", "error": "batch_id is required."}, status=status.HTTP_400_BAD_REQUEST)
 
         res = MinCostMaxFlowAllocationEngine.allocate_supervisors_for_batch(batch_id)
 
@@ -1076,6 +1142,9 @@ class AutoSupervisorAllocationAPIView(APIView):
             action_type="supervisor_request_update",
             description=f"Ran MCMF auto-allocation for Batch #{batch_id}: Matched={res.get('matched_count')}, Unassigned={res.get('unassigned_count')}"
         )
+
+        if not res.get("success") and "detail" not in res:
+            res["detail"] = res.get("error")
 
         return Response(res, status=status.HTTP_200_OK if res.get("success") else status.HTTP_400_BAD_REQUEST)
 
@@ -1968,51 +2037,220 @@ class ExportFinalSummaryExcelAPIView(APIView):
             return Response({"detail": f"Error generating document: {str(ex)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-class AdminSeedDataAPIView(APIView):
+# ==============================================================================
+# PHÂN HỆ GIÁO VỤ (ACADEMIC STAFF MODULE) - TỔNG HỢP & XUẤT ĐIỂM THEO LỚP
+# ==============================================================================
+
+class AcademicStaffFinalGradesAPIView(APIView):
     """
-    Khôi phục và nạp bộ dữ liệu mẫu UTC cho Admin Portal
-    (Bao gồm Admin, Giảng viên, Sinh viên, Đợt đồ án, Bộ môn, Hội đồng)
+    Chức năng cuối kỳ cho Giáo vụ:
+    - Nhận dữ liệu tổng hợp điểm cuối kỳ theo từng lớp hoặc toàn đợt.
+    - Trả về thống kê số lượng đạt, trượt, bảo lưu, điểm trung bình.
+    """
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def get(self, request):
+        batch_id = request.query_params.get("batch_id")
+        class_id = request.query_params.get("class_id")
+        search = (request.query_params.get("search") or "").strip().lower()
+
+        if not batch_id:
+            batch = AcademicBatch.objects.filter(is_active=True).first() or AcademicBatch.objects.first()
+            if not batch:
+                return Response({"detail": "Chưa có đợt đồ án nào trong hệ thống."}, status=status.HTTP_404_NOT_FOUND)
+            batch_id = batch.id
+        else:
+            batch = get_object_or_404(AcademicBatch, id=batch_id)
+
+        # Lấy danh sách các lớp học phần trong đợt
+        classes_qs = CourseClass.objects.filter(batch=batch).order_by("class_code")
+        classes_data = []
+        for c in classes_qs:
+            st_count = Student.objects.filter(course_class=c).count()
+            classes_data.append({
+                "id": c.id,
+                "class_code": c.class_code,
+                "class_name": c.class_name,
+                "program_type": c.program_type,
+                "program_display": c.get_program_type_display(),
+                "student_count": st_count,
+            })
+
+        # Lấy danh sách đồ án tốt nghiệp
+        projects_qs = GraduationProject.objects.filter(batch=batch).select_related(
+            "student__user",
+            "student__course_class",
+            "supervisor__user",
+            "reviewer__user",
+            "council",
+            "final_grade_summary"
+        ).order_by("student__course_class__class_code", "student__registration_no")
+
+        if class_id:
+            projects_qs = projects_qs.filter(student__course_class_id=class_id)
+
+        if search:
+            projects_qs = projects_qs.filter(
+                Q(student__registration_no__icontains=search) |
+                Q(student__user__first_name__icontains=search) |
+                Q(student__user__last_name__icontains=search) |
+                Q(topic_title_vi__icontains=search)
+            )
+
+        grades_list = []
+        passed_count = 0
+        failed_count = 0
+        deferred_count = 0
+        scores_10 = []
+
+        for p in projects_qs:
+            std = p.student
+            usr = std.user
+            summary = getattr(p, "final_grade_summary", None)
+            is_deferred = (p.deferral_status == "APPROVED")
+
+            # Auto calculate if missing
+            if not summary and (p.supervisor_score is not None or p.reviewer_score is not None):
+                summary, _ = FinalGradeSummary.objects.get_or_create(project=p)
+                summary.supervisor_score = p.supervisor_score
+                summary.reviewer_score = p.reviewer_score
+                scores = list(CouncilLiveScore.objects.filter(project=p))
+                if scores:
+                    summary.council_avg_score = round(sum(s.total_score for s in scores) / len(scores), 2)
+                summary.calculate_and_save()
+
+            if is_deferred:
+                deferred_count += 1
+                verdict = "Bảo lưu"
+            elif summary and summary.is_passed:
+                passed_count += 1
+                verdict = "Đạt"
+                if summary.final_score_10 is not None:
+                    scores_10.append(summary.final_score_10)
+            else:
+                failed_count += 1
+                verdict = "Không đạt"
+                if summary and summary.final_score_10 is not None:
+                    scores_10.append(summary.final_score_10)
+
+            c_code = std.course_class.class_code if std.course_class else ""
+            c_name = std.course_class.class_name if std.course_class else (std.department or "CNTT")
+
+            grades_list.append({
+                "project_id": p.id,
+                "student_id": std.id,
+                "registration_no": std.registration_no,
+                "student_name": usr.get_full_name() or usr.username,
+                "course_class_id": std.course_class_id,
+                "class_code": c_code,
+                "class_name": c_name,
+                "education_program": std.education_program,
+                "education_program_display": std.get_education_program_display(),
+                "topic_title_vi": p.topic_title_vi,
+                "supervisor_name": f"{p.supervisor.academic_title or ''} {p.supervisor.user.get_full_name()}".strip() if p.supervisor else "",
+                "reviewer_name": f"{p.reviewer.academic_title or ''} {p.reviewer.user.get_full_name()}".strip() if p.reviewer else "",
+                "council_name": p.council.council_name if p.council else "",
+                "supervisor_score": summary.supervisor_score if summary else p.supervisor_score,
+                "reviewer_score": summary.reviewer_score if summary else p.reviewer_score,
+                "council_avg_score": summary.council_avg_score if summary else None,
+                "final_score_10": summary.final_score_10 if (summary and not is_deferred) else None,
+                "final_score_4": summary.final_score_4 if (summary and not is_deferred) else None,
+                "final_letter_grade": summary.final_letter_grade if (summary and not is_deferred) else "",
+                "classification": summary.classification if (summary and not is_deferred) else "",
+                "is_passed": summary.is_passed if (summary and not is_deferred) else False,
+                "is_deferred": is_deferred,
+                "deferral_reason": p.deferral_reason or "",
+                "verdict": verdict,
+                "debt_credits": p.debt_credits,
+                "status": p.status,
+            })
+
+        total_st = len(grades_list)
+        avg_score = round(sum(scores_10) / len(scores_10), 2) if scores_10 else 0.0
+        pass_rate = round((passed_count / total_st) * 100, 1) if total_st > 0 else 0.0
+
+        return Response({
+            "batch": {
+                "id": batch.id,
+                "batch_code": batch.batch_code,
+                "batch_name": batch.batch_name,
+                "program_type": batch.program_type,
+                "current_stage": batch.current_stage,
+                "is_closed": batch.is_closed,
+            },
+            "classes": classes_data,
+            "selected_class_id": int(class_id) if class_id else None,
+            "grades": grades_list,
+            "stats": {
+                "total_students": total_st,
+                "passed_count": passed_count,
+                "failed_count": failed_count,
+                "deferred_count": deferred_count,
+                "pass_rate": pass_rate,
+                "average_score": avg_score,
+            }
+        }, status=status.HTTP_200_OK)
+
+
+class AcademicStaffExportClassGradesExcelAPIView(APIView):
+    """
+    Xuất danh sách điểm đồ án tốt nghiệp theo từng lớp (hoặc toàn đợt) ra file Excel.
+    """
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def get(self, request):
+        batch_id = request.query_params.get("batch_id")
+        class_id = request.query_params.get("class_id")
+
+        if not batch_id:
+            batch = AcademicBatch.objects.filter(is_active=True).first() or AcademicBatch.objects.first()
+            if not batch:
+                return Response({"detail": "batch_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+            batch_id = batch.id
+
+        try:
+            buffer = DocumentGenerationService.generate_class_grades_excel(batch_id, class_id)
+            batch = AcademicBatch.objects.get(id=batch_id)
+            c_tag = f"_Lop_{class_id}" if class_id else "_Toan_Dot"
+            filename = f"Bang_Diem_Do_An_{batch.batch_code}{c_tag}.xlsx"
+
+            response = HttpResponse(
+                buffer.getvalue(),
+                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+            response["Content-Disposition"] = f'attachment; filename="{filename}"'
+            return response
+        except Exception as ex:
+            return Response({"detail": f"Lỗi tạo file bảng điểm: {str(ex)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class AcademicStaffCompleteBatchAPIView(APIView):
+    """
+    Giáo vụ / Ban Chủ nhiệm Khoa hoàn tất và đóng đợt đồ án tốt nghiệp.
     """
     permission_classes = [IsAuthenticated, IsAdminUserRole]
 
     def post(self, request):
-        from django.core.management import call_command
-        reset = str(request.data.get("reset", "")).lower() in ["true", "1"]
-        try:
-            if reset:
-                call_command("seed_admin_data", reset=True)
-            else:
-                call_command("seed_admin_data")
+        batch_id = request.data.get("batch_id")
+        if not batch_id:
+            return Response({"detail": "batch_id is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-            invalidate_user_summary_cache()
-            cache.delete(BATCHES_CACHE_KEY)
+        batch = get_object_or_404(AcademicBatch, id=batch_id)
+        batch.current_stage = "COMPLETED"
+        batch.is_closed = True
+        batch.save(update_fields=["current_stage", "is_closed"])
 
-            user_counts = CustomUser.objects.aggregate(
-                total_students=Count('id', filter=Q(user_type="student")),
-                total_supervisors=Count('id', filter=Q(user_type="supervisor")),
-                total_committee=Count('id', filter=Q(user_type="committee_member")),
-                total_external=Count('id', filter=Q(user_type="external_examiner")),
-                total_admins=Count('id', filter=Q(user_type="admin")),
-            )
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="group_status_change",
+            description=f"Giáo vụ Khoa hoàn tất và đóng đợt đồ án {batch.batch_code}."
+        )
 
-            return Response({
-                "success": True,
-                "message": "Nạp bộ dữ liệu mẫu UTC thành công!",
-                "stats": {
-                    "total_students": user_counts["total_students"] or 0,
-                    "total_supervisors": user_counts["total_supervisors"] or 0,
-                    "total_committee": user_counts["total_committee"] or 0,
-                    "total_external": user_counts["total_external"] or 0,
-                    "total_admins": user_counts["total_admins"] or 0,
-                    "total_batches": AcademicBatch.objects.count(),
-                    "total_projects": GraduationProject.objects.count(),
-                    "total_councils": DefenseCouncil.objects.count(),
-                }
-            }, status=status.HTTP_200_OK)
-        except Exception as ex:
-            logger.exception("Error running seed_admin_data")
-            return Response({
-                "success": False,
-                "error": f"Lỗi khi nạp dữ liệu mẫu: {str(ex)}"
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({
+            "message": f"Đợt đồ án '{batch.batch_name}' ({batch.batch_code}) đã được Giáo vụ hoàn tất và khóa sổ thành công.",
+            "batch_id": batch.id,
+            "current_stage": "COMPLETED",
+            "is_closed": True
+        }, status=status.HTTP_200_OK)
+
 

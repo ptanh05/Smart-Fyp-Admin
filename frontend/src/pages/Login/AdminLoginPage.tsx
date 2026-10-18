@@ -27,6 +27,7 @@ export const AdminLoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [filledMsg, setFilledMsg] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,27 +48,90 @@ export const AdminLoginPage: React.FC = () => {
     }
   };
 
+  const handleFillDemo = (usernameToFill: string, autoSubmit = false, customPass = 'Admin@123456') => {
+    setEmail(usernameToFill);
+    setPassword(customPass);
+    setError(null);
+    setFilledMsg(`✓ Đã điền: ${usernameToFill} • Mật khẩu: ${customPass}`);
+    setTimeout(() => setFilledMsg(null), 4000);
+
+    if (autoSubmit) {
+      setLoading(true);
+      login(usernameToFill, customPass)
+        .then(() => navigate(usernameToFill === 'giao_vu' ? '/academic-staff' : '/dashboard'))
+        .catch((err: any) => {
+          const msg = err.response?.data?.detail || err.response?.data?.message || err.message || 'Đăng nhập thất bại.';
+          setError(msg);
+        })
+        .finally(() => setLoading(false));
+    }
+  };
+
   return (
     <div className="admin-login-wrapper">
       <div className="admin-login-card">
         <div className="admin-login-header">
           <span style={{ fontSize: '3rem' }}>🎓</span>
           <h1>UTC ADMIN PORTAL</h1>
-          <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Quản trị hệ thống Đồ án Tốt nghiệp</p>
+          <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Quản trị hệ thống Đồ án Tốt nghiệp & Giáo vụ Khoa CNTT</p>
+        </div>
+
+        {/* Quick Demo Fill Box */}
+        <div className="admin-demo-box">
+          <div className="admin-demo-title">
+            <span>⚡ ĐIỀN MẪU TEST NHANH</span>
+            <span className="admin-demo-hint">Click 1 chạm để tự điền</span>
+          </div>
+          <div className="admin-demo-buttons">
+            <button
+              type="button"
+              className="admin-demo-chip primary"
+              onClick={() => handleFillDemo('admin')}
+              title="Điền username: admin | Mật khẩu: Admin@123456"
+            >
+              🔑 Điền: <strong>admin</strong>
+            </button>
+            <button
+              type="button"
+              className="admin-demo-chip"
+              onClick={() => handleFillDemo('giao_vu', false, 'Giaovu@123456')}
+              style={{ background: '#f0fdf4', borderColor: '#86efac', color: '#166534' }}
+              title="Điền tài khoản Giáo vụ: giao_vu | Mật khẩu: Giaovu@123456"
+            >
+              💼 Điền: <strong>giao_vu</strong>
+            </button>
+            <button
+              type="button"
+              className="admin-demo-chip instant"
+              onClick={() => handleFillDemo('giao_vu', true, 'Giaovu@123456')}
+              style={{ background: '#16a34a' }}
+              title="Tự điền và Đăng nhập ngay lập tức với quyền Giáo vụ"
+            >
+              🚀 <strong>Giáo vụ (1-Click)</strong>
+            </button>
+            <button
+              type="button"
+              className="admin-demo-chip instant"
+              onClick={() => handleFillDemo('admin', true)}
+              title="Tự điền và Đăng nhập ngay lập tức vào Admin Dashboard"
+            >
+              ⚡ <strong>Admin (1-Click)</strong>
+            </button>
+          </div>
+          {filledMsg && <div className="admin-demo-success">{filledMsg}</div>}
         </div>
 
         {error && <div className="utc-error-alert" style={{ marginBottom: '1rem', color: '#b91c1c', background: '#fee2e2', padding: '0.75rem', borderRadius: 8 }}>{error}</div>}
 
         <form onSubmit={handleSubmit}>
           <div className="admin-form-group">
-            <label>Email hoặc Tên đăng nhập Admin</label>
+            <label>Tài khoản hoặc Email Admin</label>
             <input
               type="text"
               required
-              placeholder="admin@utc.edu.vn hoặc tên đăng nhập (ADMIN1, ...)"
-              value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
-              autoComplete="username"
+              placeholder="admin hoặc admin@utc.edu.vn"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
             />
           </div>
 

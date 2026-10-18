@@ -17,6 +17,7 @@ from .views import (
     AcademicBatchListCreateAPIView,
     AcademicBatchDetailAPIView,
     ExcelStudentImportAPIView,
+    ExcelStudentExportAPIView,
     SupervisorQuotaListUpdateAPIView,
     AutoSupervisorAllocationAPIView,
     ManualSupervisorAllocationAPIView,
@@ -44,7 +45,9 @@ from .views import (
     CloseBatchAPIView,
     ExportFinalSummaryExcelAPIView,
     SupervisorListAPIView,
-    AdminSeedDataAPIView,
+    AcademicStaffFinalGradesAPIView,
+    AcademicStaffExportClassGradesExcelAPIView,
+    AcademicStaffCompleteBatchAPIView,
 )
 
 urlpatterns = [
@@ -92,7 +95,7 @@ urlpatterns = [
     path("admin/batches/<int:pk>/", AcademicBatchDetailAPIView.as_view(), name="admin-batches-detail"),
     path("admin/batches/<int:pk>/close/", CloseBatchAPIView.as_view(), name="admin-batches-close"),
 
-    # Student Excel Import (Giai đoạn 1)
+    # Student Excel Import & Export (Giai đoạn 1)
     path("student/import/", ExcelStudentImportAPIView.as_view(), name="student-import"),
     path("students/import/", ExcelStudentImportAPIView.as_view(), name="students-import"),
     path("student/import-excel/", ExcelStudentImportAPIView.as_view(), name="student-import-excel"),
@@ -101,6 +104,9 @@ urlpatterns = [
     path("admin/student/import-excel/", ExcelStudentImportAPIView.as_view(), name="admin-student-import-excel"),
     path("admin/student/import/", ExcelStudentImportAPIView.as_view(), name="admin-student-import"),
     path("admin/students/import-excel/", ExcelStudentImportAPIView.as_view(), name="admin-students-import-excel"),
+    path("admin/students/export-excel/", ExcelStudentExportAPIView.as_view(), name="admin-students-export-excel"),
+    path("students/export-excel/", ExcelStudentExportAPIView.as_view(), name="students-export-excel"),
+    path("admin/batches/<int:batch_id>/export-students/", ExcelStudentExportAPIView.as_view(), name="admin-batches-export-students"),
 
     # Supervisor Quotas & Allocation (Giai đoạn 2)
     path("admin/quotas/", SupervisorQuotaListUpdateAPIView.as_view(), name="admin-quotas"),
@@ -138,4 +144,9 @@ urlpatterns = [
     path("admin/export/to-trinh-word/", ExportToTrinhWordAPIView.as_view(), name="admin-export-to-trinh-word"),
     path("admin/export/bien-ban-excel/", ExportBienBanExcelAPIView.as_view(), name="admin-export-bien-ban-excel"),
     path("admin/export/final-summary-excel/", ExportFinalSummaryExcelAPIView.as_view(), name="admin-export-final-summary-excel"),
+
+    # Phân hệ Giáo vụ (Academic Staff Module)
+    path("admin/academic-staff/final-grades/", AcademicStaffFinalGradesAPIView.as_view(), name="admin-academic-staff-final-grades"),
+    path("admin/academic-staff/export-class-grades-excel/", AcademicStaffExportClassGradesExcelAPIView.as_view(), name="admin-academic-staff-export-class-grades"),
+    path("admin/academic-staff/complete-batch/", AcademicStaffCompleteBatchAPIView.as_view(), name="admin-academic-staff-complete-batch"),
 ]

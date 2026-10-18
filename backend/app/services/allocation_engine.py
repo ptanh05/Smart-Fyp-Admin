@@ -52,13 +52,36 @@ class MinCostMaxFlowAllocationEngine:
         # 2. Fetch all supervisor quotas in batch and recalculate capacity with rank multipliers
         quotas = list(SupervisorQuota.objects.filter(batch=batch).select_related('supervisor__user'))
         if not quotas:
+            # Tự động khởi tạo định mức quota cho các giảng viên đang hoạt động nếu đợt chưa có quota
+            active_supervisors = Supervisor.objects.filter(user__is_active=True).select_related('user')
+            if active_supervisors.exists():
+                for sup in active_supervisors:
+                    mult = sup.academic_rank_multiplier or 1.0
+                    base_quota = 5
+                    max_q = int(round(base_quota * mult))
+                    SupervisorQuota.objects.get_or_create(
+                        supervisor=sup,
+                        batch=batch,
+                        defaults={
+                            "department": sup.department_name or "",
+                            "base_quota": base_quota,
+                            "rank_multiplier": mult,
+                            "max_total_quota": max_q,
+                            "general_cntt_quota": max_q,
+                            "viet_anh_quota": 2 if sup.is_eligible_for_engineer() else 0,
+                            "current_assigned": 0
+                        }
+                    )
+                quotas = list(SupervisorQuota.objects.filter(batch=batch).select_related('supervisor__user'))
+
+        if not quotas:
             return {
                 "success": False,
-                "error": "Chưa thiết lập định mức Quota cho giảng viên trong đợt này."
+                "error": "Chưa có giảng viên nào trong hệ thống để thiết lập định mức phân công."
             }
 
         for q in quotas:
-            if q.max_total_quota is None:
+            if q.max_total_quota is None or q.max_total_quota <= 0:
                 q.calculate_capacity()
                 q.save(update_fields=["max_total_quota"])
 
@@ -67,7 +90,7 @@ class MinCostMaxFlowAllocationEngine:
             'topic_direction', 'preference_1', 'preference_2', 'preference_3'
         )}
         surveys = {info.student_id: info for info in InternshipInfo.objects.filter(batch=batch).select_related(
-            'topic_direction', 'preferred_supervisor'
+            'topic_direction'
         )}
 
         # Bộ môn và độ tương thích chuyên môn
@@ -104,7 +127,7 @@ class MinCostMaxFlowAllocationEngine:
             pref = preferences.get(student.id)
             survey = surveys.get(student.id)
             
-            p1_id = pref.preference_1_id if pref else (survey.preferred_supervisor_id if survey else None)
+            p1_id = pref.preference_1_id if pref else (survey.preferred_supervisor.id if survey and survey.preferred_supervisor else None)
             p2_id = pref.preference_2_id if pref else None
             p3_id = pref.preference_3_id if pref else None
             
@@ -228,17 +251,29 @@ class MinCostMaxFlowAllocationEngine:
                 tentative_title = (survey.tentative_title if survey else None) or f"Đề tài tốt nghiệp của {student.user.get_full_name() or student.registration_no}"
 
                 if matched_sup:
-                    proj, _ = GraduationProject.objects.update_or_create(
-                        student=student,
-                        defaults={
-                            "supervisor": matched_sup,
-                            "batch": batch,
-                            "topic_category": topic_category,
-                            "topic_title_vi": tentative_title,
-                            "status": "ALLOCATED",
-                            "topic_review_status": "DRAFT"
-                        }
-                    )
+                    existing_proj = GraduationProject.objects.filter(student=student).first()
+                    if existing_proj:
+                        # Nếu đồ án đã qua Giai đoạn 2 (đang thực hiện, bảo vệ, duyệt đề tài), bảo toàn trạng thái
+                        if existing_proj.status not in ["IN_PROGRESS", "DEFENSE_READY", "DEFENSE_COMPLETED", "COMPLETED", "TOPIC_APPROVED"]:
+                            existing_proj.supervisor = matched_sup
+                            existing_proj.batch = batch
+                            existing_proj.status = "ALLOCATED"
+                            if topic_category and not existing_proj.topic_category:
+                                existing_proj.topic_category = topic_category
+                            if not existing_proj.topic_title_vi:
+                                existing_proj.topic_title_vi = tentative_title
+                            existing_proj.save()
+                        proj = existing_proj
+                    else:
+                        proj = GraduationProject.objects.create(
+                            student=student,
+                            supervisor=matched_sup,
+                            batch=batch,
+                            topic_category=topic_category,
+                            topic_title_vi=tentative_title,
+                            status="ALLOCATED",
+                            topic_review_status="DRAFT"
+                        )
                     
                     matched_results.append({
                         "student_id": student.id,

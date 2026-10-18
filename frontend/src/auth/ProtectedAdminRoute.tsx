@@ -76,7 +76,7 @@ export const ProtectedAdminRoute: React.FC<{ children: React.ReactNode }> = ({ c
     );
   }
 
-  if (!isAuthenticated || userType !== 'admin') {
+  if (!isAuthenticated || (userType !== 'admin' && userType !== 'academic_staff')) {
     return <Navigate to="/login" replace />;
   }
 

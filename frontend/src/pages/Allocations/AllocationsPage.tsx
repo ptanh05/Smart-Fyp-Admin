@@ -44,6 +44,15 @@ export const AllocationsPage: React.FC = () => {
   const [matchResult, setMatchResult] = useState<any>(null);
   const [sendingEmails, setSendingEmails] = useState(false);
 
+  // Toast Notification State
+  const [toast, setToast] = useState<{ show: boolean; type: 'success' | 'error' | 'info'; message: string } | null>(null);
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToast({ show: true, type, message });
+    setTimeout(() => {
+      setToast(null);
+    }, 4000);
+  };
+
   // Manual Override Modal
   const [showOverrideModal, setShowOverrideModal] = useState(false);
   const [overrideStudent, setOverrideStudent] = useState<ProjectAdmin | null>(null);
@@ -55,7 +64,11 @@ export const AllocationsPage: React.FC = () => {
       const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
       setBatches(list);
       if (list.length > 0 && !selectedBatchId) {
-        setSelectedBatchId(list[0].id);
+        const preferredBatch =
+          list.find((b: any) => b.is_active && b.batch_code.includes('K62')) ||
+          list.find((b: any) => b.is_active) ||
+          list[0];
+        setSelectedBatchId(preferredBatch.id);
       }
     } catch (err) {
       console.error(err);
@@ -110,9 +123,17 @@ export const AllocationsPage: React.FC = () => {
         batch_id: selectedBatchId,
       });
       setMatchResult(res.data);
+      fetchBatches();
       fetchData();
+      showToast(`✓ Chạy giải thuật MCMF thành công: Đã ghép ${res.data.matched_count} sinh viên!`, 'success');
     } catch (err: any) {
-      alert('Lỗi chạy thuật toán: ' + (err.response?.data?.detail || err.message));
+      const errMsg =
+        err.response?.data?.error ||
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        err.message ||
+        'Lỗi không xác định khi chạy giải thuật phân công';
+      showToast(`❌ Lỗi chạy MCMF: ${errMsg}`, 'error');
     } finally {
       setMatching(false);
     }
@@ -124,11 +145,12 @@ export const AllocationsPage: React.FC = () => {
 
     try {
       const res = await apiClient.post('/admin/allocations/finalize/', { batch_id: selectedBatchId });
-      alert(res.data?.message || 'Đã chốt phân công thành công!');
+      showToast(res.data?.message || '✓ Đã chốt phân công thành công!', 'success');
       fetchBatches();
       fetchData();
     } catch (err: any) {
-      alert('Lỗi chốt phân công: ' + (err.response?.data?.detail || err.message));
+      const errMsg = err.response?.data?.error || err.response?.data?.detail || err.message || 'Lỗi chốt phân công';
+      showToast(`❌ ${errMsg}`, 'error');
     }
   };
 
@@ -139,11 +161,12 @@ export const AllocationsPage: React.FC = () => {
     try {
       setSendingEmails(true);
       const res = await apiClient.post('/admin/allocations/publish/', { batch_id: selectedBatchId });
-      alert(res.data?.message || 'Đã công bố và gửi thông báo thành công! Chuyển sang Giai đoạn 3.');
+      showToast(res.data?.message || '✓ Đã công bố và gửi thông báo thành công! Chuyển sang Giai đoạn 3.', 'success');
       fetchBatches();
       fetchData();
     } catch (err: any) {
-      alert('Lỗi công bố: ' + (err.response?.data?.detail || err.message));
+      const errMsg = err.response?.data?.error || err.response?.data?.detail || err.message || 'Lỗi công bố';
+      showToast(`❌ ${errMsg}`, 'error');
     } finally {
       setSendingEmails(false);
     }
@@ -165,12 +188,13 @@ export const AllocationsPage: React.FC = () => {
         supervisor_id: Number(selectedSupervisorId),
         batch_id: selectedBatchId,
       });
-      alert(`Đã override phân công thủ công cho SV ${overrideStudent.student_reg_no} thành công!`);
+      showToast(`✓ Đã override phân công thủ công cho SV ${overrideStudent.student_reg_no} thành công!`, 'success');
       setShowOverrideModal(false);
       setOverrideStudent(null);
       fetchData();
     } catch (err: any) {
-      alert('Lỗi override: ' + (err.response?.data?.detail || err.message));
+      const errMsg = err.response?.data?.error || err.response?.data?.detail || err.message || 'Lỗi override';
+      showToast(`❌ ${errMsg}`, 'error');
     }
   };
 
@@ -433,6 +457,22 @@ export const AllocationsPage: React.FC = () => {
                   <button type="submit" className="utc-btn-primary">Xác Nhận Override</button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* TOAST NOTIFICATION POPUP */}
+        {toast && (
+          <div className="utc-toast-container">
+            <div className={`utc-toast-item ${toast.type}`}>
+              <span>{toast.message}</span>
+              <button
+                type="button"
+                onClick={() => setToast(null)}
+                className="utc-toast-close"
+              >
+                ✕
+              </button>
             </div>
           </div>
         )}
