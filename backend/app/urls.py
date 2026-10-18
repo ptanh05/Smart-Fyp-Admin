@@ -48,6 +48,7 @@ from .views import (
     AcademicStaffFinalGradesAPIView,
     AcademicStaffExportClassGradesExcelAPIView,
     AcademicStaffCompleteBatchAPIView,
+    AdminSeedDataAPIView,
 )
 
 urlpatterns = [

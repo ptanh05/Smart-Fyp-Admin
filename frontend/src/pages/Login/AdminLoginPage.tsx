@@ -49,7 +49,7 @@ export const AdminLoginPage: React.FC = () => {
   };
 
   const handleFillDemo = (usernameToFill: string, autoSubmit = false, customPass = 'Admin@123456') => {
-    setEmail(usernameToFill);
+    setIdentifier(usernameToFill);
     setPassword(customPass);
     setError(null);
     setFilledMsg(`✓ Đã điền: ${usernameToFill} • Mật khẩu: ${customPass}`);
@@ -130,8 +130,8 @@ export const AdminLoginPage: React.FC = () => {
               type="text"
               required
               placeholder="admin hoặc admin@utc.edu.vn"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
             />
           </div>
 
