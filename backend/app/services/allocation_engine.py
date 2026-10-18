@@ -52,36 +52,13 @@ class MinCostMaxFlowAllocationEngine:
         # 2. Fetch all supervisor quotas in batch and recalculate capacity with rank multipliers
         quotas = list(SupervisorQuota.objects.filter(batch=batch).select_related('supervisor__user'))
         if not quotas:
-            # Tự động khởi tạo định mức quota cho các giảng viên đang hoạt động nếu đợt chưa có quota
-            active_supervisors = Supervisor.objects.filter(user__is_active=True).select_related('user')
-            if active_supervisors.exists():
-                for sup in active_supervisors:
-                    mult = sup.academic_rank_multiplier or 1.0
-                    base_quota = 5
-                    max_q = int(round(base_quota * mult))
-                    SupervisorQuota.objects.get_or_create(
-                        supervisor=sup,
-                        batch=batch,
-                        defaults={
-                            "department": sup.department_name or "",
-                            "base_quota": base_quota,
-                            "rank_multiplier": mult,
-                            "max_total_quota": max_q,
-                            "general_cntt_quota": max_q,
-                            "viet_anh_quota": 2 if sup.is_eligible_for_engineer() else 0,
-                            "current_assigned": 0
-                        }
-                    )
-                quotas = list(SupervisorQuota.objects.filter(batch=batch).select_related('supervisor__user'))
-
-        if not quotas:
             return {
                 "success": False,
-                "error": "Chưa có giảng viên nào trong hệ thống để thiết lập định mức phân công."
+                "error": "Chưa thiết lập định mức Quota cho giảng viên trong đợt này."
             }
 
         for q in quotas:
-            if q.max_total_quota is None or q.max_total_quota <= 0:
+            if q.max_total_quota is None:
                 q.calculate_capacity()
                 q.save(update_fields=["max_total_quota"])
 
