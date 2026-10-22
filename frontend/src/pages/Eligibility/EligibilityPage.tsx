@@ -168,8 +168,11 @@ export const EligibilityPage: React.FC = () => {
         {/* Header Bar */}
         <div className="utc-eligibility-header-bar">
           <div className="utc-eligibility-header-info">
-            <h3>Giai Đoạn 4: Xét Điều Kiện Làm Đồ Án & Force Approve (Bước 26 & 27)</h3>
-            <p>Rà soát điều kiện học vụ: Sinh viên đủ điều kiện làm đồ án hoặc Khoa quyết định Force Approve / Loại khỏi đợt</p>
+            <h3>Rà Soát Học Vụ Đầu Kỳ: Điều Kiện Nhận ĐATN (Nợ &lt; 10 Tín Chỉ)</h3>
+            <p>
+              <strong>Quy chế UTC:</strong> Giáo vụ khoa rà soát điều kiện học vụ đầu kỳ — sinh viên nợ tích lũy &lt; 10 tín chỉ mới đủ điều kiện nhận làm ĐATN.
+              (Lưu ý: <em>Điều kiện bảo vệ đồ án cuối kỳ</em> thuộc thẩm quyền của Giảng viên hướng dẫn đánh giá ở Giai đoạn 5).
+            </p>
           </div>
 
           <div className="utc-header-actions">
@@ -186,14 +189,14 @@ export const EligibilityPage: React.FC = () => {
             </select>
 
             <button onClick={() => setShowImportModal(true)} className="utc-btn-emerald">
-              <span>📊</span> Import Điểm Xét ĐK (Excel)
+              <span>📊</span> Import Điểm &amp; Nợ TC (Excel)
             </button>
 
             {countIneligible > 0 && (
               <button
                 onClick={handleBulkForceApproveIneligible}
                 className="utc-btn-force-bulk"
-                title="Đặc cách cho tất cả sinh viên không đủ điều kiện trong đợt"
+                title="Đặc cách cho tất cả sinh viên không đủ điều kiện học vụ trong đợt"
               >
                 <span>⭐</span> Force Approve Tất Cả ({countIneligible})
               </button>
@@ -209,34 +212,34 @@ export const EligibilityPage: React.FC = () => {
           >
             <span className="card-label">Tổng Sinh Viên</span>
             <span className="card-num">{projects.length}</span>
-            <span className="card-sub">Toàn bộ sinh viên trong đợt</span>
+            <span className="card-sub">Toàn bộ sinh viên đăng ký đợt</span>
           </div>
 
           <div
             className={`utc-elig-card ${filterStatus === 'ELIGIBLE' ? 'active' : ''}`}
             onClick={() => setFilterStatus('ELIGIBLE')}
           >
-            <span className="card-label">Đủ Điều Kiện Làm ĐA</span>
+            <span className="card-label">Nợ &lt; 10 TC (Hợp Lệ)</span>
             <span className="card-num text-emerald">{countEligible}</span>
-            <span className="card-sub">Đi tiếp đến GĐ5 (Thực hiện)</span>
+            <span className="card-sub">Đủ điều kiện nhận đề tài (GĐ5)</span>
           </div>
 
           <div
             className={`utc-elig-card ${filterStatus === 'INELIGIBLE' ? 'active' : ''}`}
             onClick={() => setFilterStatus('INELIGIBLE')}
           >
-            <span className="card-label">Không Đủ Điều Kiện</span>
+            <span className="card-label">Nợ ≥ 10 TC (Không Đạt)</span>
             <span className="card-num text-amber">{countIneligible}</span>
-            <span className="card-sub">Chờ Khoa xét Force Approve</span>
+            <span className="card-sub">Cần giải trình hoặc xét đặc cách</span>
           </div>
 
           <div
             className={`utc-elig-card ${filterStatus === 'FORCE_APPROVED' ? 'active' : ''}`}
             onClick={() => setFilterStatus('FORCE_APPROVED')}
           >
-            <span className="card-label">Đã Đặc Cách (Force Approve)</span>
+            <span className="card-label">Khoa Đặc Cách (Force Approve)</span>
             <span className="card-num text-blue">{countForceApproved}</span>
-            <span className="card-sub">Khoa đã cho phép làm đồ án</span>
+            <span className="card-sub">Cho phép làm đồ án theo đơn</span>
           </div>
 
           <div
@@ -245,7 +248,7 @@ export const EligibilityPage: React.FC = () => {
           >
             <span className="card-label">Bị Loại Khỏi Đợt</span>
             <span className="card-num text-red">{countDisqualified}</span>
-            <span className="card-sub">Không được làm đồ án</span>
+            <span className="card-sub">Không đủ điều kiện học vụ</span>
           </div>
         </div>
 
@@ -269,9 +272,9 @@ export const EligibilityPage: React.FC = () => {
                     <th>Sinh Viên</th>
                     <th>Hệ ĐT</th>
                     <th>GPA</th>
-                    <th>Nợ Tín Chỉ</th>
-                    <th>Kết Luận Điều Kiện</th>
-                    <th>Lý Do / Ghi Chú</th>
+                    <th>Nợ Tín Chỉ (&lt; 10 TC)</th>
+                    <th>ĐK Nhận ĐATN (Đầu Kỳ)</th>
+                    <th>Lý Do / Ghi Chú Học Vụ</th>
                     <th>Quyết Định Của Khoa</th>
                   </tr>
                 </thead>
@@ -289,17 +292,24 @@ export const EligibilityPage: React.FC = () => {
                         </span>
                       </td>
                       <td className="font-bold text-center">{p.gpa_score !== null ? p.gpa_score : '—'}</td>
-                      <td className="text-center font-bold text-red-600">{p.debt_credits || 0}</td>
+                      <td className="text-center">
+                        <span className={`font-bold ${(p.debt_credits || 0) < 10 ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {p.debt_credits || 0} TC
+                        </span>
+                        <div className="text-xs text-muted">
+                          {(p.debt_credits || 0) < 10 ? '✓ < 10 TC' : '⚠ Quá 10 TC'}
+                        </div>
+                      </td>
                       <td>
                         <span className={`utc-elig-pill pill-${(p.initial_eligibility || 'pending').toLowerCase()}`}>
                           {p.initial_eligibility === 'ELIGIBLE'
-                            ? '✅ Đủ Điều Kiện'
+                            ? '✅ Đủ ĐK Nhận ĐA'
                             : p.initial_eligibility === 'FORCE_APPROVED'
-                            ? '⭐ Đặc Cách (Force Approve)'
+                            ? '⭐ Khoa Đặc Cách'
                             : p.initial_eligibility === 'DISQUALIFIED'
                             ? '🚫 Bị Loại Khỏi Đợt'
                             : p.initial_eligibility === 'INELIGIBLE'
-                            ? '⚠️ Không Đủ Điều Kiện'
+                            ? '⚠️ Nợ ≥ 10 TC'
                             : '⏳ Chưa Xét'}
                         </span>
                       </td>

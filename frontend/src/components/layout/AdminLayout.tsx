@@ -4,7 +4,7 @@ import { useAdminAuth } from '../../auth/AdminAuthContext';
 import './AdminLayout.css';
 
 export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { logout, userType } = useAdminAuth();
+  const { logout, userType, currentUser } = useAdminAuth();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -12,7 +12,7 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
     navigate('/login');
   };
 
-  const displayName = currentUser?.full_name || currentUser?.username || 'Administrator';
+  const displayName = currentUser?.full_name || currentUser?.username || (userType === 'academic_staff' ? 'Giáo vụ Khoa CNTT' : 'Administrator');
   const displayUsername = currentUser?.username ? `@${currentUser.username}` : '';
 
   return (
@@ -46,10 +46,10 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
             <span>🤝</span> GĐ2: Phân Công GVHD
           </NavLink>
           <NavLink to="/topics" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>📑</span> GĐ3: Duyệt Đề Tài
+            <span>📑</span> Danh Sách Đề Tài ĐATN
           </NavLink>
           <NavLink to="/eligibility" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>⚖️</span> GĐ4: Xét ĐK & Force Approve
+            <span>⚖️</span> Xét ĐK Học Vụ (Nợ &lt; 10 TC)
           </NavLink>
           <NavLink to="/progress" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
             <span>📈</span> GĐ5: Giám Sát Tiến Độ
@@ -76,7 +76,9 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
         <header className="admin-header">
           <div className="admin-header-title">Hệ Thống Quản Trị Dữ Liệu Đồ Án Tốt Nghiệp UTC</div>
           <div className="admin-header-user">
-            <span>{userType === 'academic_staff' ? '💼 Giáo vụ Khoa CNTT' : '🛡️ Administrator'}</span>
+            <span className="admin-user-badge" title={currentUser?.email ? `Email: ${currentUser.email}` : undefined}>
+              {userType === 'academic_staff' ? '💼 ' : '🛡️ '}{displayName} {displayUsername && <span style={{ opacity: 0.85, fontSize: '0.9em', marginLeft: 4 }}>({displayUsername})</span>}
+            </span>
             <button className="admin-logout-btn" onClick={handleLogout}>Đăng Xuất</button>
           </div>
         </header>

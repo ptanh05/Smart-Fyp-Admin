@@ -110,37 +110,6 @@ export const BatchesPage: React.FC = () => {
   const [supMultiplier, setSupMultiplier] = useState(1.0);
   const [supInterest, setSupInterest] = useState('');
 
-  // View Students in Batch Modal
-  const [showStudentsModal, setShowStudentsModal] = useState(false);
-  const [studentsModalBatch, setStudentsModalBatch] = useState<AcademicBatch | null>(null);
-  const [studentsList, setStudentsList] = useState<any[]>([]);
-  const [studentsLoading, setStudentsLoading] = useState(false);
-  const [studentsSearch, setStudentsSearch] = useState('');
-  const [studentsFilterClass, setStudentsFilterClass] = useState<string>('ALL');
-
-  const handleOpenStudentsModal = async (batch: AcademicBatch, filterClass: string = 'ALL') => {
-    setStudentsModalBatch(batch);
-    setStudentsFilterClass(filterClass);
-    setStudentsSearch('');
-    setShowStudentsModal(true);
-    setStudentsLoading(true);
-    try {
-      const res = await apiClient.get('/admin/users/', {
-        params: {
-          user_type: 'student',
-          batch_id: batch.id,
-        },
-      });
-      const list = Array.isArray(res.data) ? res.data : (res.data?.users || res.data?.results || []);
-      setStudentsList(list);
-    } catch (err) {
-      console.error('Lỗi tải danh sách sinh viên đợt:', err);
-      setStudentsList([]);
-    } finally {
-      setStudentsLoading(false);
-    }
-  };
-
   const fetchBatches = async () => {
     try {
       setLoading(true);
@@ -968,8 +937,8 @@ export const BatchesPage: React.FC = () => {
                         style={{ fontSize: '0.82rem', padding: '0.4rem 0.8rem' }}
                         onClick={() => {
                           setShowImportModal(false);
-                          const b = batches.find((x) => x.id === selectedBatchId);
-                          if (b) handleOpenStudentsModal(b);
+                          setBatchDetailTab('students');
+                          if (selectedBatchId) fetchStudents(selectedBatchId);
                         }}
                       >
                         👥 Xem danh sách sinh viên đợt

@@ -1251,6 +1251,29 @@ class DefenseCouncilListCreateAPIView(APIView):
 
         return Response(DefenseCouncilSerializer(council).data, status=status.HTTP_201_CREATED)
 
+    def delete(self, request, pk=None):
+        council_id = pk or request.query_params.get("id") or request.data.get("id")
+        if not council_id:
+            return Response({"detail": "Council ID is required."}, status=status.HTTP_400_BAD_REQUEST)
+        council = get_object_or_404(DefenseCouncil, id=council_id)
+        if council.is_finalized:
+            return Response({"detail": "Không thể xóa Hội đồng đã khóa / chốt điểm."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Reset projects and schedule slots associated with this council
+        GraduationProject.objects.filter(council=council).update(council=None, reviewer=None)
+        DefenseScheduleSlot.objects.filter(council=council).delete()
+        council_name = council.council_name
+        council.delete()
+
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="group_status_change",
+            description=f"Admin đã xóa {council_name}."
+        )
+
+        return Response({"message": f"Đã xóa thành công {council_name}."}, status=status.HTTP_200_OK)
+
+
 
 class AutoReviewerAllocationAPIView(APIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
@@ -2252,5 +2275,55 @@ class AcademicStaffCompleteBatchAPIView(APIView):
             "current_stage": "COMPLETED",
             "is_closed": True
         }, status=status.HTTP_200_OK)
+
+
+class AdminSeedDataAPIView(APIView):
+    """
+    Khôi phục và nạp bộ dữ liệu mẫu UTC cho Admin Portal
+    (Bao gồm Admin, Giảng viên, Sinh viên, Đợt đồ án, Bộ môn, Hội đồng)
+    """
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def post(self, request):
+        from django.core.management import call_command
+        reset = str(request.data.get("reset", "")).lower() in ["true", "1"]
+        try:
+            if reset:
+                call_command("seed_admin_data", reset=True)
+            else:
+                call_command("seed_admin_data")
+
+            invalidate_user_summary_cache()
+            cache.delete(BATCHES_CACHE_KEY)
+
+            user_counts = CustomUser.objects.aggregate(
+                total_students=Count('id', filter=Q(user_type="student")),
+                total_supervisors=Count('id', filter=Q(user_type="supervisor")),
+                total_committee=Count('id', filter=Q(user_type="committee_member")),
+                total_external=Count('id', filter=Q(user_type="external_examiner")),
+                total_admins=Count('id', filter=Q(user_type="admin")),
+            )
+
+            return Response({
+                "success": True,
+                "message": "Nạp bộ dữ liệu mẫu UTC thành công!",
+                "stats": {
+                    "total_students": user_counts["total_students"] or 0,
+                    "total_supervisors": user_counts["total_supervisors"] or 0,
+                    "total_committee": user_counts["total_committee"] or 0,
+                    "total_external": user_counts["total_external"] or 0,
+                    "total_admins": user_counts["total_admins"] or 0,
+                    "total_batches": AcademicBatch.objects.count(),
+                    "total_projects": GraduationProject.objects.count(),
+                    "total_councils": DefenseCouncil.objects.count(),
+                }
+            }, status=status.HTTP_200_OK)
+        except Exception as ex:
+            logger.exception("Error running seed_admin_data")
+            return Response({
+                "success": False,
+                "error": f"Lỗi khi nạp dữ liệu mẫu: {str(ex)}"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 

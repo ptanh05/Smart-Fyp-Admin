@@ -48,6 +48,7 @@ from .views import (
     AcademicStaffFinalGradesAPIView,
     AcademicStaffExportClassGradesExcelAPIView,
     AcademicStaffCompleteBatchAPIView,
+    AdminSeedDataAPIView,
 )
 
 urlpatterns = [
@@ -135,6 +136,7 @@ urlpatterns = [
     path("admin/final-academic/import-excel/", ExcelFinalAcademicImportAPIView.as_view(), name="admin-final-academic-import-excel"),
     path("admin/projects/<int:pk>/deferral-decision/", DeferralDecisionAPIView.as_view(), name="admin-projects-deferral-decision"),
     path("admin/councils/", DefenseCouncilListCreateAPIView.as_view(), name="admin-councils"),
+    path("admin/councils/<int:pk>/", DefenseCouncilListCreateAPIView.as_view(), name="admin-councils-detail"),
     path("admin/councils/<int:pk>/finalize-scores/", FinalizeCouncilScoresAPIView.as_view(), name="admin-councils-finalize-scores"),
     path("admin/reviewers/auto-assign/", AutoReviewerAllocationAPIView.as_view(), name="admin-reviewers-auto-assign"),
     path("admin/defense/override-reviewer/", ManualReviewerOverrideAPIView.as_view(), name="admin-defense-override-reviewer"),
