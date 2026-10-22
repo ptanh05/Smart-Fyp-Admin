@@ -49,7 +49,7 @@ class MinCostMaxFlowAllocationEngine:
                 "message": "Không có sinh viên nào trong đợt này."
             }
 
-        # 2. Fetch all supervisor quotas in batch and recalculate capacity with rank multipliers
+        # 2. Fetch all supervisor quotas in batch
         quotas = list(SupervisorQuota.objects.filter(batch=batch).select_related('supervisor__user'))
         if not quotas:
             return {
