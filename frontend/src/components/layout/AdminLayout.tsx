@@ -43,25 +43,22 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
             <span>📅</span> GĐ1: Đợt & Bộ Môn
           </NavLink>
           <NavLink to="/allocations" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>🤝</span> GĐ2: Phân Công GVHD
+            <span>🤝</span> GĐ1: Phân Công GVHD
           </NavLink>
           <NavLink to="/topics" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>📑</span> Danh Sách Đề Tài ĐATN
-          </NavLink>
-          <NavLink to="/eligibility" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>⚖️</span> Xét ĐK Học Vụ (Nợ &lt; 10 TC)
+            <span>📑</span> GĐ2: Đề Tài & Đề Cương
           </NavLink>
           <NavLink to="/progress" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>📈</span> GĐ5: Giám Sát Tiến Độ
+            <span>📈</span> GĐ3: Giám Sát Tiến Độ & Điểm
           </NavLink>
-          <NavLink to="/outlines" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>📋</span> Duyệt Đề Cương
+          <NavLink to="/eligibility" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
+            <span>⚖️</span> GĐ4: Hậu Kiểm Học Vụ (Nợ 0 TC)
           </NavLink>
           <NavLink to="/councils" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>🏛️</span> GĐ6: Hội Đồng & Lịch BV
+            <span>🏛️</span> GĐ5: Hội Đồng & Lịch BV
           </NavLink>
           <NavLink to="/defense" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>📝</span> Điểm, Bảo Lưu & Chốt
+            <span>📝</span> GĐ6: Điểm BV, Biên Bản & Bế Mạc
           </NavLink>
           <NavLink to="/security" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
             <span>🛡️</span> Trung Tâm Bảo Mật

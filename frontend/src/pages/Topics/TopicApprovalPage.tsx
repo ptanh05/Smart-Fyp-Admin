@@ -99,8 +99,8 @@ export const TopicApprovalPage: React.FC = () => {
         {/* Header Bar */}
         <div className="utc-topics-header-bar">
           <div className="utc-topics-header-info">
-            <h3>Giai Đoạn 3: Danh Sách & Giám Sát Đề Tài Đồ Án Tốt Nghiệp</h3>
-            <p>Theo Quy chế UTC, Đề tài tốt nghiệp do Giảng viên hướng dẫn và Sinh viên thống nhất đề xuất và xác nhận (Admin/Giáo vụ không duyệt đề tài). Ban Giáo vụ Khoa theo dõi và quản lý danh mục đề tài của toàn đợt.</p>
+            <h3>Giai Đoạn 2: Danh Sách & Giám Sát Đề Tài & Đề Cương ĐATN</h3>
+            <p>Theo chuẩn yeucau.md: Sinh viên đăng ký tên & mục tiêu đề tài ➔ GVHD trực tiếp thẩm định & duyệt đề tài. Sinh viên hoàn thiện đề cương theo mẫu Template và xuất file PDF để GVHD duyệt trên hệ thống.</p>
           </div>
 
           <div className="utc-batch-select-group">

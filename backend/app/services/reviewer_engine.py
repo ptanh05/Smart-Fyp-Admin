@@ -32,15 +32,22 @@ class ReviewerAndCouncilAllocationEngine:
         except AcademicBatch.DoesNotExist:
             return {"success": False, "error": f"Không tìm thấy đợt ID {batch_id}."}
 
-        # 1. Lấy danh sách các đề tài hợp lệ cần phân hội đồng (bỏ qua sinh viên đã được duyệt bảo lưu)
+        from django.db.models import Q
+        # 1. Điều kiện đầu vào (GĐ 5 yeucau.md): Chỉ những SV Đủ điều kiện bảo vệ (ở GĐ 4: nợ 0 TC hoặc đặc cách) mới được đưa vào danh sách lập HĐ
         projects = list(
             GraduationProject.objects.filter(batch=batch)
+            .filter(
+                Q(is_eligible_for_defense=True) |
+                Q(status="DEFENSE_READY") |
+                (Q(debt_credits=0) & ~Q(initial_eligibility="INELIGIBLE") & ~Q(final_academic_eligibility="INELIGIBLE"))
+            )
             .exclude(deferral_status="APPROVED")
+            .exclude(status__in=["DEFERRED", "DISQUALIFIED", "FAILED"])
             .select_related("student__user", "supervisor__user", "topic_category")
         )
 
         if not projects:
-            return {"success": False, "error": "Không có đề tài đồ án nào hợp lệ để phân hội đồng trong đợt này."}
+            return {"success": False, "error": "Không có đề tài đồ án nào đủ điều kiện bảo vệ (ở Giai đoạn 4) để phân hội đồng trong đợt này."}
 
         # 2. Lấy danh sách tất cả Hội đồng trong đợt
         all_councils = list(
