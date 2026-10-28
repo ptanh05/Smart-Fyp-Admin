@@ -9,6 +9,7 @@ interface AdminAuthContextType {
   userType: UserType | null;
   loading: boolean;
   login: (identifier: string, password: string) => Promise<void>;
+  loginWithSso: (credential?: string, email?: string) => Promise<void>;
   register: (username: string, email: string, password: string, adminSecret: string) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -89,6 +90,17 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setUserType((res.user_type || 'admin') as UserType);
   };
 
+  const loginWithSso = async (credential?: string, email?: string) => {
+    const res = await authApi.googleSsoLogin(credential, email);
+    if (res.user_type !== 'admin' && res.user_type !== 'academic_staff') {
+      await authApi.logout();
+      throw new Error('Truy cập bị từ chối: Tài khoản không có quyền Quản trị hoặc Giáo vụ.');
+    }
+    setAccessToken(res.access);
+    setIsAuthenticated(true);
+    setUserType((res.user_type || 'admin') as UserType);
+  };
+
   const register = async (username: string, email: string, password: string, adminSecret: string) => {
     await authApi.register({
       username,
@@ -108,7 +120,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   return (
-    <AdminAuthContext.Provider value={{ isAuthenticated, currentUser, userType, loading, login, register, logout }}>
+    <AdminAuthContext.Provider value={{ isAuthenticated, currentUser, userType, loading, login, loginWithSso, register, logout }}>
       {children}
     </AdminAuthContext.Provider>
   );

@@ -42,6 +42,14 @@ export const authApi = {
     return response.data;
   },
 
+  async googleSsoLogin(credential?: string, email?: string): Promise<AdminLoginResponse> {
+    const response = await apiClient.post<AdminLoginResponse>('/auth/google/', {
+      credential,
+      email,
+    });
+    return response.data;
+  },
+
   async logout(): Promise<void> {
     try {
       await apiClient.post('/token/logout/', {});

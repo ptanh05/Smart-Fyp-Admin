@@ -51,10 +51,16 @@ from .views import (
     AdminSeedDataAPIView,
 )
 
+from .views_auth_sso import AdminGoogleSSOLoginAPIView
+
 urlpatterns = [
     # Health checks
     path("health/", HealthCheckAPIView.as_view(), name="health-check"),
     path("health/database/", DatabaseHealthCheckAPIView.as_view(), name="health-db-check"),
+
+    # UTC Single Sign-On (Google OAuth2 for @utc.edu.vn)
+    path("auth/google/", AdminGoogleSSOLoginAPIView.as_view(), name="admin-google-sso-login"),
+    path("auth/sso/google/", AdminGoogleSSOLoginAPIView.as_view(), name="admin-sso-google-login"),
 
     # Admin Authentication & Registration
     path("admin/register/", AdminRegisterAPIView.as_view(), name="admin-register"),

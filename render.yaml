@@ -23,3 +23,9 @@ services:
         sync: false
       - key: ADMIN_REGISTRATION_SECRET
         sync: false
+      - key: USE_S3
+        value: "False"
+      - key: AWS_STORAGE_BUCKET_NAME
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false

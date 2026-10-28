@@ -66,6 +66,12 @@ Use the included `render.yaml` at the root of the repository to deploy automatic
 | `CORS_ALLOWED_ORIGINS` | Yes | `https://smart-fyp-admin.vercel.app` | Vercel frontend URL |
 | `CSRF_TRUSTED_ORIGINS` | Yes | `https://smart-fyp-admin.vercel.app` | Vercel frontend URL |
 | `ADMIN_REGISTRATION_SECRET` | Yes | `utc-smart-fyp-admin-secret-key-2026` | Key required for registering Admin accounts |
+| `USE_S3` | Optional | `True` | Enable Cloud Object Storage (S3 / R2 / MinIO) |
+| `AWS_STORAGE_BUCKET_NAME`| Optional | `utc-smart-fyp-media` | Cloud Storage bucket name |
+| `AWS_ACCESS_KEY_ID` | Optional | `<access_key>` | Cloud Storage access key |
+| `AWS_SECRET_ACCESS_KEY` | Optional | `<secret_key>` | Cloud Storage secret key |
+| `GOOGLE_OAUTH_CLIENT_ID`| Optional | `<client_id>.apps.googleusercontent.com` | Google OAuth2 Client ID for UTC SSO |
+| `ALLOWED_SSO_DOMAINS` | Optional | `utc.edu.vn,gmail.com` | Allowed email domains for SSO |
 | `SECURE_SSL_REDIRECT` | Optional | `True` | Enforce HTTPS redirects |
 | `SESSION_COOKIE_SECURE` | Optional | `True` | Secure session cookies over HTTPS |
 | `CSRF_COOKIE_SECURE` | Optional | `True` | Secure CSRF cookies over HTTPS |
