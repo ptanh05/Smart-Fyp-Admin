@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { usersApi, type CreateUserPayload } from '../../api/users';
 import { batchesApi, type AcademicBatch, type CourseClass } from '../../api/batches';
 import type {
@@ -17,7 +16,6 @@ import './UserManagementPage.css';
 import '../../components/common/Modal.css';
 
 export const UserManagementPage: React.FC = () => {
-  const navigate = useNavigate();
   // Data state
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [total, setTotal] = useState(0);
@@ -204,23 +202,27 @@ export const UserManagementPage: React.FC = () => {
     fetchUsers();
   }, [fetchUsers]);
 
-  // Extract available classes for current filter
+  // Extract available classes for current filter with strict deduplication
   const availableClasses = useMemo(() => {
-    const classesList: CourseClass[] = [];
+    const classMap = new Map<string, CourseClass>();
     if (Array.isArray(batches)) {
       batches.forEach((b) => {
         if (!batchFilter || b.id?.toString() === batchFilter) {
           if (b.classes && Array.isArray(b.classes)) {
             b.classes.forEach((c) => {
+              if (c.class_code === 'DS_Sinh_Vien' || c.class_name?.includes('DS_Sinh_Vien')) return;
               if (!programFilter || c.program_type === programFilter) {
-                classesList.push(c);
+                const key = `${c.class_code}___${c.class_name}`;
+                if (!classMap.has(key)) {
+                  classMap.set(key, c);
+                }
               }
             });
           }
         }
       });
     }
-    return classesList;
+    return Array.from(classMap.values());
   }, [batches, batchFilter, programFilter]);
 
   const hasActiveFilters = Boolean(
@@ -1042,6 +1044,8 @@ export const UserManagementPage: React.FC = () => {
                                 ? 'Ủy viên HĐ'
                                 : u.user_type === 'external_examiner'
                                 ? 'Cán bộ ngoài'
+                                : u.user_type === 'academic_staff'
+                                ? 'Giáo vụ khoa'
                                 : 'Quản trị viên'}
                             </span>
                           </td>
@@ -1071,16 +1075,6 @@ export const UserManagementPage: React.FC = () => {
 
                       <td>
                         <div className="action-btn-group">
-                          {u.supervisor_profile && (
-                            <button
-                              className="btn-icon edit"
-                              onClick={() => navigate('/supervisors')}
-                              title="Cập nhật học vị & hướng nghiên cứu nâng cao"
-                              style={{ color: '#0284c7' }}
-                            >
-                              ✏️
-                            </button>
-                          )}
                           <button
                             className="btn-icon key"
                             onClick={() => {

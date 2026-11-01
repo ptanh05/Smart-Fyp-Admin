@@ -3,6 +3,16 @@ import { AdminLayout } from '../../components/layout/AdminLayout';
 import { apiClient } from '../../api/client';
 import './SupervisorsPage.css';
 
+export const UTC_RESEARCH_AREAS = [
+  'Phát triển phần mềm và ứng dụng (webApp, MobileApp)',
+  'Dữ liệu và trí tuệ nhân tạo',
+  'Lập trình Game',
+  'Kiểm thử phần mềm',
+  'Hệ thống, mạng và hạ tầng CNTT',
+  'An toàn thông tin và an ninh mạng',
+  'Nghiên cứu và ứng dụng thuật toán',
+];
+
 export interface SupervisorProfile {
   id: number;
   supervisor_id: string;
@@ -52,10 +62,24 @@ export const SupervisorsPage: React.FC = () => {
   const [supTitle, setSupTitle] = useState('ThS');
   const [supDeptId, setSupDeptId] = useState<number | ''>('');
   const [supMultiplier, setSupMultiplier] = useState(1.0);
-  const [supInterest, setSupInterest] = useState('');
   const [supPhone, setSupPhone] = useState('');
+  const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
+  const [supErrors, setSupErrors] = useState<{ phone?: string; areas?: string }>({});
+  const [supTouched, setSupTouched] = useState<{ phone?: boolean; areas?: boolean }>({});
   const [saving, setSaving] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const validateSupPhone = (val: string): string | undefined => {
+    const trimmed = val.trim();
+    if (!trimmed) return undefined;
+    if (!/^0\d{9}$/.test(trimmed)) return 'Số điện thoại phải gồm 10 chữ số (bắt đầu bằng số 0)';
+    return undefined;
+  };
+
+  const validateSupAreas = (areas: string[]): string | undefined => {
+    if (!areas || areas.length === 0) return 'Vui lòng tích chọn ít nhất 1 hướng nghiên cứu theo chuẩn khoa';
+    return undefined;
+  };
 
   const fetchSupervisors = async () => {
     try {
@@ -111,16 +135,29 @@ export const SupervisorsPage: React.FC = () => {
 
   const handleOpenEdit = (sup: SupervisorProfile) => {
     setEditingSupervisor(sup);
-    setSupTitle(sup.academic_title || 'ThS');
+    const title = sup.academic_title || 'ThS';
+    setSupTitle(title);
     setSupDeptId(sup.department_obj || '');
-    setSupMultiplier(sup.academic_rank_multiplier || 1.0);
-    setSupInterest(sup.research_interest || '');
+    // Capacity multiplier is locked strictly according to degree
+    if (title === 'GS.TS') setSupMultiplier(2.0);
+    else if (title === 'PGS.TS') setSupMultiplier(1.5);
+    else if (title === 'TS') setSupMultiplier(1.2);
+    else setSupMultiplier(1.0);
+
     setSupPhone(sup.phone_number || '');
+    
+    // Parse existing research interests into checkbox selections
+    const raw = sup.research_interest || '';
+    const parsed = raw.split(/[;,]/).map((s) => s.trim()).filter(Boolean);
+    setSelectedAreas(parsed);
+    setSupErrors({});
+    setSupTouched({});
     setNotification(null);
   };
 
   const handleTitleChange = (newTitle: string) => {
     setSupTitle(newTitle);
+    // Locked strictly according to degree
     if (newTitle === 'GS.TS') setSupMultiplier(2.0);
     else if (newTitle === 'PGS.TS') setSupMultiplier(1.5);
     else if (newTitle === 'TS') setSupMultiplier(1.2);
@@ -131,13 +168,24 @@ export const SupervisorsPage: React.FC = () => {
     e.preventDefault();
     if (!editingSupervisor) return;
 
+    const phoneErr = validateSupPhone(supPhone);
+    const areasErr = validateSupAreas(selectedAreas);
+
+    setSupErrors({ phone: phoneErr, areas: areasErr });
+    setSupTouched({ phone: true, areas: true });
+
+    if (phoneErr || areasErr) {
+      return;
+    }
+
     try {
       setSaving(true);
+      const interestString = selectedAreas.join('; ');
       await apiClient.patch(`/admin/supervisors/${editingSupervisor.id}/profile/`, {
         academic_title: supTitle,
         department_id: supDeptId ? Number(supDeptId) : null,
         academic_rank_multiplier: supMultiplier,
-        research_interest: supInterest.trim(),
+        research_interest: interestString,
         phone_number: supPhone.trim()
       });
 
@@ -461,19 +509,17 @@ export const SupervisorsPage: React.FC = () => {
 
                 <div className="utc-form-grid">
                   <div className="utc-form-group">
-                    <label>Hệ Số Capacity (Hệ số nhân chỉ tiêu):</label>
+                    <label>Hệ Số Capacity (Khóa cứng theo học vị) (*):</label>
                     <input
                       type="number"
-                      step="0.1"
-                      min="0.5"
-                      max="5.0"
                       value={supMultiplier}
-                      onChange={(e) => setSupMultiplier(parseFloat(e.target.value) || 1.0)}
+                      readOnly
+                      disabled
                       className="utc-input"
-                      required
+                      style={{ background: '#f1f5f9', cursor: 'not-allowed', fontWeight: 700, color: '#0369a1' }}
                     />
-                    <small className="help-text">
-                      Chỉ tiêu hướng dẫn tối đa = Base Quota * Hệ số ({supMultiplier}).
+                    <small className="help-text" style={{ color: '#0284c7', fontWeight: 600 }}>
+                      🔒 Hệ số capacity được khóa cứng tự động theo chuẩn UTC ({supTitle} = x{supMultiplier}).
                     </small>
                   </div>
 
@@ -483,23 +529,93 @@ export const SupervisorsPage: React.FC = () => {
                       type="text"
                       placeholder="VD: 0912345678"
                       value={supPhone}
-                      onChange={(e) => setSupPhone(e.target.value)}
-                      className="utc-input"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSupPhone(val);
+                        if (supTouched.phone) {
+                          setSupErrors((prev) => ({ ...prev, phone: validateSupPhone(val) }));
+                        }
+                      }}
+                      onBlur={() => {
+                        setSupTouched((prev) => ({ ...prev, phone: true }));
+                        setSupErrors((prev) => ({ ...prev, phone: validateSupPhone(supPhone) }));
+                      }}
+                      className={`utc-input ${supTouched.phone && supErrors.phone ? 'input-error' : ''}`}
+                      style={supTouched.phone && supErrors.phone ? { borderColor: '#dc2626' } : undefined}
                     />
+                    {supTouched.phone && supErrors.phone && (
+                      <span style={{ color: '#dc2626', fontSize: '0.78rem', display: 'block', marginTop: 3 }}>
+                        ❌ {supErrors.phone}
+                      </span>
+                    )}
                   </div>
                 </div>
 
                 <div className="utc-form-group">
-                  <label>Hướng Nghiên Cứu Chuyên Sâu (Research Interests) (*):</label>
-                  <textarea
-                    rows={4}
-                    value={supInterest}
-                    onChange={(e) => setSupInterest(e.target.value)}
-                    placeholder="VD: Trí tuệ nhân tạo (AI), Học máy & Học sâu (Machine Learning / Deep Learning), Xử lý ngôn ngữ tự nhiên (NLP), Kiến trúc Microservices, Phát triển hệ thống phần mềm doanh nghiệp, An toàn thông tin mạng..."
-                    className="utc-input"
-                  />
-                  <small className="help-text">
-                    Sinh viên và Khoa sẽ dựa vào hướng nghiên cứu này để gán đề tài và phân công nguyện vọng chính xác.
+                  <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Hướng Nghiên Cứu Chuyên Sâu (Chọn từ danh sách 7 hướng chuẩn khoa) <span style={{ color: '#dc2626' }}>*</span>:</span>
+                    <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>
+                      {selectedAreas.length}/7 hướng đã chọn
+                    </span>
+                  </label>
+                  
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                      gap: '8px',
+                      marginTop: '6px',
+                      padding: '12px',
+                      background: '#f8fafc',
+                      borderRadius: '8px',
+                      border: supTouched.areas && supErrors.areas ? '1px solid #dc2626' : '1px solid #cbd5e1',
+                    }}
+                  >
+                    {UTC_RESEARCH_AREAS.map((area) => {
+                      const isChecked = selectedAreas.includes(area);
+                      return (
+                        <label
+                          key={area}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '8px 12px',
+                            borderRadius: '6px',
+                            border: isChecked ? '1px solid #0284c7' : '1px solid #e2e8f0',
+                            background: isChecked ? '#e0f2fe' : '#ffffff',
+                            cursor: 'pointer',
+                            fontSize: '0.85rem',
+                            fontWeight: isChecked ? 600 : 400,
+                            color: isChecked ? '#0369a1' : '#334155',
+                            boxShadow: isChecked ? '0 1px 2px rgba(2, 132, 199, 0.15)' : 'none',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              const next = e.target.checked
+                                ? [...selectedAreas, area]
+                                : selectedAreas.filter((a) => a !== area);
+                              setSelectedAreas(next);
+                              setSupTouched((prev) => ({ ...prev, areas: true }));
+                              setSupErrors((prev) => ({ ...prev, areas: validateSupAreas(next) }));
+                            }}
+                          />
+                          <span>{area}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {supTouched.areas && supErrors.areas && (
+                    <span style={{ color: '#dc2626', fontSize: '0.8rem', display: 'block', marginTop: 4 }}>
+                      ❌ {supErrors.areas}
+                    </span>
+                  )}
+                  <small className="help-text" style={{ marginTop: '4px' }}>
+                    💡 Sinh viên và Khoa sẽ dựa vào các hướng nghiên cứu được tích chọn này để ghép cặp đề tài và phân công nguyện vọng.
                   </small>
                 </div>
 

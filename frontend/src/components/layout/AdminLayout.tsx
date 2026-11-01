@@ -63,9 +63,6 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
           <NavLink to="/defense" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
             <span>📝</span> Điểm, Bảo Lưu & Chốt
           </NavLink>
-          <NavLink to="/security" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>🛡️</span> Trung Tâm Bảo Mật
-          </NavLink>
           <NavLink to="/audit-logs" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
             <span>📜</span> Nhật Ký Hệ Thống
           </NavLink>

@@ -99,16 +99,22 @@ class ExcelImportService:
                         education_program = "BACHELOR"
                     break
 
-            course_class, _ = CourseClass.objects.update_or_create(
-                batch=batch,
-                class_code=class_code,
-                defaults={
-                    "class_name": class_name,
-                    "class_group": class_group,
-                    "program_type": program_type,
-                    "education_program": education_program
-                }
-            )
+            is_generic_sheet = class_code.lower() in [
+                "ds_sinh_vien", "dssv", "danh_sach", "danhsach", "sheet1", "sheet_1", "danh sách"
+            ]
+
+            course_class = None
+            if not is_generic_sheet:
+                course_class, _ = CourseClass.objects.update_or_create(
+                    batch=batch,
+                    class_code=class_code,
+                    defaults={
+                        "class_name": class_name,
+                        "class_group": class_group,
+                        "program_type": program_type,
+                        "education_program": education_program
+                    }
+                )
 
             # Find table header row with robust fuzzy & normalized matching
             header_row_idx = None
@@ -163,7 +169,13 @@ class ExcelImportService:
                 if not mssv_cell:
                     continue
                 mssv = str(mssv_cell).strip()
-                if not mssv or len(mssv) < 4:
+                if mssv.endswith('.0'):
+                    mssv = mssv[:-2]
+                
+                # TC: Validate UTC Student Code (Must be exactly 9 digits)
+                if not re.match(r"^\d{9}$", mssv):
+                    skipped_count += 1
+                    errors.append(f"Dòng {r}: Mã sinh viên '{mssv}' không hợp lệ (Mã sinh viên UTC phải gồm đúng 9 chữ số).")
                     continue
 
                 total_count += 1
@@ -184,6 +196,11 @@ class ExcelImportService:
                                 last_name = str(ws.cell(r, col_last_name).value).strip()
                             if col_first_name and ws.cell(r, col_first_name).value:
                                 first_name = str(ws.cell(r, col_first_name).value).strip()
+
+                        if not first_name and not last_name:
+                            skipped_count += 1
+                            errors.append(f"Dòng {r}: Thiếu họ và tên sinh viên (MSSV: {mssv}).")
+                            continue
 
                         student_class_name = ""
                         if col_class and ws.cell(r, col_class).value:
@@ -211,7 +228,8 @@ class ExcelImportService:
 
                         # Determine education program (Kỹ sư vs Cử nhân)
                         student_edu = education_program
-                        combined_text = f"{student_class_name} {course_class.class_name}".lower()
+                        course_cls_name = course_class.class_name if course_class else ""
+                        combined_text = f"{student_class_name} {course_cls_name}".lower()
                         if "kỹ sư" in combined_text or "ks" in combined_text:
                             student_edu = "ENGINEER"
                         elif "cử nhân" in combined_text or "cn" in combined_text:
@@ -234,6 +252,18 @@ class ExcelImportService:
                                     "class_name": student_class_name,
                                     "class_group": "",
                                     "program_type": cls_prog,
+                                    "education_program": student_edu
+                                }
+                            )
+                        elif not assigned_course_class:
+                            cls_code = f"CNTT_{batch.batch_code}"
+                            assigned_course_class, _ = CourseClass.objects.update_or_create(
+                                batch=batch,
+                                class_code=cls_code,
+                                defaults={
+                                    "class_name": f"Lớp {cls_code}",
+                                    "class_group": "",
+                                    "program_type": "DAI_TRA",
                                     "education_program": student_edu
                                 }
                             )
@@ -305,7 +335,11 @@ class ExcelImportService:
 
         # Delete unused placeholder sheet classes if specific classes were created with students
         try:
-            CourseClass.objects.filter(batch=batch, students__isnull=True, class_code__in=["Sheet1", "Sheet 1", "Trang 1"]).delete()
+            CourseClass.objects.filter(
+                batch=batch,
+                students__isnull=True,
+                class_code__in=["Sheet1", "Sheet 1", "Trang 1", "DS_Sinh_Vien", "dssv", "DS_Sinh_Vien ", "DanhSach"]
+            ).delete()
         except Exception:
             pass
 

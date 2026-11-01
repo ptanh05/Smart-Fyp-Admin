@@ -96,6 +96,36 @@ export const BatchesPage: React.FC = () => {
   const [addPhone, setAddPhone] = useState('');
   const [addLoading, setAddLoading] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [addErrors, setAddErrors] = useState<{ mssv?: string; fullName?: string; email?: string; phone?: string }>({});
+  const [addTouched, setAddTouched] = useState<{ mssv?: boolean; fullName?: boolean; email?: boolean; phone?: boolean }>({});
+
+  const validateMssv = (val: string): string | undefined => {
+    const trimmed = val.trim();
+    if (!trimmed) return 'Mã sinh viên không được để trống';
+    if (!/^\d{9}$/.test(trimmed)) return 'Mã sinh viên UTC phải gồm đúng 9 chữ số (Ví dụ: 201200021)';
+    return undefined;
+  };
+
+  const validateFullName = (val: string): string | undefined => {
+    const trimmed = val.trim();
+    if (!trimmed) return 'Họ và tên không được để trống';
+    if (trimmed.length < 2) return 'Họ và tên phải có ít nhất 2 ký tự';
+    return undefined;
+  };
+
+  const validateEmail = (val: string): string | undefined => {
+    const trimmed = val.trim();
+    if (!trimmed) return undefined;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return 'Email không đúng định dạng';
+    return undefined;
+  };
+
+  const validatePhone = (val: string): string | undefined => {
+    const trimmed = val.trim();
+    if (!trimmed) return undefined;
+    if (!/^0\d{9}$/.test(trimmed)) return 'Số điện thoại phải gồm 10 chữ số (bắt đầu bằng 0)';
+    return undefined;
+  };
 
   // New Department Modal
   const [showDeptModal, setShowDeptModal] = useState(false);
@@ -302,8 +332,22 @@ export const BatchesPage: React.FC = () => {
   // Add Manual Student Handler
   const handleAddStudentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!addMssv.trim() || !addFullName.trim()) {
-      showToast('Mã sinh viên và Họ tên là các trường bắt buộc!', 'error');
+    const mssvErr = validateMssv(addMssv);
+    const nameErr = validateFullName(addFullName);
+    const emailErr = validateEmail(addEmail);
+    const phoneErr = validatePhone(addPhone);
+
+    const newErrors = {
+      mssv: mssvErr,
+      fullName: nameErr,
+      email: emailErr,
+      phone: phoneErr,
+    };
+    setAddErrors(newErrors);
+    setAddTouched({ mssv: true, fullName: true, email: true, phone: true });
+
+    if (mssvErr || nameErr || emailErr || phoneErr) {
+      showToast(mssvErr || nameErr || emailErr || phoneErr || 'Vui lòng kiểm tra lại thông tin nhập!', 'error');
       return;
     }
     if (!selectedBatchId) {
@@ -623,17 +667,6 @@ export const BatchesPage: React.FC = () => {
                         <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
                           Hiển thị <strong>{filteredStudents.length}</strong> / {students.length} sinh viên
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAddError(null);
-                            setShowAddStudentModal(true);
-                          }}
-                          className="utc-btn-sm-edit"
-                          style={{ background: '#0284c7', color: '#fff', borderColor: '#0284c7', padding: '0.45rem 0.85rem' }}
-                        >
-                          ➕ Thêm Sinh Viên Mới
-                        </button>
                       </div>
                     </div>
 
@@ -1029,10 +1062,23 @@ export const BatchesPage: React.FC = () => {
                           if (!addEmail || addEmail.endsWith('@sv.utc.edu.vn')) {
                             setAddEmail(val ? `${val.toLowerCase()}@sv.utc.edu.vn` : '');
                           }
+                          if (addTouched.mssv) {
+                            setAddErrors((prev) => ({ ...prev, mssv: validateMssv(val) }));
+                          }
                         }}
-                        className="utc-input"
+                        onBlur={() => {
+                          setAddTouched((prev) => ({ ...prev, mssv: true }));
+                          setAddErrors((prev) => ({ ...prev, mssv: validateMssv(addMssv) }));
+                        }}
+                        className={`utc-input ${addTouched.mssv && addErrors.mssv ? 'input-error' : ''}`}
+                        style={addTouched.mssv && addErrors.mssv ? { borderColor: '#dc2626' } : undefined}
                         autoFocus
                       />
+                      {addTouched.mssv && addErrors.mssv && (
+                        <span style={{ color: '#dc2626', fontSize: '0.78rem', display: 'block', marginTop: 3 }}>
+                          ❌ {addErrors.mssv}
+                        </span>
+                      )}
                     </div>
 
                     <div>
@@ -1044,9 +1090,25 @@ export const BatchesPage: React.FC = () => {
                         required
                         placeholder="VD: Nguyễn Hoàng Minh"
                         value={addFullName}
-                        onChange={(e) => setAddFullName(e.target.value)}
-                        className="utc-input"
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setAddFullName(val);
+                          if (addTouched.fullName) {
+                            setAddErrors((prev) => ({ ...prev, fullName: validateFullName(val) }));
+                          }
+                        }}
+                        onBlur={() => {
+                          setAddTouched((prev) => ({ ...prev, fullName: true }));
+                          setAddErrors((prev) => ({ ...prev, fullName: validateFullName(addFullName) }));
+                        }}
+                        className={`utc-input ${addTouched.fullName && addErrors.fullName ? 'input-error' : ''}`}
+                        style={addTouched.fullName && addErrors.fullName ? { borderColor: '#dc2626' } : undefined}
                       />
+                      {addTouched.fullName && addErrors.fullName && (
+                        <span style={{ color: '#dc2626', fontSize: '0.78rem', display: 'block', marginTop: 3 }}>
+                          ❌ {addErrors.fullName}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -1129,9 +1191,25 @@ export const BatchesPage: React.FC = () => {
                         type="email"
                         placeholder="vd: 201200021@sv.utc.edu.vn"
                         value={addEmail}
-                        onChange={(e) => setAddEmail(e.target.value)}
-                        className="utc-input"
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setAddEmail(val);
+                          if (addTouched.email) {
+                            setAddErrors((prev) => ({ ...prev, email: validateEmail(val) }));
+                          }
+                        }}
+                        onBlur={() => {
+                          setAddTouched((prev) => ({ ...prev, email: true }));
+                          setAddErrors((prev) => ({ ...prev, email: validateEmail(addEmail) }));
+                        }}
+                        className={`utc-input ${addTouched.email && addErrors.email ? 'input-error' : ''}`}
+                        style={addTouched.email && addErrors.email ? { borderColor: '#dc2626' } : undefined}
                       />
+                      {addTouched.email && addErrors.email && (
+                        <span style={{ color: '#dc2626', fontSize: '0.78rem', display: 'block', marginTop: 3 }}>
+                          ❌ {addErrors.email}
+                        </span>
+                      )}
                     </div>
 
                     <div>
@@ -1142,9 +1220,25 @@ export const BatchesPage: React.FC = () => {
                         type="text"
                         placeholder="vd: 0912345678"
                         value={addPhone}
-                        onChange={(e) => setAddPhone(e.target.value)}
-                        className="utc-input"
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setAddPhone(val);
+                          if (addTouched.phone) {
+                            setAddErrors((prev) => ({ ...prev, phone: validatePhone(val) }));
+                          }
+                        }}
+                        onBlur={() => {
+                          setAddTouched((prev) => ({ ...prev, phone: true }));
+                          setAddErrors((prev) => ({ ...prev, phone: validatePhone(addPhone) }));
+                        }}
+                        className={`utc-input ${addTouched.phone && addErrors.phone ? 'input-error' : ''}`}
+                        style={addTouched.phone && addErrors.phone ? { borderColor: '#dc2626' } : undefined}
                       />
+                      {addTouched.phone && addErrors.phone && (
+                        <span style={{ color: '#dc2626', fontSize: '0.78rem', display: 'block', marginTop: 3 }}>
+                          ❌ {addErrors.phone}
+                        </span>
+                      )}
                     </div>
                   </div>
 

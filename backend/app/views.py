@@ -437,7 +437,7 @@ class AdminUserManagementAPIView(APIView):
             "users": serializer.data,
             "total": total_matched,
             "counts": {
-                "total": total_students + total_supervisors + total_committee + total_external + total_admins,
+                "total": all_total,
                 "active": total_active,
                 "deactivated": total_deactivated,
                 "students": total_students,
@@ -445,6 +445,7 @@ class AdminUserManagementAPIView(APIView):
                 "committee": total_committee,
                 "external": total_external,
                 "admins": total_admins,
+                "academic_staff": total_academic_staff,
                 "cntt_students": cntt_students_count,
                 "khmt_students": khmt_students_count,
             }
