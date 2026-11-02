@@ -62,11 +62,14 @@ export const AdminLoginPage: React.FC = () => {
       await login(identifier.trim(), password);
       navigate('/dashboard');
     } catch (err: any) {
-      const msg =
+      let msg =
         err.response?.data?.detail ||
         err.response?.data?.message ||
         err.message ||
         'Đăng nhập Admin thất bại. Vui lòng kiểm tra lại tài khoản.';
+      if (err.code === 'ECONNABORTED' || (err.message && err.message.toLowerCase().includes('timeout'))) {
+        msg = 'Máy chủ Backend đang khởi động sau thời gian nghỉ (Render cold start, ~30s). Vui lòng đợi vài giây rồi bấm Đăng nhập lại.';
+      }
       setError(msg);
     } finally {
       setLoading(false);
@@ -85,7 +88,10 @@ export const AdminLoginPage: React.FC = () => {
       login(usernameToFill, customPass)
         .then(() => navigate(usernameToFill === 'giao_vu' ? '/academic-staff' : '/dashboard'))
         .catch((err: any) => {
-          const msg = err.response?.data?.detail || err.response?.data?.message || err.message || 'Đăng nhập thất bại.';
+          let msg = err.response?.data?.detail || err.response?.data?.message || err.message || 'Đăng nhập thất bại.';
+          if (err.code === 'ECONNABORTED' || (err.message && err.message.toLowerCase().includes('timeout'))) {
+            msg = 'Máy chủ Backend đang khởi động sau thời gian nghỉ (Render cold start, ~30s). Vui lòng đợi vài giây rồi thử lại.';
+          }
           setError(msg);
         })
         .finally(() => setLoading(false));

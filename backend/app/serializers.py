@@ -305,7 +305,6 @@ class AuditLogSerializer(serializers.ModelSerializer):
             "user_name",
             "user_role",
             "action_type",
-            "evaluation_type",
             "description",
             "field_name",
             "old_value",
