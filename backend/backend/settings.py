@@ -15,7 +15,7 @@ SECRET_KEY = env('SECRET_KEY', default='django-insecure-smart-fyp-admin-backend-
 
 DEBUG = env('DEBUG', default=True)
 
-raw_allowed_hosts = env.list('ALLOWED_HOSTS', default=['127.0.0.1', 'localhost', 'fyp-admin.utc.edu.vn']) or []
+raw_allowed_hosts = env.list('ALLOWED_HOSTS', default=['127.0.0.1', 'localhost', 'testserver', 'fyp-admin.utc.edu.vn']) or []
 ALLOWED_HOSTS = [h.replace("https://", "").replace("http://", "").rstrip("/") for h in raw_allowed_hosts if h]
 
 render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
@@ -26,10 +26,9 @@ if os.environ.get("RENDER"):
     ALLOWED_HOSTS.append("*")
 elif ".onrender.com" not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(".onrender.com")
-if "localhost" not in ALLOWED_HOSTS:
-    ALLOWED_HOSTS.append("localhost")
-if "127.0.0.1" not in ALLOWED_HOSTS:
-    ALLOWED_HOSTS.append("127.0.0.1")
+for h in ["localhost", "127.0.0.1", "testserver"]:
+    if h not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(h)
 
 INSTALLED_APPS = [
     'django.contrib.admin',
