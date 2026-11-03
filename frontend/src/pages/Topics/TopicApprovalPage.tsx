@@ -101,7 +101,7 @@ export const TopicApprovalPage: React.FC = () => {
     }
   };
 
-  const handleDownloadOutline = async (projId: number, regNo: string) => {
+  const handleDownloadOutline = async (projId: number, regNo?: string) => {
     try {
       const res = await apiClient.get(`/admin/projects/${projId}/download-outline/`, {
         responseType: 'blob',
@@ -112,7 +112,7 @@ export const TopicApprovalPage: React.FC = () => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Phieu_giao_de_tai_${regNo}.docx`;
+      a.download = regNo ? `Phieu_giao_de_tai_${regNo}.docx` : `Phieu_de_tai_goi_y_${projId}.docx`;
       a.click();
       window.URL.revokeObjectURL(url);
     } catch (err) {
@@ -120,15 +120,18 @@ export const TopicApprovalPage: React.FC = () => {
     }
   };
 
-  const filteredProjects = projects.filter((p) => {
+  // Only consider topics that are actually created (GraduationProject records, not unassigned placeholders)
+  const validProjects = projects.filter((p) => p.status !== 'UNASSIGNED');
+
+  const filteredProjects = validProjects.filter((p) => {
     if (statusFilter === 'ALL') return true;
     return p.topic_review_status === statusFilter;
   });
 
-  const countPending = projects.filter((p) => p.topic_review_status === 'GV_CONFIRMED').length;
-  const countApproved = projects.filter((p) => p.topic_review_status === 'APPROVED').length;
-  const countRevision = projects.filter((p) => p.topic_review_status === 'REVISION_REQUIRED').length;
-  const countDraft = projects.filter((p) => p.topic_review_status === 'DRAFT').length;
+  const countPending = validProjects.filter((p) => p.topic_review_status === 'GV_CONFIRMED').length;
+  const countApproved = validProjects.filter((p) => p.topic_review_status === 'APPROVED').length;
+  const countRevision = validProjects.filter((p) => p.topic_review_status === 'REVISION_REQUIRED').length;
+  const countDraft = validProjects.filter((p) => p.topic_review_status === 'DRAFT').length;
 
   return (
     <AdminLayout>
@@ -163,7 +166,7 @@ export const TopicApprovalPage: React.FC = () => {
             onClick={() => setStatusFilter('ALL')}
           >
             <span className="stat-title">Tất cả đề tài</span>
-            <span className="stat-number">{projects.length}</span>
+            <span className="stat-number">{validProjects.length}</span>
           </div>
 
           <div

@@ -33,6 +33,7 @@ from .models import (
     SupervisorQuota,
     ProjectTopicArea,
     StudentPreference,
+    InternshipInfo,
     GraduationProject,
     DefenseCouncil,
     CouncilMember,
@@ -1318,7 +1319,94 @@ class GraduationProjectsAdminListAPIView(APIView):
         )
 
         serializer = GraduationProjectAdminSerializer(projects_list, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        data = list(serializer.data)
+
+        # Synchronize GĐ2 (Phân công GVHD) with GĐ1 (Đợt & Sinh viên):
+        # Include all students enrolled in this batch who do not yet have an active GraduationProject.
+        if batch_id and not council_id and not status_filter:
+            assigned_student_ids = [p.student_id for p in projects_list if p.student_id]
+            unassigned_students = Student.objects.filter(
+                academic_batch_id=batch_id
+            ).exclude(id__in=assigned_student_ids).select_related(
+                "user", "course_class"
+            ).order_by("user__last_name", "user__first_name")
+
+            for st in unassigned_students:
+                pref = StudentPreference.objects.filter(student=st).select_related(
+                    "topic_direction", "preference_1__user", "preference_2__user", "preference_3__user"
+                ).first()
+
+                survey = InternshipInfo.objects.filter(student=st).first()
+
+                c_class = getattr(st.course_class, "class_name", "") if hasattr(st, "course_class") and st.course_class else (st.department or "")
+                su = st.user
+                full_name = (
+                    f"{su.last_name} {su.first_name}".strip()
+                    if (su.last_name or su.first_name)
+                    else (su.get_full_name() or su.username)
+                )
+
+                p1_name = f"{pref.preference_1.academic_title or ''} {pref.preference_1.user.get_full_name()}".strip() if (pref and pref.preference_1 and pref.preference_1.user) else ""
+                p2_name = f"{pref.preference_2.academic_title or ''} {pref.preference_2.user.get_full_name()}".strip() if (pref and pref.preference_2 and pref.preference_2.user) else ""
+                p3_name = f"{pref.preference_3.academic_title or ''} {pref.preference_3.user.get_full_name()}".strip() if (pref and pref.preference_3 and pref.preference_3.user) else ""
+
+                topic_title = ""
+                if survey and survey.tentative_title:
+                    topic_title = survey.tentative_title
+                elif pref and pref.topic_direction:
+                    topic_title = pref.topic_direction.name
+                else:
+                    topic_title = f"Đề tài tốt nghiệp của {full_name}"
+
+                unassigned_item = {
+                    "id": -st.id,
+                    "student": st.id,
+                    "student_name": full_name,
+                    "student_reg_no": st.registration_no,
+                    "student_class": c_class,
+                    "education_program": st.education_program or "",
+                    "supervisor": None,
+                    "supervisor_name": "Chưa phân công",
+                    "batch": int(batch_id),
+                    "topic_category": pref.topic_direction_id if (pref and pref.topic_direction) else None,
+                    "topic_category_name": pref.topic_direction.name if (pref and pref.topic_direction) else "",
+                    "topic_title_vi": topic_title,
+                    "topic_title_en": "",
+                    "status": "UNASSIGNED",
+                    "topic_review_status": "DRAFT",
+                    "topic_revision_notes": "",
+                    "outline_pdf_path": None,
+                    "initial_eligibility": "PENDING",
+                    "ineligibility_reason": None,
+                    "gpa_score": None,
+                    "debt_credits": 0,
+                    "supervisor_defense_confirmed": False,
+                    "final_academic_eligibility": "PENDING",
+                    "final_academic_notes": None,
+                    "deferral_status": "NONE",
+                    "deferral_reason": None,
+                    "reviewer": None,
+                    "reviewer_name": "",
+                    "council": None,
+                    "council_name": "",
+                    "schedule_slot_info": None,
+                    "supervisor_score": None,
+                    "reviewer_score": None,
+                    "is_eligible_for_defense": False,
+                    "final_score_10": None,
+                    "final_score_4": None,
+                    "final_letter_grade": None,
+                    "is_passed": None,
+                    "created_at": None,
+                    "updated_at": None,
+                    "is_unassigned": True,
+                    "preference_1_name": p1_name,
+                    "preference_2_name": p2_name,
+                    "preference_3_name": p3_name,
+                }
+                data.append(unassigned_item)
+
+        return Response(data, status=status.HTTP_200_OK)
 
 
 # ==============================================================================

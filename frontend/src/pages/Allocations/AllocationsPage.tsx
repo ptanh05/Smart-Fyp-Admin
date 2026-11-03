@@ -21,17 +21,21 @@ interface SupervisorQuota {
 }
 
 interface ProjectAdmin {
-  id: number;
-  student: number;
+  id: number | string;
+  student: number | null;
   student_name: string;
   student_reg_no: string;
   student_class: string;
   education_program?: string;
-  supervisor: number;
+  supervisor: number | null;
   supervisor_name: string;
   topic_title_vi: string;
   status: string;
   topic_review_status?: string;
+  is_unassigned?: boolean;
+  preference_1_name?: string;
+  preference_2_name?: string;
+  preference_3_name?: string;
 }
 
 export const AllocationsPage: React.FC = () => {
@@ -199,7 +203,9 @@ export const AllocationsPage: React.FC = () => {
   };
 
   const totalQuota = quotas.reduce((s, q) => s + (q.max_total_quota || 0), 0);
-  const totalAssigned = quotas.reduce((s, q) => s + (q.current_assigned || 0), 0);
+  const studentProjects = projects.filter((p) => p.student);
+  const totalAssigned = studentProjects.filter((p) => p.supervisor).length;
+  const unassignedCount = studentProjects.filter((p) => !p.supervisor).length;
 
   return (
     <AdminLayout>
@@ -278,19 +284,19 @@ export const AllocationsPage: React.FC = () => {
             <span className="utc-metric-sub">Tính theo hệ số học vị GV</span>
           </div>
           <div className="utc-metric-card">
+            <span className="utc-metric-title">Tổng Sinh Viên</span>
+            <span className="utc-metric-num text-purple">{studentProjects.length}</span>
+            <span className="utc-metric-sub">Sinh viên thuộc đợt này</span>
+          </div>
+          <div className="utc-metric-card">
             <span className="utc-metric-title">Đã Phân Công</span>
             <span className="utc-metric-num text-emerald">{totalAssigned}</span>
             <span className="utc-metric-sub">Sinh viên đã có GVHD</span>
           </div>
           <div className="utc-metric-card">
-            <span className="utc-metric-title">Chỉ Tiêu Còn Lại</span>
-            <span className="utc-metric-num text-blue">{Math.max(0, totalQuota - totalAssigned)}</span>
-            <span className="utc-metric-sub">Chỗ trống tiếp nhận đồ án</span>
-          </div>
-          <div className="utc-metric-card">
-            <span className="utc-metric-title">Tổng Số Giảng Viên</span>
-            <span className="utc-metric-num text-purple">{quotas.length}</span>
-            <span className="utc-metric-sub">Cán bộ tham gia đợt này</span>
+            <span className="utc-metric-title">Chưa Phân Công</span>
+            <span className="utc-metric-num text-amber">{unassignedCount}</span>
+            <span className="utc-metric-sub">Chờ chạy MCMF hoặc gán</span>
           </div>
         </div>
 
@@ -344,29 +350,72 @@ export const AllocationsPage: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {projects.map((proj) => (
-                      <tr key={proj.id}>
-                        <td className="font-bold">{proj.student_reg_no}</td>
-                        <td>{proj.student_name}</td>
-                        <td>
-                          <span className={`utc-tag-edu ${proj.education_program === 'ENGINEER' ? 'edu-ks' : 'edu-cn'}`}>
-                            {proj.education_program === 'ENGINEER' ? '⚙️ Kỹ sư' : '🎓 Cử nhân'}
-                          </span>
-                        </td>
-                        <td>
-                          <span className="font-semibold text-slate-800">{proj.supervisor_name}</span>
-                        </td>
-                        <td>
-                          <button
-                            onClick={() => handleOpenOverride(proj)}
-                            className="utc-btn-override"
-                            title="Chỉnh sửa / Override phân công cho SV này"
-                          >
-                            ✏️ Override
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {projects.map((proj) => {
+                      const isOfferedTopic = !proj.student;
+                      const isUnassigned = proj.student && !proj.supervisor;
+
+                      return (
+                        <tr key={proj.id} style={isUnassigned ? { backgroundColor: 'rgba(245, 158, 11, 0.05)' } : undefined}>
+                          <td className="font-bold">
+                            {isOfferedTopic ? (
+                              <span className="text-muted italic text-xs">Đề tài gợi ý</span>
+                            ) : (
+                              proj.student_reg_no
+                            )}
+                          </td>
+                          <td>
+                            {isOfferedTopic ? (
+                              <div>
+                                <div className="font-semibold text-slate-700">Đề tài mở: {proj.topic_title_vi}</div>
+                                <div className="text-xs text-amber-600 font-medium italic">Chưa có nhóm nhận</div>
+                              </div>
+                            ) : (
+                              <div>
+                                <div className="font-semibold">{proj.student_name}</div>
+                                <div className="text-xs text-muted">{proj.student_class}</div>
+                              </div>
+                            )}
+                          </td>
+                          <td>
+                            <span className={`utc-tag-edu ${proj.education_program === 'ENGINEER' ? 'edu-ks' : 'edu-cn'}`}>
+                              {proj.education_program === 'ENGINEER' ? '⚙️ Kỹ sư' : '🎓 Cử nhân'}
+                            </span>
+                          </td>
+                          <td>
+                            {isOfferedTopic ? (
+                              <span className="font-semibold text-slate-800">{proj.supervisor_name}</span>
+                            ) : proj.supervisor ? (
+                              <span className="font-semibold text-slate-800">{proj.supervisor_name}</span>
+                            ) : (
+                              <div>
+                                <span className="utc-tag-edu edu-cn" style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a' }}>
+                                  ⏳ Chưa phân công
+                                </span>
+                                {proj.preference_1_name && (
+                                  <div className="text-xs text-blue-600 font-medium mt-0.5">
+                                    ⭐ NV1: {proj.preference_1_name}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                          <td>
+                            {isOfferedTopic ? (
+                              <span className="text-xs text-slate-400 italic">Đề tài gợi ý GV</span>
+                            ) : (
+                              <button
+                                onClick={() => handleOpenOverride(proj)}
+                                className="utc-btn-override"
+                                style={!proj.supervisor ? { background: '#2563eb', color: '#fff' } : undefined}
+                                title={proj.supervisor ? 'Chỉnh sửa / Override phân công cho SV này' : 'Phân công GVHD cho sinh viên này'}
+                              >
+                                ✏️ {proj.supervisor ? 'Override' : 'Phân công'}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -432,7 +481,13 @@ export const AllocationsPage: React.FC = () => {
                 <div className="utc-override-info">
                   <p>Sinh viên: <strong>{overrideStudent.student_name}</strong> (MSSV: {overrideStudent.student_reg_no})</p>
                   <p>Chương trình: <strong>{overrideStudent.education_program === 'ENGINEER' ? 'Kỹ sư (Yêu cầu GVHD tối thiểu TS)' : 'Cử nhân'}</strong></p>
-                  <p>GVHD hiện tại: <strong>{overrideStudent.supervisor_name}</strong></p>
+                  <p>GVHD hiện tại: <strong>{overrideStudent.supervisor_name || 'Chưa phân công'}</strong></p>
+                  {overrideStudent.preference_1_name && (
+                    <p style={{ fontSize: '0.82rem', color: '#1d4ed8', marginTop: '0.25rem' }}>
+                      💡 Nguyện vọng của SV: <strong>NV1: {overrideStudent.preference_1_name}</strong>
+                      {overrideStudent.preference_2_name ? ` | NV2: ${overrideStudent.preference_2_name}` : ''}
+                    </p>
+                  )}
                 </div>
 
                 <div className="utc-form-group">

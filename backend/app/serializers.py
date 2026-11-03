@@ -378,6 +378,7 @@ class SupervisorQuotaSerializer(serializers.ModelSerializer):
     supervisor_id_code = serializers.CharField(source="supervisor.supervisor_id", read_only=True)
     academic_title = serializers.CharField(source="supervisor.academic_title", read_only=True)
     phone_number = serializers.CharField(source="supervisor.phone_number", read_only=True)
+    current_assigned = serializers.SerializerMethodField()
 
     class Meta:
         model = SupervisorQuota
@@ -422,6 +423,11 @@ class SupervisorQuotaSerializer(serializers.ModelSerializer):
         user = obj.supervisor.user
         prefix = f"{obj.supervisor.academic_title} " if obj.supervisor.academic_title else ""
         return f"{prefix}{user.get_full_name() or user.username}".strip()
+
+    def get_current_assigned(self, obj):
+        return GraduationProject.objects.filter(
+            batch=obj.batch, supervisor=obj.supervisor, student__isnull=False
+        ).count()
 
 
 class CouncilMemberSerializer(serializers.ModelSerializer):

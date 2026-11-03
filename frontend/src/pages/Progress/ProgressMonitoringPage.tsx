@@ -5,6 +5,7 @@ import './ProgressMonitoringPage.css';
 
 interface ProjectProgress {
   id: number;
+  student?: number | null;
   student_name: string;
   student_reg_no: string;
   student_class: string;
@@ -63,19 +64,21 @@ export const ProgressMonitoringPage: React.FC = () => {
     }
   }, [selectedBatchId]);
 
-  const filtered = projects.filter((p) => {
+  const studentProjects = projects.filter((p) => p.student !== null && p.student !== undefined);
+
+  const filtered = studentProjects.filter((p) => {
     const s = searchTerm.toLowerCase();
     return (
-      p.student_name.toLowerCase().includes(s) ||
-      p.student_reg_no.toLowerCase().includes(s) ||
-      p.topic_title_vi.toLowerCase().includes(s) ||
-      p.supervisor_name.toLowerCase().includes(s)
+      (p.student_name || '').toLowerCase().includes(s) ||
+      (p.student_reg_no || '').toLowerCase().includes(s) ||
+      (p.topic_title_vi || '').toLowerCase().includes(s) ||
+      (p.supervisor_name || '').toLowerCase().includes(s)
     );
   });
 
-  const countInProgress = projects.filter((p) => p.status === 'IN_PROGRESS' || p.status === 'OUTLINE_APPROVED').length;
-  const countDefenseReady = projects.filter((p) => p.status === 'DEFENSE_READY' || p.is_eligible_for_defense).length;
-  const countDeferred = projects.filter((p) => p.status === 'DEFERRED').length;
+  const countInProgress = studentProjects.filter((p) => p.status === 'IN_PROGRESS' || p.status === 'OUTLINE_APPROVED').length;
+  const countDefenseReady = studentProjects.filter((p) => p.status === 'DEFENSE_READY' || p.is_eligible_for_defense).length;
+  const countDeferred = studentProjects.filter((p) => p.status === 'DEFERRED').length;
 
   return (
     <AdminLayout>
@@ -106,7 +109,7 @@ export const ProgressMonitoringPage: React.FC = () => {
         <div className="utc-prog-metric-grid">
           <div className="utc-prog-card">
             <span className="prog-label">Tổng Số Đồ Án</span>
-            <span className="prog-num">{projects.length}</span>
+            <span className="prog-num">{studentProjects.length}</span>
             <span className="prog-sub">Nhóm sinh viên đang làm</span>
           </div>
           <div className="utc-prog-card">

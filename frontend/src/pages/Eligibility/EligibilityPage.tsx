@@ -5,6 +5,7 @@ import './EligibilityPage.css';
 
 interface ProjectEligibility {
   id: number;
+  student?: number | null;
   student_name: string;
   student_reg_no: string;
   student_class: string;
@@ -152,15 +153,17 @@ export const EligibilityPage: React.FC = () => {
     }
   };
 
-  const filtered = projects.filter((p) => {
+  const studentProjects = projects.filter((p) => p.student !== null && p.student !== undefined);
+
+  const filtered = studentProjects.filter((p) => {
     if (filterStatus === 'ALL') return true;
     return p.initial_eligibility === filterStatus;
   });
 
-  const countEligible = projects.filter((p) => p.initial_eligibility === 'ELIGIBLE').length;
-  const countIneligible = projects.filter((p) => p.initial_eligibility === 'INELIGIBLE').length;
-  const countForceApproved = projects.filter((p) => p.initial_eligibility === 'FORCE_APPROVED').length;
-  const countDisqualified = projects.filter((p) => p.initial_eligibility === 'DISQUALIFIED').length;
+  const countEligible = studentProjects.filter((p) => p.initial_eligibility === 'ELIGIBLE').length;
+  const countIneligible = studentProjects.filter((p) => p.initial_eligibility === 'INELIGIBLE').length;
+  const countForceApproved = studentProjects.filter((p) => p.initial_eligibility === 'FORCE_APPROVED').length;
+  const countDisqualified = studentProjects.filter((p) => p.initial_eligibility === 'DISQUALIFIED').length;
 
   return (
     <AdminLayout>
@@ -208,7 +211,7 @@ export const EligibilityPage: React.FC = () => {
             onClick={() => setFilterStatus('ALL')}
           >
             <span className="card-label">Tổng Sinh Viên</span>
-            <span className="card-num">{projects.length}</span>
+            <span className="card-num">{studentProjects.length}</span>
             <span className="card-sub">Toàn bộ sinh viên trong đợt</span>
           </div>
 
