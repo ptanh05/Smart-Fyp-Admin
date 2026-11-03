@@ -68,11 +68,17 @@ export const AllocationsPage: React.FC = () => {
       const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
       setBatches(list);
       if (list.length > 0 && !selectedBatchId) {
-        const preferredBatch =
-          list.find((b: any) => b.is_active && b.batch_code.includes('K62')) ||
-          list.find((b: any) => b.is_active) ||
-          list[0];
-        setSelectedBatchId(preferredBatch.id);
+        const savedId = localStorage.getItem('utc_selected_batch_id');
+        const found = savedId ? list.find((b: any) => b.id === Number(savedId)) : null;
+        if (found) {
+          setSelectedBatchId(found.id);
+        } else {
+          const preferredBatch =
+            list.find((b: any) => b.is_active && b.batch_code.includes('K62')) ||
+            list.find((b: any) => b.is_active) ||
+            list[0];
+          setSelectedBatchId(preferredBatch.id);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -216,7 +222,11 @@ export const AllocationsPage: React.FC = () => {
             <label>🎯 Đợt Đồ Án Tốt Nghiệp:</label>
             <select
               value={selectedBatchId || ''}
-              onChange={(e) => setSelectedBatchId(Number(e.target.value))}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                setSelectedBatchId(val);
+                localStorage.setItem('utc_selected_batch_id', String(val));
+              }}
               className="utc-batch-dropdown"
             >
               {batches.map((b) => (

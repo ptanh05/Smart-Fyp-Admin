@@ -178,7 +178,9 @@ export const BatchesPage: React.FC = () => {
       const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
       setBatches(list);
       if (list.length > 0 && !selectedBatchId) {
-        setSelectedBatchId(list[0].id);
+        const savedId = localStorage.getItem('utc_selected_batch_id');
+        const found = savedId ? list.find((b: any) => b.id === Number(savedId)) : null;
+        setSelectedBatchId(found ? found.id : list[0].id);
       }
     } catch (err) {
       console.error('Error fetching batches:', err);
@@ -570,7 +572,10 @@ export const BatchesPage: React.FC = () => {
                 {batches.map((batch) => (
                   <div
                     key={batch.id}
-                    onClick={() => setSelectedBatchId(batch.id)}
+                    onClick={() => {
+                      setSelectedBatchId(batch.id);
+                      localStorage.setItem('utc_selected_batch_id', String(batch.id));
+                    }}
                     className={`utc-batch-card ${selectedBatchId === batch.id ? 'selected' : ''}`}
                   >
                     <div className="utc-batch-card-head">

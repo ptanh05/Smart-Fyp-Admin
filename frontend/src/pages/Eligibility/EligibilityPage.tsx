@@ -40,7 +40,11 @@ export const EligibilityPage: React.FC = () => {
       const res = await apiClient.get('/admin/batches/');
       const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
       setBatches(list);
-      if (list.length > 0 && !selectedBatchId) {
+      const savedId = localStorage.getItem('utc_selected_batch_id');
+      const found = savedId ? list.find((b: any) => b.id === Number(savedId)) : null;
+      if (found) {
+        setSelectedBatchId(found.id);
+      } else if (list.length > 0 && !selectedBatchId) {
         setSelectedBatchId(list[0].id);
       }
     } catch (err) {
@@ -178,7 +182,11 @@ export const EligibilityPage: React.FC = () => {
           <div className="utc-header-actions">
             <select
               value={selectedBatchId || ''}
-              onChange={(e) => setSelectedBatchId(Number(e.target.value))}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                setSelectedBatchId(val);
+                localStorage.setItem('utc_selected_batch_id', String(val));
+              }}
               className="utc-batch-dropdown"
             >
               {batches.map((b) => (
