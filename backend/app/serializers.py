@@ -61,6 +61,26 @@ class StudentDetailSerializer(serializers.ModelSerializer):
             "major",
         ]
 
+    def get_student_name(self, obj):
+        if obj.student and obj.student.user:
+            return obj.student.user.get_full_name() or obj.student.user.username
+        return ""
+
+    def get_student_reg_no(self, obj):
+        if obj.student:
+            return obj.student.registration_no or ""
+        return ""
+
+    def get_student_class(self, obj):
+        if obj.student:
+            return getattr(obj.student, "department", None) or (obj.student.course_class.class_name if hasattr(obj.student, "course_class") and obj.student.course_class else "") or ""
+        return ""
+
+    def get_education_program(self, obj):
+        if obj.student:
+            return obj.student.education_program or ""
+        return ""
+
     def get_supervisor_name(self, obj):
         proj = getattr(obj, "graduation_project", None)
         if proj and proj.supervisor:
@@ -378,6 +398,26 @@ class SupervisorQuotaSerializer(serializers.ModelSerializer):
             "current_assigned"
         ]
 
+    def get_student_name(self, obj):
+        if obj.student and obj.student.user:
+            return obj.student.user.get_full_name() or obj.student.user.username
+        return ""
+
+    def get_student_reg_no(self, obj):
+        if obj.student:
+            return obj.student.registration_no or ""
+        return ""
+
+    def get_student_class(self, obj):
+        if obj.student:
+            return getattr(obj.student, "department", None) or (obj.student.course_class.class_name if hasattr(obj.student, "course_class") and obj.student.course_class else "") or ""
+        return ""
+
+    def get_education_program(self, obj):
+        if obj.student:
+            return obj.student.education_program or ""
+        return ""
+
     def get_supervisor_name(self, obj):
         user = obj.supervisor.user
         prefix = f"{obj.supervisor.academic_title} " if obj.supervisor.academic_title else ""
@@ -456,10 +496,10 @@ class DefenseScheduleSlotSerializer(serializers.ModelSerializer):
 
 
 class GraduationProjectAdminSerializer(serializers.ModelSerializer):
-    student_name = serializers.CharField(source="student.user.get_full_name", read_only=True)
-    student_reg_no = serializers.CharField(source="student.registration_no", read_only=True)
-    student_class = serializers.CharField(source="student.department", read_only=True)
-    education_program = serializers.CharField(source="student.education_program", read_only=True)
+    student_name = serializers.SerializerMethodField()
+    student_reg_no = serializers.SerializerMethodField()
+    student_class = serializers.SerializerMethodField()
+    education_program = serializers.SerializerMethodField()
     supervisor_name = serializers.SerializerMethodField()
     reviewer_name = serializers.SerializerMethodField()
     council_name = serializers.CharField(source="council.council_name", read_only=True, default="")
@@ -515,6 +555,26 @@ class GraduationProjectAdminSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at"
         ]
+
+    def get_student_name(self, obj):
+        if obj.student and obj.student.user:
+            return obj.student.user.get_full_name() or obj.student.user.username
+        return ""
+
+    def get_student_reg_no(self, obj):
+        if obj.student:
+            return obj.student.registration_no or ""
+        return ""
+
+    def get_student_class(self, obj):
+        if obj.student:
+            return getattr(obj.student, "department", None) or (obj.student.course_class.class_name if hasattr(obj.student, "course_class") and obj.student.course_class else "") or ""
+        return ""
+
+    def get_education_program(self, obj):
+        if obj.student:
+            return obj.student.education_program or ""
+        return ""
 
     def get_supervisor_name(self, obj):
         if not obj.supervisor:

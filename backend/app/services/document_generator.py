@@ -224,11 +224,18 @@ class DocumentGenerationService:
         sup = proj.supervisor
         p_info = doc.add_paragraph()
         p_info.paragraph_format.first_line_indent = Inches(0.3)
+        st_name = student.user.get_full_name() if (student and student.user) else "(Đề tài gợi ý - Chưa gán SV)"
+        st_reg = student.registration_no if student else "N/A"
+        st_class = student.course_class.class_name if (student and student.course_class) else "Chưa phân lớp"
+        st_edu = student.get_education_program_display() if student else "Cử nhân / Kỹ sư"
+        sup_title = sup.academic_title or '' if sup else ''
+        sup_name = sup.user.get_full_name() if (sup and sup.user) else "Chưa phân công GV"
+        sup_dept = sup.department_name or 'Khoa CNTT' if sup else 'Khoa CNTT'
         runs_data = [
-            f"1. Họ và tên sinh viên: {student.user.get_full_name()}\n",
-            f"   Mã số sinh viên: {student.registration_no}       Lớp: {student.course_class.class_name if student.course_class else ''}\n",
-            f"   Chương trình đào tạo: {student.get_education_program_display()}\n",
-            f"2. Giảng viên hướng dẫn: {sup.academic_title or ''} {sup.user.get_full_name()} ({sup.department_name or 'Khoa CNTT'})\n",
+            f"1. Họ và tên sinh viên: {st_name}\n",
+            f"   Mã số sinh viên: {st_reg}       Lớp: {st_class}\n",
+            f"   Chương trình đào tạo: {st_edu}\n",
+            f"2. Giảng viên hướng dẫn: {sup_title} {sup_name} ({sup_dept})\n",
             f"3. Tên đề tài tốt nghiệp:\n",
             f"   - Tên tiếng Việt: {proj.topic_title_vi}\n",
             f"   - Tên tiếng Anh: {proj.topic_title_en or '(Đang cập nhật)'}\n",

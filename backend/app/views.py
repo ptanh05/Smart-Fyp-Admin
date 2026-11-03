@@ -1307,9 +1307,14 @@ class GraduationProjectsAdminListAPIView(APIView):
 
         from .utils.vietnamese_sort import sort_by_vietnamese_name
         projects_list = list(projects)
+        def get_student_sort_name(p):
+            if p.student and p.student.user:
+                return p.student.user.get_full_name() or p.student.user.username or ""
+            return p.topic_title_vi or ""
+
         projects_list = sort_by_vietnamese_name(
             projects_list,
-            key_extractor=lambda p: p.student.user.get_full_name() or p.student.user.username
+            key_extractor=get_student_sort_name
         )
 
         serializer = GraduationProjectAdminSerializer(projects_list, many=True)
@@ -1500,9 +1505,16 @@ class OutlineReviewListAPIView(APIView):
 
         # Sort by Vietnamese name collation
         reviews_list = list(reviews)
+        def get_outline_sort_name(r):
+            if r.project and r.project.student and r.project.student.user:
+                u = r.project.student.user
+                full = f"{u.last_name} {u.first_name}".strip()
+                return full or u.get_full_name() or u.username
+            return (r.project.topic_title_vi if r.project else "") or ""
+
         reviews_list = sort_by_vietnamese_name(
             reviews_list,
-            key_extractor=lambda r: (f"{r.project.student.user.last_name} {r.project.student.user.first_name}".strip() if (r.project.student.user.last_name or r.project.student.user.first_name) else (r.project.student.user.get_full_name() or r.project.student.user.username))
+            key_extractor=get_outline_sort_name
         )
 
         serializer = OutlineReviewSerializer(reviews_list, many=True)
@@ -1736,6 +1748,8 @@ class TopicApprovalAPIView(APIView):
         decision = request.data.get("decision")  # "APPROVE" hoặc "REQUEST_REVISION"
         notes = request.data.get("notes", "")
 
+        student_label = project.student.registration_no if (project.student and hasattr(project.student, 'registration_no')) else f"Đề tài mở #{project.id}"
+
         if decision == "APPROVE":
             project.topic_review_status = "APPROVED"
             project.status = "OUTLINE_APPROVED"
@@ -1745,7 +1759,7 @@ class TopicApprovalAPIView(APIView):
             AuditLog.objects.create(
                 user=request.user,
                 action_type="document_status_change",
-                description=f"Khoa phê duyệt đề tài cho SV {project.student.registration_no} ({project.topic_title_vi})."
+                description=f"Khoa phê duyệt đề tài cho {student_label} ({project.topic_title_vi})."
             )
             return Response({"message": "Phê duyệt đề tài thành công.", "status": "APPROVED"}, status=status.HTTP_200_OK)
 
@@ -1758,7 +1772,7 @@ class TopicApprovalAPIView(APIView):
             AuditLog.objects.create(
                 user=request.user,
                 action_type="document_status_change",
-                description=f"Khoa yêu cầu sửa đề tài của SV {project.student.registration_no}: {notes}"
+                description=f"Khoa yêu cầu sửa đề tài của {student_label}: {notes}"
             )
             return Response({"message": "Đã gửi yêu cầu chỉnh sửa đề tài về Draft.", "status": "REVISION_REQUIRED"}, status=status.HTTP_200_OK)
 
@@ -1777,7 +1791,8 @@ class DownloadProjectOutlineAPIView(APIView):
                 buffer.getvalue(),
                 content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
-            filename = f"Phieu_giao_de_tai_{project.student.registration_no}.docx"
+            reg_no = project.student.registration_no if (project.student and hasattr(project.student, 'registration_no')) else f"open_{project.id}"
+            filename = f"Phieu_giao_de_tai_{reg_no}.docx"
             response["Content-Disposition"] = f'attachment; filename="{filename}"'
             return response
         except Exception as ex:
@@ -1836,10 +1851,11 @@ class EligibilityDecisionAPIView(APIView):
             project.ineligibility_reason = f"Đặc cách: {reason}" if reason else (project.ineligibility_reason or "Khoa phê duyệt đặc cách theo đơn giải trình")
             project.save()
 
+            st_reg = project.student.registration_no if (project.student and hasattr(project.student, 'registration_no')) else f"#{project.id}"
             AuditLog.objects.create(
                 user=request.user,
                 action_type="evaluation_update",
-                description=f"Khoa Force Approve cho SV {project.student.registration_no}: {reason}"
+                description=f"Khoa Force Approve cho SV {st_reg}: {reason}"
             )
             return Response({"message": "Khoa đã đặc cách cho phép làm đồ án (Force Approve).", "status": "FORCE_APPROVED"}, status=status.HTTP_200_OK)
 
@@ -1849,10 +1865,11 @@ class EligibilityDecisionAPIView(APIView):
             project.ineligibility_reason = reason or "Không đủ điều kiện làm đồ án tốt nghiệp"
             project.save()
 
+            st_reg = project.student.registration_no if (project.student and hasattr(project.student, 'registration_no')) else f"#{project.id}"
             AuditLog.objects.create(
                 user=request.user,
                 action_type="evaluation_update",
-                description=f"Khoa loại SV {project.student.registration_no} khỏi đợt đồ án: {reason}"
+                description=f"Khoa loại SV {st_reg} khỏi đợt đồ án: {reason}"
             )
             return Response({"message": "Đã loại sinh viên khỏi đợt đồ án.", "status": "DISQUALIFIED"}, status=status.HTTP_200_OK)
 

@@ -227,18 +227,18 @@ export const TopicApprovalPage: React.FC = () => {
                 <tbody>
                   {filteredProjects.map((p) => (
                     <tr key={p.id}>
-                      <td className="font-bold">{p.student_reg_no}</td>
+                      <td className="font-bold">{p.student_reg_no || <span className="text-muted italic text-xs">Đề tài gợi ý</span>}</td>
                       <td>
-                        <div className="font-semibold">{p.student_name}</div>
-                        <div className="text-xs text-muted">{p.student_class}</div>
+                        <div className="font-semibold">{p.student_name || <span className="text-slate-500 italic">Chưa có nhóm nhận</span>}</div>
+                        <div className="text-xs text-muted">{p.student_class || ''}</div>
                       </td>
                       <td>
                         <span className={`utc-tag-edu ${p.education_program === 'ENGINEER' ? 'edu-ks' : 'edu-cn'}`}>
-                          {p.education_program === 'ENGINEER' ? '⚙️ Kỹ sư' : '🎓 Cử nhân'}
+                          {p.education_program === 'ENGINEER' ? '⚙️ Kỹ sư' : p.education_program === 'BACHELOR' ? '🎓 Cử nhân' : '🎓 Cử nhân / Kỹ sư'}
                         </span>
                       </td>
                       <td>
-                        <span className="font-medium text-slate-800">{p.supervisor_name}</span>
+                        <span className="font-medium text-slate-800">{p.supervisor_name || 'Chưa phân công'}</span>
                       </td>
                       <td style={{ maxWidth: '320px' }}>
                         <div className="font-semibold text-slate-900">{p.topic_title_vi}</div>
