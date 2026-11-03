@@ -1014,39 +1014,69 @@ class ExcelStudentImportAPIView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
-        file_obj = (
-            request.FILES.get("file")
-            or request.FILES.get("excel")
-            or request.FILES.get("excel_file")
-            or request.FILES.get("student_file")
-            or (next(iter(request.FILES.values())) if request.FILES else None)
-        )
-        batch_id = request.data.get("batch_id")
+        try:
+            file_obj = (
+                request.FILES.get("file")
+                or request.FILES.get("excel")
+                or request.FILES.get("excel_file")
+                or request.FILES.get("student_file")
+                or (next(iter(request.FILES.values())) if request.FILES else None)
+            )
+            batch_id = request.data.get("batch_id")
 
-        if not file_obj:
-            return Response({"detail": "Vui lòng chọn file Excel để import."}, status=status.HTTP_400_BAD_REQUEST)
-        if not batch_id:
-            active_batch = AcademicBatch.objects.filter(is_active=True).first() or AcademicBatch.objects.order_by("-id").first()
-            if not active_batch:
-                active_batch = AcademicBatch.objects.create(
-                    batch_code=f"K{timezone.now().year}",
-                    batch_name=f"Đợt Đồ Án {timezone.now().year}",
-                    is_active=True
+            if not file_obj:
+                return Response({"success": False, "detail": "Vui lòng chọn file Excel để import."}, status=status.HTTP_400_BAD_REQUEST)
+            if not batch_id:
+                active_batch = AcademicBatch.objects.filter(is_active=True).first() or AcademicBatch.objects.order_by("-id").first()
+                if not active_batch:
+                    active_batch = AcademicBatch.objects.create(
+                        batch_code=f"K{timezone.now().year}",
+                        batch_name=f"Đợt Đồ Án {timezone.now().year}",
+                        is_active=True
+                    )
+                batch_id = active_batch.id
+            else:
+                try:
+                    batch_id = int(batch_id)
+                except (ValueError, TypeError):
+                    pass
+
+            res = ExcelImportService.import_students_from_excel(file_obj, batch_id)
+
+            try:
+                AuditLog.objects.create(
+                    user=request.user if getattr(request.user, "is_authenticated", False) else None,
+                    action_type="admin_user_update",
+                    description=f"Imported Excel students for Batch #{batch_id}: Total={res.get('total')}, Created={res.get('created')}"
                 )
-            batch_id = active_batch.id
+            except Exception as log_ex:
+                logger.warning(f"Failed to create audit log for Excel import: {log_ex}")
 
-        res = ExcelImportService.import_students_from_excel(file_obj, batch_id)
+            try:
+                invalidate_user_summary_cache()
+                cache.delete(BATCHES_CACHE_KEY)
+                cache.delete(SECURITY_METRICS_CACHE_KEY)
+            except Exception as cache_ex:
+                logger.warning(f"Cache deletion error after Excel import: {cache_ex}")
 
-        AuditLog.objects.create(
-            user=request.user,
-            action_type="admin_user_update",
-            description=f"Imported Excel students for Batch #{batch_id}: Total={res.get('total')}, Created={res.get('created')}"
-        )
-        invalidate_user_summary_cache()
-        cache.delete(BATCHES_CACHE_KEY)
-        cache.delete(SECURITY_METRICS_CACHE_KEY)
+            http_status = status.HTTP_200_OK if res.get("success") else status.HTTP_400_BAD_REQUEST
+            return Response(res, status=http_status)
 
-        return Response(res, status=status.HTTP_200_OK if res.get("success") else status.HTTP_400_BAD_REQUEST)
+        except Exception as ex:
+            logger.exception("Critical error during Excel student import")
+            return Response(
+                {
+                    "success": False,
+                    "detail": f"Lỗi hệ thống khi xử lý file Excel: {str(ex)}",
+                    "error": str(ex),
+                    "total": 0,
+                    "created": 0,
+                    "updated": 0,
+                    "skipped": 0,
+                    "errors": [str(ex)]
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 class ExcelStudentExportAPIView(APIView):

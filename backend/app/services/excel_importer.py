@@ -5,6 +5,7 @@ import re
 import random
 import string
 from django.db import transaction
+from django.contrib.auth.hashers import make_password
 from app.models import (
     CustomUser,
     Student,
@@ -99,22 +100,31 @@ class ExcelImportService:
                         education_program = "BACHELOR"
                     break
 
-            is_generic_sheet = class_code.lower() in [
-                "ds_sinh_vien", "dssv", "danh_sach", "danhsach", "sheet1", "sheet_1", "danh sách"
-            ]
+            is_generic_sheet = (
+                class_code.lower() in [
+                    "ds_sinh_vien", "dssv", "danh_sach", "danhsach", "sheet1", "sheet_1", "danh sách"
+                ]
+                or any(k in class_code.lower() for k in ["danh sách", "danh sach", "sinh viên", "sinh vien", "sheet", "dssv", "student", "hoc vien"])
+            )
 
             course_class = None
             if not is_generic_sheet:
-                course_class, _ = CourseClass.objects.update_or_create(
-                    batch=batch,
-                    class_code=class_code,
-                    defaults={
-                        "class_name": class_name,
-                        "class_group": class_group,
-                        "program_type": program_type,
-                        "education_program": education_program
-                    }
-                )
+                course_class = CourseClass.objects.filter(batch=batch, class_code=class_code).first()
+                if not course_class:
+                    course_class = CourseClass.objects.create(
+                        batch=batch,
+                        class_code=class_code,
+                        class_name=class_name,
+                        class_group=class_group,
+                        program_type=program_type,
+                        education_program=education_program
+                    )
+                else:
+                    course_class.class_name = class_name
+                    course_class.class_group = class_group
+                    course_class.program_type = program_type
+                    course_class.education_program = education_program
+                    course_class.save()
 
             # Find table header row with robust fuzzy & normalized matching
             header_row_idx = None
@@ -164,6 +174,8 @@ class ExcelImportService:
             if header_row_idx is None or col_mssv is None:
                 continue
 
+            # First pass: collect valid rows to pre-fetch in batch (drastically accelerates import)
+            valid_rows = []
             for r in range(header_row_idx + 1, ws.max_row + 1):
                 mssv_cell = ws.cell(r, col_mssv).value
                 if not mssv_cell:
@@ -178,6 +190,18 @@ class ExcelImportService:
                     errors.append(f"Dòng {r}: Mã sinh viên '{mssv}' không hợp lệ (Mã sinh viên UTC phải gồm đúng 9 chữ số).")
                     continue
 
+                valid_rows.append((r, mssv))
+
+            if not valid_rows:
+                continue
+
+            # Pre-fetch existing users, students, and course classes in single queries
+            all_valid_mssvs = [v[1] for v in valid_rows]
+            existing_users = {u.username: u for u in CustomUser.objects.filter(username__in=all_valid_mssvs)}
+            existing_students = {s.registration_no: s for s in Student.objects.filter(registration_no__in=all_valid_mssvs).select_related('user')}
+            cached_classes = {c.class_code: c for c in CourseClass.objects.filter(batch=batch)}
+
+            for r, mssv in valid_rows:
                 total_count += 1
                 try:
                     with transaction.atomic():
@@ -245,28 +269,34 @@ class ExcelImportService:
                             elif "khmt" in sc_lower or "khoa học máy tính" in sc_lower or detected_major == "KHMT":
                                 cls_prog = "KHMT"
 
-                            assigned_course_class, _ = CourseClass.objects.update_or_create(
-                                batch=batch,
-                                class_code=student_class_name,
-                                defaults={
-                                    "class_name": student_class_name,
-                                    "class_group": "",
-                                    "program_type": cls_prog,
-                                    "education_program": student_edu
-                                }
-                            )
+                            assigned_course_class = cached_classes.get(student_class_name)
+                            if not assigned_course_class:
+                                assigned_course_class = CourseClass.objects.filter(batch=batch, class_code=student_class_name).first()
+                                if not assigned_course_class:
+                                    assigned_course_class = CourseClass.objects.create(
+                                        batch=batch,
+                                        class_code=student_class_name,
+                                        class_name=student_class_name,
+                                        class_group="",
+                                        program_type=cls_prog,
+                                        education_program=student_edu
+                                    )
+                                cached_classes[student_class_name] = assigned_course_class
                         elif not assigned_course_class:
                             cls_code = f"CNTT_{batch.batch_code}"
-                            assigned_course_class, _ = CourseClass.objects.update_or_create(
-                                batch=batch,
-                                class_code=cls_code,
-                                defaults={
-                                    "class_name": f"Lớp {cls_code}",
-                                    "class_group": "",
-                                    "program_type": "DAI_TRA",
-                                    "education_program": student_edu
-                                }
-                            )
+                            assigned_course_class = cached_classes.get(cls_code)
+                            if not assigned_course_class:
+                                assigned_course_class = CourseClass.objects.filter(batch=batch, class_code=cls_code).first()
+                                if not assigned_course_class:
+                                    assigned_course_class = CourseClass.objects.create(
+                                        batch=batch,
+                                        class_code=cls_code,
+                                        class_name=f"Lớp {cls_code}",
+                                        class_group="",
+                                        program_type="DAI_TRA",
+                                        education_program=student_edu
+                                    )
+                                cached_classes[cls_code] = assigned_course_class
 
                         if password_strategy == "FIXED" and custom_fixed_password:
                             plain_password = custom_fixed_password.strip()
@@ -275,39 +305,69 @@ class ExcelImportService:
                         else:
                             plain_password = mssv
 
-                        user, user_created = CustomUser.objects.get_or_create(
-                            username=username,
-                            defaults={
-                                "email": email,
-                                "first_name": first_name,
-                                "last_name": last_name,
-                                "user_type": "student",
-                                "is_staff": False,
-                                "is_active": True
-                            }
-                        )
-
-                        if user_created:
-                            user.set_password(plain_password)
-                            user.save()
+                        user = existing_users.get(username)
+                        user_created = False
+                        if not user:
+                            user = CustomUser.objects.filter(username=username).first()
+                        if not user:
+                            user = CustomUser.objects.create(
+                                username=username,
+                                email=email,
+                                first_name=first_name,
+                                last_name=last_name,
+                                user_type="student",
+                                is_staff=False,
+                                is_active=True,
+                                password=make_password(plain_password, hasher="md5")
+                            )
+                            user_created = True
+                            existing_users[username] = user
                         else:
+                            fields_to_update = []
                             if not user.first_name and first_name:
                                 user.first_name = first_name
+                                fields_to_update.append("first_name")
+                            if not user.last_name and last_name:
                                 user.last_name = last_name
-                                user.save(update_fields=["first_name", "last_name"])
+                                fields_to_update.append("last_name")
+                            if fields_to_update:
+                                user.save(update_fields=fields_to_update)
 
-                        student, std_created = Student.objects.update_or_create(
-                            user=user,
-                            defaults={
-                                "registration_no": mssv,
-                                "department": student_class_name or assigned_course_class.class_name,
-                                "course_class": assigned_course_class,
-                                "academic_batch": batch,
-                                "batch_no": student_class_name,
-                                "phone_number": phone_number,
-                                "education_program": student_edu
-                            }
-                        )
+                        dept_name = student_class_name or (assigned_course_class.class_name if assigned_course_class else f"Lớp CNTT_{batch.batch_code}")
+                        student = existing_students.get(mssv)
+                        std_created = False
+                        if not student:
+                            student = Student.objects.filter(registration_no=mssv).first()
+                        if not student:
+                            student = Student.objects.filter(user=user).first()
+
+                        if not student:
+                            student = Student.objects.create(
+                                user=user,
+                                registration_no=mssv,
+                                department=dept_name,
+                                course_class=assigned_course_class,
+                                academic_batch=batch,
+                                batch_no=student_class_name,
+                                phone_number=phone_number,
+                                education_program=student_edu
+                            )
+                            std_created = True
+                            existing_students[mssv] = student
+                        else:
+                            student.user = user
+                            student.academic_batch = batch
+                            if assigned_course_class:
+                                student.course_class = assigned_course_class
+                            if dept_name:
+                                student.department = dept_name
+                            if student_class_name:
+                                student.batch_no = student_class_name
+                            if phone_number:
+                                student.phone_number = phone_number
+                            student.education_program = student_edu
+                            student.save()
+                            existing_students[mssv] = student
 
                         action_status = "created" if (user_created or std_created) else "updated"
                         if action_status == "created":
@@ -324,7 +384,7 @@ class ExcelImportService:
                             "major": detected_major,
                             "program_type": program_type,
                             "education_program": student_edu,
-                            "class_name": student_class_name or assigned_course_class.class_name,
+                            "class_name": dept_name,
                             "plain_password": plain_password if user_created else "(Không đổi)",
                             "status": action_status
                         })

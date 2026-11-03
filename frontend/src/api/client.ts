@@ -80,11 +80,14 @@ apiClient.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${access}`;
         processQueue(null, access);
         return apiClient(originalRequest);
-      } catch (refreshError) {
-        processQueue(refreshError, null);
+      } catch (refreshError: any) {
+        const authErr = new Error('Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.');
+        processQueue(authErr, null);
         setAccessToken(null);
-        window.location.href = '/login';
-        return Promise.reject(refreshError);
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+          window.location.href = '/login';
+        }
+        return Promise.reject(authErr);
       } finally {
         isRefreshing = false;
       }

@@ -291,11 +291,22 @@ export const BatchesPage: React.FC = () => {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       setImportResult(res.data);
-      showToast('✓ Import file Excel sinh viên thành công!', 'success');
+      if (res.data?.success) {
+        showToast(`✓ Import sinh viên thành công! (${res.data.created || 0} mới, ${res.data.updated || 0} cập nhật)`, 'success');
+      } else {
+        showToast(res.data?.detail || 'Import hoàn tất với một số cảnh báo.', 'info');
+      }
       fetchBatches();
       fetchStudents(selectedBatchId);
     } catch (err: any) {
-      const msg = err.response?.data?.detail || err.message || 'Lỗi import Excel';
+      let msg = err.response?.data?.detail || err.response?.data?.error || err.response?.data?.message;
+      if (!msg) {
+        if (err.message === 'Network Error' || !err.response) {
+          msg = 'Không thể kết nối đến máy chủ backend (lỗi mạng hoặc quá thời gian xử lý file). Vui lòng thử lại.';
+        } else {
+          msg = err.message || 'Lỗi xử lý file Excel sinh viên';
+        }
+      }
       showToast(`❌ ${msg}`, 'error');
     } finally {
       setImporting(false);
@@ -999,6 +1010,17 @@ export const BatchesPage: React.FC = () => {
                     <div style={{ color: '#059669' }}>Tạo mới thành công: <strong>{importResult.created}</strong> sinh viên</div>
                     <div style={{ color: '#2563eb' }}>Cập nhật: <strong>{importResult.updated}</strong> sinh viên</div>
                     {importResult.skipped > 0 && <div style={{ color: '#d97706' }}>Bỏ qua: <strong>{importResult.skipped}</strong></div>}
+                    {importResult.errors && importResult.errors.length > 0 && (
+                      <div style={{ marginTop: '0.5rem', maxHeight: '120px', overflowY: 'auto', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 4, padding: '0.5rem', fontSize: '0.78rem', color: '#92400e' }}>
+                        <strong>⚠️ Chi tiết cảnh báo / bỏ qua ({importResult.errors.length}):</strong>
+                        <ul style={{ margin: '0.25rem 0 0 1rem', padding: 0 }}>
+                          {importResult.errors.slice(0, 10).map((errItem: string, idx: number) => (
+                            <li key={idx}>{errItem}</li>
+                          ))}
+                          {importResult.errors.length > 10 && <li>...và {importResult.errors.length - 10} dòng khác</li>}
+                        </ul>
+                      </div>
+                    )}
                     <div style={{ marginTop: '0.75rem' }}>
                       <button
                         type="button"

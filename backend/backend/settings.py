@@ -188,11 +188,18 @@ SIMPLE_JWT = {
 
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = env.bool('CORS_ALLOW_ALL_ORIGINS', default=False)
-raw_cors = env.list('CORS_ALLOWED_ORIGINS', default=['http://localhost:5174', 'http://127.0.0.1:5174', 'http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:5173', 'http://127.0.0.1:5173']) or []
-CORS_ALLOWED_ORIGINS = [origin.rstrip('/').strip() for origin in raw_cors if origin.strip()]
+DEFAULT_ORIGINS = [
+    'http://localhost:5174', 'http://127.0.0.1:5174',
+    'http://localhost:3000', 'http://127.0.0.1:3000',
+    'http://localhost:5173', 'http://127.0.0.1:5173',
+    'https://smart-fyp-admin.vercel.app',
+    'https://smart-fyp-management.vercel.app',
+]
+raw_cors = env.list('CORS_ALLOWED_ORIGINS', default=DEFAULT_ORIGINS) or []
+CORS_ALLOWED_ORIGINS = list({origin.rstrip('/').strip() for origin in (raw_cors + DEFAULT_ORIGINS) if origin.strip()})
 
-raw_csrf = env.list('CSRF_TRUSTED_ORIGINS', default=['http://localhost:5174', 'http://127.0.0.1:5174', 'http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:5173', 'http://127.0.0.1:5173']) or []
-CSRF_TRUSTED_ORIGINS = [origin.rstrip('/').strip() for origin in raw_csrf if origin.strip()]
+raw_csrf = env.list('CSRF_TRUSTED_ORIGINS', default=DEFAULT_ORIGINS) or []
+CSRF_TRUSTED_ORIGINS = list({origin.rstrip('/').strip() for origin in (raw_csrf + DEFAULT_ORIGINS) if origin.strip()})
 CSRF_TRUSTED_ORIGINS.extend([
     'https://*.vercel.app',
     'https://*.onrender.com',
