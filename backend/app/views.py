@@ -1841,7 +1841,10 @@ class TopicApprovalAPIView(APIView):
         if decision == "APPROVE":
             project.topic_review_status = "APPROVED"
             project.status = "OUTLINE_APPROVED"
-            project.topic_revision_notes = ""
+            if notes:
+                project.topic_revision_notes = notes
+            else:
+                project.topic_revision_notes = ""
             project.save()
 
             AuditLog.objects.create(
@@ -1851,18 +1854,19 @@ class TopicApprovalAPIView(APIView):
             )
             return Response({"message": "Phê duyệt đề tài thành công.", "status": "APPROVED"}, status=status.HTTP_200_OK)
 
-        elif decision == "REQUEST_REVISION":
+        elif decision in ["REQUEST_REVISION", "REJECT"]:
             project.topic_review_status = "REVISION_REQUIRED"
             project.status = "OUTLINE_REVISION"
             project.topic_revision_notes = notes
             project.save()
 
+            action_desc = "từ chối" if decision == "REJECT" else "yêu cầu sửa"
             AuditLog.objects.create(
                 user=request.user,
                 action_type="document_status_change",
-                description=f"Khoa yêu cầu sửa đề tài của {student_label}: {notes}"
+                description=f"Khoa {action_desc} đề tài của {student_label}: {notes}"
             )
-            return Response({"message": "Đã gửi yêu cầu chỉnh sửa đề tài về Draft.", "status": "REVISION_REQUIRED"}, status=status.HTTP_200_OK)
+            return Response({"message": "Đã gửi phản hồi thẩm định đề tài.", "status": "REVISION_REQUIRED"}, status=status.HTTP_200_OK)
 
         return Response({"detail": "Quyết định không hợp lệ (APPROVE hoặc REQUEST_REVISION)."}, status=status.HTTP_400_BAD_REQUEST)
 

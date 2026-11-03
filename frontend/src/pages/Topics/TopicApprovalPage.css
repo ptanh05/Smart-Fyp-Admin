@@ -180,3 +180,315 @@
 .utc-btn-sm-outline:hover {
   background: #0369a1;
 }
+
+
+/* ==============================================================================
+ * CONTROLS BAR: SUBTABS & SEARCH
+ * ============================================================================== */
+.utc-topic-controls-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.utc-type-tabs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.utc-type-tab {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.utc-type-tab:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.utc-type-tab.active {
+  background: #0284c7;
+  color: #ffffff;
+  border-color: #0284c7;
+  box-shadow: 0 2px 4px rgba(2, 132, 199, 0.25);
+}
+
+.utc-search-box {
+  position: relative;
+  min-width: 260px;
+}
+
+.utc-search-box input {
+  width: 100%;
+  padding: 0.5rem 2rem 0.5rem 0.85rem;
+  font-size: 0.86rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.utc-search-box input:focus {
+  border-color: #0284c7;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
+}
+
+.utc-search-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.utc-badge-sub {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #0284c7;
+}
+
+/* Row & Tag Highlights */
+.row-offered-topic {
+  background-color: #fbfdff;
+}
+
+.row-offered-topic:hover {
+  background-color: #f0f9ff !important;
+}
+
+.utc-tag-offered {
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.utc-tag-open {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+  font-size: 0.76rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+.utc-category-tag {
+  font-size: 0.78rem;
+  color: #475569;
+  font-weight: 500;
+}
+
+.utc-btn-sm-eval {
+  background: #4f46e5;
+  color: #ffffff;
+  border: none;
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s;
+}
+
+.utc-btn-sm-eval:hover {
+  background: #4338ca;
+  transform: translateY(-1px);
+}
+
+/* ==============================================================================
+ * KHOA EVALUATION MODAL STYLING
+ * ============================================================================== */
+.utc-eval-modal {
+  max-width: 680px;
+  width: 92%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.utc-modal-sub {
+  font-size: 0.84rem;
+  color: #64748b;
+  margin: 0.25rem 0 0 0;
+}
+
+.utc-eval-project-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.eval-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+}
+
+.eval-label {
+  color: #64748b;
+  min-width: 130px;
+  font-size: 0.84rem;
+}
+
+.eval-value {
+  flex: 1;
+}
+
+.eval-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .eval-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Decision Cards */
+.utc-decision-cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.6rem;
+  margin-top: 0.4rem;
+}
+
+.utc-decision-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: #ffffff;
+}
+
+.utc-decision-card p {
+  margin: 0.15rem 0 0 0;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.utc-decision-card:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.utc-decision-card.card-approve.selected {
+  border-color: #10b981;
+  background: #f0fdf4;
+}
+
+.utc-decision-card.card-revision.selected {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.utc-decision-card.card-reject.selected {
+  border-color: #ef4444;
+  background: #fef2f2;
+}
+
+.decision-radio-icon {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+/* Quick Presets */
+.utc-quick-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.utc-preset-chip {
+  text-align: left;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.8rem;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.2s;
+  line-height: 1.4;
+}
+
+.utc-preset-chip:hover {
+  background: #e2e8f0;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+/* Submit Buttons */
+.utc-btn-submit {
+  border: none;
+  padding: 0.6rem 1.25rem;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+  color: #ffffff;
+  transition: all 0.2s;
+}
+
+.btn-eval-approve {
+  background: #10b981;
+}
+
+.btn-eval-approve:hover:not(:disabled) {
+  background: #059669;
+}
+
+.btn-eval-revision {
+  background: #f59e0b;
+}
+
+.btn-eval-revision:hover:not(:disabled) {
+  background: #d97706;
+}
+
+.btn-eval-reject {
+  background: #ef4444;
+}
+
+.btn-eval-reject:hover:not(:disabled) {
+  background: #dc2626;
+}
