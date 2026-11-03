@@ -517,7 +517,7 @@ class GraduationProject(models.Model):
         ("REJECTED", "Không duyệt bảo lưu (Loại khỏi đợt)"),
     )
 
-    student = models.OneToOneField(Student, on_delete=models.CASCADE, related_name="graduation_project")
+    student = models.OneToOneField(Student, on_delete=models.CASCADE, null=True, blank=True, related_name="graduation_project")
     supervisor = models.ForeignKey(Supervisor, on_delete=models.CASCADE, related_name="supervised_graduation_projects")
     reviewer = models.ForeignKey(Supervisor, on_delete=models.SET_NULL, null=True, blank=True, related_name="reviewed_graduation_projects")
     batch = models.ForeignKey(AcademicBatch, on_delete=models.CASCADE, related_name="graduation_projects")
@@ -564,7 +564,8 @@ class GraduationProject(models.Model):
         verbose_name_plural = "Danh sách Đồ án tốt nghiệp"
 
     def __str__(self):
-        return f"{self.student.registration_no} - {self.topic_title_vi}"
+        reg = self.student.registration_no if (hasattr(self, "student") and self.student) else "Chưa gán SV"
+        return f"{reg} - {self.topic_title_vi}"
 
     @property
     def defense_status(self):
