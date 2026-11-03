@@ -30,6 +30,37 @@ class CustomUser(AbstractUser):
         verbose_name = "User"
         verbose_name_plural = "Users"
 
+    def get_full_name(self):
+        """
+        Quy ước hiển thị họ tên tiếng Việt: Họ và đệm trước, Tên sau.
+        (Vietnamese naming convention: Last name / Family name first, First name / Given name last)
+        """
+        fn = (self.first_name or "").strip()
+        ln = (self.last_name or "").strip()
+        if not fn and not ln:
+            return self.username
+        if not fn:
+            return ln
+        if not ln:
+            return fn
+
+        fn_lower = fn.lower()
+        ln_lower = ln.lower()
+        # Nếu có học hàm/học vị ở đầu (ThS, TS, PGS, GS)
+        if any(fn_lower.startswith(t) for t in ['ths', 'ts', 'pgs', 'gs']):
+            return f"{fn} {ln}"
+        if any(ln_lower.startswith(t) for t in ['ths', 'ts', 'pgs', 'gs']):
+            return f"{ln} {fn}"
+
+        fn_words = fn.split()
+        ln_words = ln.split()
+        # Nếu fn là họ và đệm (nhiều từ) và ln là tên (1 từ)
+        if len(fn_words) > 1 and len(ln_words) == 1:
+            return f"{fn} {ln}"
+
+        # Mặc định chuẩn tiếng Việt: ln (Họ) trước, fn (Tên) sau
+        return f"{ln} {fn}"
+
     def __str__(self):
         full_name = self.get_full_name()
         return full_name if full_name else self.username
