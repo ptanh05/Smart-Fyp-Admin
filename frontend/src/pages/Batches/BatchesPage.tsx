@@ -50,7 +50,7 @@ interface SupervisorItem {
 }
 
 export const BatchesPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'batches' | 'departments' | 'supervisors'>('batches');
+  const [activeTab, setActiveTab] = useState<'batches' | 'archived' | 'departments' | 'supervisors'>('batches');
   const [batches, setBatches] = useState<AcademicBatch[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [supervisors, setSupervisors] = useState<SupervisorItem[]>([]);
@@ -139,6 +139,8 @@ export const BatchesPage: React.FC = () => {
   const [supDeptId, setSupDeptId] = useState<number | ''>('');
   const [supMultiplier, setSupMultiplier] = useState(1.0);
   const [supInterest, setSupInterest] = useState('');
+  const [supTopicAreaIds, setSupTopicAreaIds] = useState<number[]>([]);
+  const [topicAreas, setTopicAreas] = useState<any[]>([]);
 
   // View Students in Batch Modal
   const [showStudentsModal, setShowStudentsModal] = useState(false);
@@ -174,7 +176,7 @@ export const BatchesPage: React.FC = () => {
   const fetchBatches = async () => {
     try {
       setLoading(true);
-      const res = await apiClient.get('/admin/batches/');
+      const res = await apiClient.get(`/admin/batches/?_t=${Date.now()}`);
       const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
       setBatches(list);
       if (list.length > 0 && !selectedBatchId) {
@@ -219,6 +221,17 @@ export const BatchesPage: React.FC = () => {
     }
   };
 
+  const fetchTopicAreas = async () => {
+    try {
+      const res = await apiClient.get('/admin/topic-areas/');
+      const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+      setTopicAreas(list);
+    } catch (err) {
+      console.error('Error fetching topic areas:', err);
+      setTopicAreas([]);
+    }
+  };
+
   const fetchStudents = async (batchId: number) => {
     try {
       setStudentsLoading(true);
@@ -234,7 +247,7 @@ export const BatchesPage: React.FC = () => {
   };
 
   useEffect(() => {
-    Promise.all([fetchBatches(), fetchDepartments(), fetchSupervisors()]);
+    Promise.all([fetchBatches(), fetchDepartments(), fetchSupervisors(), fetchTopicAreas()]);
   }, []);
 
   useEffect(() => {
@@ -454,6 +467,7 @@ export const BatchesPage: React.FC = () => {
     setSupDeptId(sup.department_obj || '');
     setSupMultiplier(sup.academic_rank_multiplier || 1.0);
     setSupInterest(sup.research_interest || '');
+    setSupTopicAreaIds((sup as any).topic_area_ids || []);
   };
 
   const handleSaveSupervisor = async (e: React.FormEvent) => {
@@ -464,7 +478,8 @@ export const BatchesPage: React.FC = () => {
         academic_title: supTitle,
         department_id: supDeptId ? Number(supDeptId) : null,
         academic_rank_multiplier: supMultiplier,
-        research_interest: supInterest
+        research_interest: supInterest,
+        topic_area_ids: supTopicAreaIds
       });
       setEditingSupervisor(null);
       fetchSupervisors();
@@ -475,13 +490,38 @@ export const BatchesPage: React.FC = () => {
   };
 
   const handleCloseBatch = async (batchId: number) => {
-    if (!confirm('Bạn có chắc chắn muốn KẾT THÚC đợt đồ án này? Sau khi kết thúc, trạng thái đợt sẽ hoàn tất.')) return;
+    if (!confirm('Bạn có chắc chắn muốn KẾT THÚC đợt đồ án này? Sau khi kết thúc, đợt sẽ được chuyển vào Kho lưu trữ các đợt đã hoàn tất.')) return;
     try {
-      await apiClient.post(`/admin/batches/${batchId}/close/`);
-      showToast('✓ Đã kết thúc đợt đồ án thành công!', 'success');
+      // Optimistic state update: mark as closed immediately
+      setBatches((prev) =>
+        prev.map((b) =>
+          b.id === batchId ? { ...b, is_closed: true, is_active: false, current_stage: 'COMPLETED' } : b
+        )
+      );
+      const res = await apiClient.post(`/admin/batches/${batchId}/close/`);
+      showToast(res.data?.message || '✓ Đã kết thúc và chuyển đợt đồ án vào kho lưu trữ thành công!', 'success');
       fetchBatches();
     } catch (err: any) {
       showToast('❌ Lỗi kết thúc đợt: ' + (err.response?.data?.detail || err.message), 'error');
+      fetchBatches();
+    }
+  };
+
+  const handleReopenBatch = async (batchId: number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!confirm('Bạn có chắc chắn muốn MỞ LẠI đợt đồ án này?')) return;
+    try {
+      setBatches((prev) =>
+        prev.map((b) =>
+          b.id === batchId ? { ...b, is_closed: false, is_active: true } : b
+        )
+      );
+      const res = await apiClient.post(`/admin/batches/${batchId}/reopen/`);
+      showToast(res.data?.message || '✓ Đã mở lại đợt đồ án thành công!', 'success');
+      fetchBatches();
+    } catch (err: any) {
+      showToast('❌ Lỗi mở lại đợt: ' + (err.response?.data?.detail || err.message), 'error');
+      fetchBatches();
     }
   };
 
@@ -497,6 +537,8 @@ export const BatchesPage: React.FC = () => {
   });
 
   const currBatch = batches.find((b) => b.id === selectedBatchId);
+  const activeBatches = batches.filter((b) => !b.is_closed && b.is_active !== false && b.current_stage !== 'COMPLETED');
+  const archivedBatches = batches.filter((b) => b.is_closed || b.is_active === false || b.current_stage === 'COMPLETED');
 
   return (
     <AdminLayout>
@@ -507,7 +549,13 @@ export const BatchesPage: React.FC = () => {
             className={`utc-subnav-btn ${activeTab === 'batches' ? 'active' : ''}`}
             onClick={() => setActiveTab('batches')}
           >
-            📅 Đợt Đồ Án & Sinh Viên Thuộc Đợt
+            📅 Đợt Đang Hoạt Động ({activeBatches.length})
+          </button>
+          <button
+            className={`utc-subnav-btn ${activeTab === 'archived' ? 'active' : ''}`}
+            onClick={() => setActiveTab('archived')}
+          >
+            🗄️ Kho Lưu Trữ Đợt Đã Kết Thúc ({archivedBatches.length})
           </button>
           <button
             className={`utc-subnav-btn ${activeTab === 'departments' ? 'active' : ''}`}
@@ -579,11 +627,25 @@ export const BatchesPage: React.FC = () => {
 
             {loading ? (
               <div className="utc-loading-box">Đang tải danh sách đợt đồ án...</div>
-            ) : batches.length === 0 ? (
-              <div className="utc-empty-box">Chưa có đợt làm ĐATN nào. Hãy nhấn nút "Tạo đợt ĐATN mới".</div>
+            ) : activeBatches.length === 0 ? (
+              <div className="utc-empty-box" style={{ padding: '2rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.8rem', marginBottom: '0.4rem' }}>📅</div>
+                <div style={{ fontWeight: 600, color: '#1e293b' }}>Hiện tại không có đợt đồ án nào đang mở.</div>
+                <p style={{ color: '#64748b', fontSize: '0.88rem', margin: '0.4rem 0 1rem' }}>
+                  Bạn có thể nhấn nút "Tạo đợt ĐATN mới" hoặc xem lại các đợt đã hoàn tất tại tab <strong>Kho Lưu Trữ Đợt Đã Kết Thúc</strong>.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('archived')}
+                  className="utc-btn-outline"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <span>🗄️</span> Xem Kho Lưu Trữ ({archivedBatches.length} đợt)
+                </button>
+              </div>
             ) : (
               <div className="utc-batches-grid">
-                {batches.map((batch) => (
+                {activeBatches.map((batch) => (
                   <div
                     key={batch.id}
                     onClick={() => {
@@ -599,8 +661,8 @@ export const BatchesPage: React.FC = () => {
                           {batch.program_type === 'ENGINEER' ? '⚙️ Kỹ Sư' : batch.program_type === 'BACHELOR' ? '🎓 Cử Nhân' : '🔄 Cả Hai'}
                         </span>
                       </div>
-                      <span className={`utc-status-pill ${batch.is_closed ? 'pill-gray' : 'pill-green'}`}>
-                        {batch.is_closed ? '🔒 Đã kết thúc' : '🟢 Đang mở'}
+                      <span className="utc-status-pill pill-green">
+                        🟢 Đang mở
                       </span>
                     </div>
 
@@ -625,19 +687,17 @@ export const BatchesPage: React.FC = () => {
                     </div>
 
                     <div className="utc-batch-footer">
-                      <span>{batch.is_closed ? 'Đợt đã lưu trữ' : 'Nhấp để xem sinh viên & lớp học'}</span>
-                      {!batch.is_closed && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleCloseBatch(batch.id);
-                          }}
-                          className="utc-btn-close-batch"
-                          title="Kết thúc đợt đồ án"
-                        >
-                          Kết thúc đợt
-                        </button>
-                      )}
+                      <span>Nhấp để xem sinh viên & lớp học</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCloseBatch(batch.id);
+                        }}
+                        className="utc-btn-close-batch"
+                        title="Kết thúc đợt đồ án này và chuyển vào kho lưu trữ"
+                      >
+                        Kết thúc đợt
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -796,6 +856,255 @@ export const BatchesPage: React.FC = () => {
           </>
         )}
 
+        {/* TAB ARCHIVED: COMPLETED BATCHES */}
+        {activeTab === 'archived' && (
+          <>
+            <div className="utc-batches-header-bar" style={{ borderLeft: '5px solid #64748b' }}>
+              <div className="utc-batches-header-info">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '1.4rem' }}>🗄️</span>
+                  <h3 style={{ margin: 0 }}>Kho Lưu Trữ Đợt Đồ Án Tốt Nghiệp UTC (Đã Hoàn Tất)</h3>
+                </div>
+                <p>Danh sách các đợt đồ án đã khóa sổ và kết thúc. Bạn có thể tra cứu hồ sơ sinh viên, lớp học phần, hoặc mở lại đợt nếu cần chỉnh sửa bổ sung.</p>
+              </div>
+              <div className="utc-batches-actions">
+                <button
+                  type="button"
+                  onClick={handleExportStudents}
+                  className="utc-btn-outline"
+                  title="Xuất file Excel danh sách sinh viên đợt lưu trữ đang chọn"
+                >
+                  <span>📥</span> Xuất Excel Hồ Sơ Đợt Đang Chọn
+                </button>
+              </div>
+            </div>
+
+            {loading ? (
+              <div className="utc-loading-box">Đang tải hồ sơ các đợt đồ án đã kết thúc...</div>
+            ) : archivedBatches.length === 0 ? (
+              <div className="utc-empty-box" style={{ background: '#f8fafc', padding: '2.5rem', textAlign: 'center', borderRadius: '14px', border: '2px dashed #cbd5e1' }}>
+                <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🗄️</div>
+                <div style={{ fontSize: '1.05rem', fontWeight: 600, color: '#334155' }}>
+                  Chưa có đợt đồ án nào được kết thúc hoặc lưu trữ.
+                </div>
+                <p style={{ color: '#64748b', fontSize: '0.88rem', margin: '0.5rem 0 1.25rem' }}>
+                  Khi bạn nhấn nút <strong>"Kết thúc đợt"</strong> ở tab Đợt Đang Hoạt Động, đợt sẽ tự động được đưa vào kho lưu trữ này.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('batches')}
+                  className="utc-btn-primary"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <span>←</span> Xem Đợt Đang Hoạt Động
+                </button>
+              </div>
+            ) : (
+              <div className="utc-batches-grid">
+                {archivedBatches.map((batch) => (
+                  <div
+                    key={batch.id}
+                    onClick={() => {
+                      setSelectedBatchId(batch.id);
+                      localStorage.setItem('utc_selected_batch_id', String(batch.id));
+                    }}
+                    className={`utc-batch-card ${selectedBatchId === batch.id ? 'selected' : ''}`}
+                    style={{
+                      borderLeft: selectedBatchId === batch.id ? '4px solid #003366' : '1px solid #cbd5e1',
+                      background: selectedBatchId === batch.id ? '#f8fafc' : '#ffffff',
+                    }}
+                  >
+                    <div className="utc-batch-card-head">
+                      <div>
+                        <span className="utc-batch-code-tag">{batch.batch_code}</span>
+                        <span className={`utc-prog-tag prog-${batch.program_type.toLowerCase()}`}>
+                          {batch.program_type === 'ENGINEER' ? '⚙️ Kỹ Sư' : batch.program_type === 'BACHELOR' ? '🎓 Cử Nhân' : '🔄 Cả Hai'}
+                        </span>
+                      </div>
+                      <span className="utc-status-pill pill-gray" style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1' }}>
+                        🔒 Đã kết thúc
+                      </span>
+                    </div>
+
+                    <h4 className="utc-batch-name">{batch.batch_name}</h4>
+                    <div className="utc-batch-stage-text">
+                      <strong>Trạng thái lưu trữ:</strong> <span style={{ color: '#64748b', fontWeight: 600 }}>Hoàn tất (COMPLETED)</span>
+                    </div>
+
+                    <div className="utc-batch-stats">
+                      <div className="utc-stat-item">
+                        <span className="utc-stat-label">Sinh viên</span>
+                        <span className="utc-stat-value">{batch.student_count || 0}</span>
+                      </div>
+                      <div className="utc-stat-item">
+                        <span className="utc-stat-label">Lớp học phần</span>
+                        <span className="utc-stat-value">{batch.classes?.length || 0}</span>
+                      </div>
+                      <div className="utc-stat-item">
+                        <span className="utc-stat-label">Đề tài đồ án</span>
+                        <span className="utc-stat-value">{batch.project_count || 0}</span>
+                      </div>
+                    </div>
+
+                    <div className="utc-batch-footer" style={{ borderTop: '1px solid #e2e8f0', paddingTop: '0.85rem', marginTop: '0.85rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Nhấp để xem hồ sơ lưu trữ</span>
+                      <button
+                        type="button"
+                        onClick={(e) => handleReopenBatch(batch.id, e)}
+                        style={{
+                          background: '#eff6ff',
+                          border: '1px solid #bfdbfe',
+                          padding: '0.35rem 0.65rem',
+                          borderRadius: '6px',
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                          color: '#1d4ed8',
+                          cursor: 'pointer',
+                        }}
+                        title="Mở lại đợt đồ án vào danh sách hoạt động"
+                      >
+                        🔄 Mở lại đợt
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Selected Batch Details for Archived */}
+            {selectedBatchId && (
+              <div className="utc-classes-section">
+                <div className="utc-classes-header">
+                  <h4>Hồ sơ Lưu Trữ Đợt ĐATN: #{selectedBatchId} - {currBatch?.batch_name}</h4>
+                  <span className="utc-classes-subtitle">Tra cứu danh sách sinh viên & các lớp học phần trong đợt đã lưu trữ</span>
+                </div>
+
+                <div className="utc-batch-subtabs">
+                  <button
+                    type="button"
+                    className={`utc-batch-subtab-btn ${batchDetailTab === 'students' ? 'active' : ''}`}
+                    onClick={() => setBatchDetailTab('students')}
+                  >
+                    <span>🎓</span> Danh Sách Sinh Viên Lưu Trữ
+                    <span className="utc-batch-subtab-badge">{students.length}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`utc-batch-subtab-btn ${batchDetailTab === 'classes' ? 'active' : ''}`}
+                    onClick={() => setBatchDetailTab('classes')}
+                  >
+                    <span>🏫</span> Danh Sách Lớp Học Phần
+                    <span className="utc-batch-subtab-badge">{currBatch?.classes?.length || 0}</span>
+                  </button>
+                </div>
+
+                {/* Subtab Content: Students */}
+                {batchDetailTab === 'students' && (
+                  <div className="utc-students-pane">
+                    <div className="utc-table-controls">
+                      <div className="utc-search-box">
+                        <input
+                          type="text"
+                          placeholder="🔍 Tìm kiếm sinh viên theo MSSV, Họ tên, Lớp..."
+                          value={studentSearch}
+                          onChange={(e) => setStudentSearch(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    {studentsLoading ? (
+                      <div className="utc-loading-box">Đang tải danh sách sinh viên lưu trữ...</div>
+                    ) : filteredStudents.length === 0 ? (
+                      <div className="utc-empty-box">Không tìm thấy sinh viên nào trong hồ sơ lưu trữ này.</div>
+                    ) : (
+                      <div className="utc-table-container">
+                        <table className="utc-modern-table">
+                          <thead>
+                            <tr>
+                              <th>STT</th>
+                              <th>MSSV</th>
+                              <th>Họ và Tên</th>
+                              <th>Hệ Đào Tạo</th>
+                              <th>Lớp Sinh Hoạt</th>
+                              <th>Email</th>
+                              <th>Trạng Thái</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredStudents.map((st, idx) => {
+                              const prof = st.student_profile || {};
+                              const fullName = st.full_name || `${st.last_name || ''} ${st.first_name || ''}`.trim() || st.username;
+                              return (
+                                <tr key={st.id}>
+                                  <td>{idx + 1}</td>
+                                  <td><strong>{prof.registration_no || st.username}</strong></td>
+                                  <td>{fullName}</td>
+                                  <td>
+                                    <span className={`utc-badge-edu ${prof.education_program === 'ENGINEER' ? 'edu-ks' : 'edu-cn'}`}>
+                                      {prof.education_program === 'ENGINEER' ? 'Kỹ Sư' : 'Cử Nhân'}
+                                    </span>
+                                  </td>
+                                  <td>{prof.course_class?.class_name || prof.department || '-'}</td>
+                                  <td>{st.email || '-'}</td>
+                                  <td>
+                                    <span style={{ background: '#f1f5f9', color: '#475569', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>
+                                      🔒 Đã Lưu Trữ
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Subtab Content: Classes */}
+                {batchDetailTab === 'classes' && (
+                  <div className="utc-classes-pane">
+                    {(!currBatch?.classes || currBatch.classes.length === 0) ? (
+                      <div className="utc-empty-box">Đợt này không có lớp học phần nào.</div>
+                    ) : (
+                      <div className="utc-table-container">
+                        <table className="utc-modern-table">
+                          <thead>
+                            <tr>
+                              <th>STT</th>
+                              <th>Mã Lớp</th>
+                              <th>Tên Lớp Học Phần</th>
+                              <th>Hệ Đào Tạo</th>
+                              <th>Nhóm Lớp</th>
+                              <th>Số Sinh Viên</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {currBatch.classes.map((cls, idx) => (
+                              <tr key={cls.id}>
+                                <td>{idx + 1}</td>
+                                <td><strong>{cls.class_code}</strong></td>
+                                <td>{cls.class_name}</td>
+                                <td>
+                                  <span className={`utc-badge-edu ${cls.education_program === 'ENGINEER' ? 'edu-ks' : 'edu-cn'}`}>
+                                    {cls.education_program === 'ENGINEER' ? 'Kỹ Sư' : 'Cử Nhân'}
+                                  </span>
+                                </td>
+                                <td>{cls.class_group || '-'}</td>
+                                <td><strong>{cls.student_count || 0}</strong> sinh viên</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
         {/* TAB 2: DEPARTMENTS */}
         {activeTab === 'departments' && (
           <div className="utc-dept-section">
@@ -846,6 +1155,7 @@ export const BatchesPage: React.FC = () => {
                     <th>Họ và Tên Giảng Viên</th>
                     <th>Học Vị / Chức Danh</th>
                     <th>Bộ Môn</th>
+                    <th>Chuyên Ngành</th>
                     <th>Hệ Số Capacity</th>
                     <th>Hướng Nghiên Cứu</th>
                     <th>Hành Động</th>
@@ -862,6 +1172,30 @@ export const BatchesPage: React.FC = () => {
                         </span>
                       </td>
                       <td>{s.department_name || 'Khoa CNTT'}</td>
+                      <td style={{ maxWidth: '260px' }}>
+                        {(s as any).topic_areas?.length ? (
+                          (s as any).topic_areas.map((t: string) => (
+                            <span
+                              key={t}
+                              style={{
+                                display: 'inline-block',
+                                margin: '2px 3px 2px 0',
+                                padding: '2px 7px',
+                                borderRadius: '999px',
+                                fontSize: '0.68rem',
+                                fontWeight: 600,
+                                background: '#e0f2fe',
+                                color: '#075985',
+                                border: '1px solid #bae6fd',
+                              }}
+                            >
+                              {t}
+                            </span>
+                          ))
+                        ) : (
+                          <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>Chưa gán</span>
+                        )}
+                      </td>
                       <td className="text-center font-bold text-emerald-600">x{s.academic_rank_multiplier || 1.0}</td>
                       <td style={{ maxWidth: '250px' }}>{s.research_interest || 'Chưa cập nhật'}</td>
                       <td>
@@ -1406,6 +1740,60 @@ export const BatchesPage: React.FC = () => {
                   />
                   <small style={{ color: '#64748b' }}>
                     Chỉ tiêu tối đa của GV = Base Quota * Hệ số ({supMultiplier}).
+                  </small>
+                </div>
+
+                <div className="utc-form-group">
+                  <label>Chuyên ngành / Hướng nghiên cứu được phép hướng dẫn:</label>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+                      gap: '6px',
+                      maxHeight: '180px',
+                      overflowY: 'auto',
+                      padding: '10px',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '10px',
+                      background: '#f8fafc',
+                    }}
+                  >
+                    {topicAreas.length === 0 ? (
+                      <span style={{ color: '#64748b', fontSize: '0.82rem' }}>
+                        Chưa có chuyên ngành nào trong hệ thống.
+                      </span>
+                    ) : (
+                      topicAreas.map((t) => (
+                        <label
+                          key={t.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            fontSize: '0.82rem',
+                            color: '#334155',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={supTopicAreaIds.includes(t.id)}
+                            onChange={(e) =>
+                              setSupTopicAreaIds((prev) =>
+                                e.target.checked
+                                  ? [...prev, t.id]
+                                  : prev.filter((id) => id !== t.id)
+                              )
+                            }
+                          />
+                          <span>{t.name}</span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                  <small style={{ color: '#64748b' }}>
+                    Chuyên ngành đã gán sẽ được dùng để lọc & đề xuất giảng viên cho sinh viên khi họ
+                    chọn hướng nghiên cứu.
                   </small>
                 </div>
 

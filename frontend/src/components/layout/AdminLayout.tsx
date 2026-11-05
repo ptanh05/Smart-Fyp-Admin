@@ -42,6 +42,9 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
           <NavLink to="/batches" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
             <span>📅</span> GĐ1: Đợt & Bộ Môn
           </NavLink>
+          <NavLink to="/archived-batches" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
+            <span>🗄️</span> Lưu Trữ Đợt ĐATN
+          </NavLink>
           <NavLink to="/allocations" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
             <span>🤝</span> GĐ2: Phân Công GVHD
           </NavLink>

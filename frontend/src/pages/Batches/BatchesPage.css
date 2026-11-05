@@ -490,19 +490,44 @@
   margin-bottom: 0.75rem;
 }
 
+.utc-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.utc-status-pill.pill-green {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+
+.utc-status-pill.pill-gray {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
 .utc-btn-close-batch {
   background: #fee2e2;
   color: #b91c1c;
   border: 1px solid #fecaca;
-  padding: 0.3rem 0.6rem;
+  padding: 0.35rem 0.75rem;
   border-radius: 6px;
   font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .utc-btn-close-batch:hover {
   background: #fca5a5;
+  color: #7f1d1d;
+  transform: translateY(-1px);
 }
 
 .utc-badge-edu {

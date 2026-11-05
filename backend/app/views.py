@@ -31,6 +31,7 @@ from .models import (
     Student,
     Supervisor,
     SupervisorQuota,
+    SupervisorTopicArea,
     ProjectTopicArea,
     StudentPreference,
     InternshipInfo,
@@ -51,6 +52,7 @@ from .serializers import (
     AcademicBatchSerializer,
     CourseClassSerializer,
     DepartmentSerializer,
+    ProjectTopicAreaSerializer,
     SupervisorQuotaSerializer,
     SupervisorDetailSerializer,
     DefenseCouncilSerializer,
@@ -542,7 +544,7 @@ class AdminUserManagementAPIView(APIView):
                 elif course_class:
                     batch = course_class.batch
                 else:
-                    batch = AcademicBatch.objects.filter(is_active=True).first()
+                    batch = AcademicBatch.get_active_batch()
 
                 edu_prog = data.get("education_program")
                 if not edu_prog:
@@ -581,7 +583,7 @@ class AdminUserManagementAPIView(APIView):
                 )
 
                 # Initialize Quota for active batch
-                active_batch = AcademicBatch.objects.filter(is_active=True).first()
+                active_batch = AcademicBatch.get_active_batch()
                 if active_batch:
                     SupervisorQuota.objects.create(
                         supervisor=spv,
@@ -717,7 +719,7 @@ class AdminImportExcelAPIView(APIView):
         if not file_obj:
             return Response({"detail": "Vui lòng chọn file Excel để import."}, status=status.HTTP_400_BAD_REQUEST)
         if not batch_id:
-            active_batch = AcademicBatch.objects.filter(is_active=True).first() or AcademicBatch.objects.order_by("-id").first()
+            active_batch = AcademicBatch.get_active_batch() or AcademicBatch.objects.order_by("-id").first()
             if not active_batch:
                 active_batch = AcademicBatch.objects.create(
                     batch_code=f"K{timezone.now().year}",
@@ -1061,7 +1063,7 @@ class ExcelStudentImportAPIView(APIView):
             if not file_obj:
                 return Response({"success": False, "detail": "Vui lòng chọn file Excel để import."}, status=status.HTTP_400_BAD_REQUEST)
             if not batch_id:
-                active_batch = AcademicBatch.objects.filter(is_active=True).first() or AcademicBatch.objects.order_by("-id").first()
+                active_batch = AcademicBatch.get_active_batch() or AcademicBatch.objects.order_by("-id").first()
                 if not active_batch:
                     active_batch = AcademicBatch.objects.create(
                         batch_code=f"K{timezone.now().year}",
@@ -1116,15 +1118,17 @@ class ExcelStudentImportAPIView(APIView):
 class ExcelStudentExportAPIView(APIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
 
-    def get(self, request):
-        batch_id = request.query_params.get("batch_id")
-        if batch_id:
+    def get(self, request, pk=None, batch_id=None):
+        # batch_id có thể đến từ query string (/admin/students/export-excel/?batch_id=)
+        # hoặc từ URL path (/admin/batches/<int:batch_id>/export-students/)
+        resolved_batch_id = batch_id or pk or request.query_params.get("batch_id")
+        if resolved_batch_id:
             try:
-                batch = AcademicBatch.objects.get(id=batch_id)
+                batch = AcademicBatch.objects.get(id=resolved_batch_id)
             except AcademicBatch.DoesNotExist:
-                batch = AcademicBatch.objects.filter(is_active=True).first()
+                batch = AcademicBatch.get_active_batch()
         else:
-            batch = AcademicBatch.objects.filter(is_active=True).first() or AcademicBatch.objects.order_by("-id").first()
+            batch = AcademicBatch.get_active_batch() or AcademicBatch.objects.order_by("-id").first()
 
         if not batch:
             return Response({"detail": "Chưa có đợt đồ án nào để xuất danh sách sinh viên."}, status=status.HTTP_404_NOT_FOUND)
@@ -1859,6 +1863,14 @@ class DepartmentDetailAPIView(RetrieveUpdateDestroyAPIView):
     queryset = Department.objects.all()
 
 
+class TopicAreaListAPIView(ListAPIView):
+    """Danh sách chuyên ngành / hướng nghiên cứu (dùng để gán cho Giảng viên)"""
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+    serializer_class = ProjectTopicAreaSerializer
+    queryset = ProjectTopicArea.objects.filter(is_active=True).order_by("code")
+    pagination_class = None
+
+
 class SupervisorProfileUpdateAPIView(APIView):
     """Cập nhật thông tin học vị, bộ môn, hệ số, hướng nghiên cứu của GV (Bước 7)"""
     permission_classes = [IsAuthenticated, IsAdminUserRole]
@@ -1869,6 +1881,7 @@ class SupervisorProfileUpdateAPIView(APIView):
         department_id = request.data.get("department_id")
         rank_multiplier = request.data.get("academic_rank_multiplier")
         research_interest = request.data.get("research_interest")
+        topic_area_ids = request.data.get("topic_area_ids")
 
         if academic_title is not None:
             supervisor.academic_title = academic_title
@@ -1885,6 +1898,29 @@ class SupervisorProfileUpdateAPIView(APIView):
             supervisor.research_interest = research_interest
 
         supervisor.save()
+
+        # Gán / cập nhật chuyên ngành (hướng nghiên cứu) của giảng viên
+        if topic_area_ids is not None:
+            if isinstance(topic_area_ids, str):
+                topic_area_ids = [x for x in topic_area_ids.split(",") if x.strip()]
+            valid_ids = [int(x) for x in topic_area_ids if str(x).strip().isdigit()]
+            valid_topics = list(ProjectTopicArea.objects.filter(id__in=valid_ids))
+            supervisor.topic_area_links.exclude(topic_area__in=valid_topics).delete()
+            for topic in valid_topics:
+                SupervisorTopicArea.objects.get_or_create(
+                    supervisor=supervisor,
+                    topic_area=topic,
+                )
+            supervisor.research_interest = ", ".join(t.name for t in valid_topics)
+            supervisor.save(update_fields=["research_interest"])
+
+            # Xóa cache danh sách giảng viên phía client (bảng lọc theo chuyên ngành)
+            try:
+                from django.core.cache import cache
+                cache.delete("utc_active_supervisors_brief_data")
+                cache.delete("utc_active_topic_areas_data")
+            except Exception:
+                pass
 
         # Tự động cập nhật hệ số sang SupervisorQuota trong các đợt hiện có
         for q in supervisor.quotas.all():
@@ -2234,7 +2270,15 @@ class CloseBatchAPIView(APIView):
         batch = get_object_or_404(AcademicBatch, pk=pk)
         batch.current_stage = "COMPLETED"
         batch.is_closed = True
-        batch.save(update_fields=["current_stage", "is_closed"])
+        batch.is_active = False
+        batch.save(update_fields=["current_stage", "is_closed", "is_active"])
+
+        try:
+            cache.delete(BATCHES_CACHE_KEY)
+            invalidate_user_summary_cache()
+            cache.delete(SECURITY_METRICS_CACHE_KEY)
+        except Exception:
+            pass
 
         AuditLog.objects.create(
             user=request.user,
@@ -2242,7 +2286,47 @@ class CloseBatchAPIView(APIView):
             description=f"Khoa đã chính thức kết thúc Đợt đồ án {batch.batch_code}."
         )
 
-        return Response({"message": f"Đợt {batch.batch_code} đã hoàn tất và kết thúc thành công."}, status=status.HTTP_200_OK)
+        return Response({
+            "message": f"Đợt {batch.batch_code} đã hoàn tất và kết thúc thành công.",
+            "batch_id": batch.id,
+            "is_closed": True,
+            "is_active": False,
+            "current_stage": "COMPLETED"
+        }, status=status.HTTP_200_OK)
+
+
+class ReopenBatchAPIView(APIView):
+    """Khoa mở lại đợt đồ án đã kết thúc từ kho lưu trữ"""
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def post(self, request, pk):
+        batch = get_object_or_404(AcademicBatch, pk=pk)
+        batch.is_closed = False
+        batch.is_active = True
+        if batch.current_stage == "COMPLETED":
+            batch.current_stage = "PHASE_6_DEFENSE"
+        batch.save(update_fields=["current_stage", "is_closed", "is_active"])
+
+        try:
+            cache.delete(BATCHES_CACHE_KEY)
+            invalidate_user_summary_cache()
+            cache.delete(SECURITY_METRICS_CACHE_KEY)
+        except Exception:
+            pass
+
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="group_status_change",
+            description=f"Khoa đã mở lại Đợt đồ án {batch.batch_code} từ kho lưu trữ."
+        )
+
+        return Response({
+            "message": f"Đợt {batch.batch_code} đã được mở lại thành công.",
+            "batch_id": batch.id,
+            "is_closed": False,
+            "is_active": True,
+            "current_stage": batch.current_stage
+        }, status=status.HTTP_200_OK)
 
 
 class ExportFinalSummaryExcelAPIView(APIView):
@@ -2284,7 +2368,7 @@ class AcademicStaffFinalGradesAPIView(APIView):
         search = (request.query_params.get("search") or "").strip().lower()
 
         if not batch_id:
-            batch = AcademicBatch.objects.filter(is_active=True).first() or AcademicBatch.objects.first()
+            batch = AcademicBatch.get_active_batch() or AcademicBatch.objects.first()
             if not batch:
                 return Response({"detail": "Chưa có đợt đồ án nào trong hệ thống."}, status=status.HTTP_404_NOT_FOUND)
             batch_id = batch.id
@@ -2432,7 +2516,7 @@ class AcademicStaffExportClassGradesExcelAPIView(APIView):
         class_id = request.query_params.get("class_id")
 
         if not batch_id:
-            batch = AcademicBatch.objects.filter(is_active=True).first() or AcademicBatch.objects.first()
+            batch = AcademicBatch.get_active_batch() or AcademicBatch.objects.first()
             if not batch:
                 return Response({"detail": "batch_id is required."}, status=status.HTTP_400_BAD_REQUEST)
             batch_id = batch.id
@@ -2467,7 +2551,15 @@ class AcademicStaffCompleteBatchAPIView(APIView):
         batch = get_object_or_404(AcademicBatch, id=batch_id)
         batch.current_stage = "COMPLETED"
         batch.is_closed = True
-        batch.save(update_fields=["current_stage", "is_closed"])
+        batch.is_active = False
+        batch.save(update_fields=["current_stage", "is_closed", "is_active"])
+
+        try:
+            cache.delete(BATCHES_CACHE_KEY)
+            invalidate_user_summary_cache()
+            cache.delete(SECURITY_METRICS_CACHE_KEY)
+        except Exception:
+            pass
 
         AuditLog.objects.create(
             user=request.user,

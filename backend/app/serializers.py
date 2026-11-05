@@ -29,6 +29,14 @@ class DepartmentSerializer(serializers.ModelSerializer):
         fields = ["id", "code", "name", "description", "supervisor_count"]
 
 
+class ProjectTopicAreaSerializer(serializers.ModelSerializer):
+    supervisor_count = serializers.IntegerField(source="supervisor_links.count", read_only=True)
+
+    class Meta:
+        model = ProjectTopicArea
+        fields = ["id", "code", "name", "description", "is_active", "supervisor_count"]
+
+
 class StudentDetailSerializer(serializers.ModelSerializer):
     batch_name = serializers.CharField(source="academic_batch.batch_name", read_only=True, default="")
     class_code = serializers.CharField(source="course_class.class_code", read_only=True, default="")
@@ -111,6 +119,8 @@ class SupervisorDetailSerializer(serializers.ModelSerializer):
     user_full_name = serializers.SerializerMethodField()
     username = serializers.CharField(source="user.username", read_only=True, default="")
     email = serializers.CharField(source="user.email", read_only=True, default="")
+    topic_area_ids = serializers.SerializerMethodField()
+    topic_areas = serializers.SerializerMethodField()
 
     class Meta:
         model = Supervisor
@@ -129,6 +139,9 @@ class SupervisorDetailSerializer(serializers.ModelSerializer):
             "research_interest",
             "academic_background",
             "is_external",
+            "is_active",
+            "topic_area_ids",
+            "topic_areas",
             "quota_info"
         ]
 
@@ -138,6 +151,12 @@ class SupervisorDetailSerializer(serializers.ModelSerializer):
         if obj.user.last_name and obj.user.first_name:
             return f"{obj.user.last_name} {obj.user.first_name}".strip()
         return obj.user.get_full_name() or obj.user.username
+
+    def get_topic_area_ids(self, obj):
+        return [link.topic_area_id for link in obj.topic_area_links.all()]
+
+    def get_topic_areas(self, obj):
+        return [link.topic_area.name for link in obj.topic_area_links.all()]
 
     def get_quota_info(self, obj):
         quota = obj.quotas.first()

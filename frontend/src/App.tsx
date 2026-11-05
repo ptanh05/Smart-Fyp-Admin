@@ -8,6 +8,7 @@ const AdminLoginPage = lazy(() => import('./pages/Login/AdminLoginPage').then(m 
 const AdminRegisterPage = lazy(() => import('./pages/Login/AdminRegisterPage').then(m => ({ default: m.AdminRegisterPage })));
 const AdminDashboard = lazy(() => import('./pages/Dashboard/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
 const BatchesPage = lazy(() => import('./pages/Batches/BatchesPage').then(m => ({ default: m.BatchesPage })));
+const ArchivedBatchesPage = lazy(() => import('./pages/Batches/ArchivedBatchesPage').then(m => ({ default: m.ArchivedBatchesPage })));
 const AllocationsPage = lazy(() => import('./pages/Allocations/AllocationsPage').then(m => ({ default: m.AllocationsPage })));
 const TopicApprovalPage = lazy(() => import('./pages/Topics/TopicApprovalPage').then(m => ({ default: m.TopicApprovalPage })));
 const OutlineManagementPage = lazy(() => import('./pages/Outline/OutlineManagementPage').then(m => ({ default: m.OutlineManagementPage })));
@@ -61,6 +62,15 @@ export const App: React.FC = () => {
               element={
                 <ProtectedAdminRoute>
                   <BatchesPage />
+                </ProtectedAdminRoute>
+              }
+            />
+
+            <Route
+              path="/archived-batches"
+              element={
+                <ProtectedAdminRoute>
+                  <ArchivedBatchesPage />
                 </ProtectedAdminRoute>
               }
             />

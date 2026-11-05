@@ -134,6 +134,22 @@ class AcademicBatch(models.Model):
     def __str__(self):
         return f"{self.batch_name} ({self.batch_code}) - {self.get_program_type_display()}"
 
+    @classmethod
+    def get_active_batch(cls):
+        """
+        Trả về đợt đồ án đang thực sự mở.
+
+        Quy tắc: đợt đang hoạt động phải BẬT is_active, KHÔNG đã khóa sổ (is_closed)
+        và chưa ở giai đoạn COMPLETED. Nhiều đợt cũ trong DB có is_closed=True
+        nhưng is_active vẫn còn True, nếu chỉ lọc is_active sẽ chọn nhầm đợt.
+        """
+        return (
+            cls.objects.filter(is_active=True, is_closed=False)
+            .exclude(current_stage="COMPLETED")
+            .order_by("-created_at")
+            .first()
+        )
+
 
 class CourseClass(models.Model):
     """Lớp học phần từ cổng đào tạo (vd: CNT04.101, IT1.243.102)"""
@@ -289,6 +305,7 @@ class Supervisor(models.Model):
     department_obj = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name="supervisors")
     academic_rank_multiplier = models.FloatField(default=1.0)
     is_external = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
 
     class Meta:
         db_table = "app_supervisor"
@@ -304,6 +321,12 @@ class Supervisor(models.Model):
         """Kiểm tra giảng viên có đạt học vị tối thiểu (TS trở lên) để hướng dẫn SV Kỹ sư không"""
         title = (self.academic_title or "").upper()
         return ("TS" in title or "TIẾN SĨ" in title or "PGS" in title or "GS" in title)
+
+    def has_topic_area(self, topic_area):
+        """Kiểm tra giảng viên có đăng ký chuyên ngành (hướng nghiên cứu) tương ứng hay không"""
+        if not topic_area:
+            return False
+        return self.topic_area_links.filter(topic_area=topic_area).exists()
 
 
 class AcademicStaff(models.Model):
@@ -379,6 +402,22 @@ class ProjectTopicArea(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class SupervisorTopicArea(models.Model):
+    """Liên kết giảng viên với các chuyên ngành / hướng nghiên cứu được phép hướng dẫn"""
+    supervisor = models.ForeignKey(Supervisor, on_delete=models.CASCADE, related_name="topic_area_links")
+    topic_area = models.ForeignKey(ProjectTopicArea, on_delete=models.CASCADE, related_name="supervisor_links")
+
+    class Meta:
+        db_table = "app_supervisortopicarea"
+        unique_together = ("supervisor", "topic_area")
+        ordering = ["supervisor_id", "topic_area_id"]
+        verbose_name = "Chuyên ngành của Giảng viên"
+        verbose_name_plural = "Danh sách Chuyên ngành của Giảng viên"
+
+    def __str__(self):
+        return f"{self.supervisor} - {self.topic_area.name}"
 
 
 class StudentPreference(models.Model):

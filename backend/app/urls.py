@@ -19,6 +19,7 @@ from .views import (
     ExcelStudentImportAPIView,
     ExcelStudentExportAPIView,
     SupervisorQuotaListUpdateAPIView,
+    TopicAreaListAPIView,
     AutoSupervisorAllocationAPIView,
     ManualSupervisorAllocationAPIView,
     FinalizeAndNotifyAllocationAPIView,
@@ -43,6 +44,7 @@ from .views import (
     ManualReviewerOverrideAPIView,
     FinalizeCouncilScoresAPIView,
     CloseBatchAPIView,
+    ReopenBatchAPIView,
     ExportFinalSummaryExcelAPIView,
     SupervisorListAPIView,
     AcademicStaffFinalGradesAPIView,
@@ -83,6 +85,7 @@ urlpatterns = [
     # Giai đoạn 1: Thiết lập quan hệ Khoa - Bộ môn - Giảng viên
     path("admin/departments/", DepartmentListCreateAPIView.as_view(), name="admin-departments-list"),
     path("admin/departments/<int:pk>/", DepartmentDetailAPIView.as_view(), name="admin-departments-detail"),
+    path("admin/topic-areas/", TopicAreaListAPIView.as_view(), name="admin-topic-areas-list"),
     path("admin/supervisors/", SupervisorListAPIView.as_view(), name="admin-supervisors-list"),
     path("supervisors/", SupervisorListAPIView.as_view(), name="supervisors-list"),
     path("admin/supervisors/<int:pk>/profile/", SupervisorProfileUpdateAPIView.as_view(), name="admin-supervisors-update-profile"),
@@ -101,6 +104,9 @@ urlpatterns = [
     path("admin/batches/", AcademicBatchListCreateAPIView.as_view(), name="admin-batches-list"),
     path("admin/batches/<int:pk>/", AcademicBatchDetailAPIView.as_view(), name="admin-batches-detail"),
     path("admin/batches/<int:pk>/close/", CloseBatchAPIView.as_view(), name="admin-batches-close"),
+    path("admin/batches/<int:pk>/reopen/", ReopenBatchAPIView.as_view(), name="admin-batches-reopen"),
+    path("batches/<int:pk>/close/", CloseBatchAPIView.as_view(), name="batches-close-alt"),
+    path("batches/<int:pk>/reopen/", ReopenBatchAPIView.as_view(), name="batches-reopen-alt"),
 
     # Student Excel Import & Export (Giai đoạn 1)
     path("student/import/", ExcelStudentImportAPIView.as_view(), name="student-import"),
