@@ -14,11 +14,15 @@ import { AdminLayout } from '../../components/layout/AdminLayout';
 import { SkeletonTable } from '../../components/common/SkeletonLoader';
 import './UserManagementPage.css';
 import '../../components/common/Modal.css';
+import { useDebounce } from '../../hooks/useDebounce';
 
 export const UserManagementPage: React.FC = () => {
   // Data state
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [total, setTotal] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [totalPages, setTotalPages] = useState(1);
   const [counts, setCounts] = useState<UserCounts>({
     total: 0,
     students: 0,
@@ -43,6 +47,7 @@ export const UserManagementPage: React.FC = () => {
   const [supervisorFilter, setSupervisorFilter] = useState<string>('');
   const [isActiveFilter, setIsActiveFilter] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const debouncedSearch = useDebounce(searchQuery, 350);
 
   // Modals state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -154,7 +159,9 @@ export const UserManagementPage: React.FC = () => {
     try {
       const params: any = {
         user_type: activeTab,
-        q: searchQuery.trim(),
+        q: debouncedSearch.trim(),
+        page: currentPage,
+        page_size: pageSize,
       };
 
       if (nameSortOrder !== 'none') {
@@ -179,7 +186,9 @@ export const UserManagementPage: React.FC = () => {
         fetchedUsers = sortVietnameseUsers(fetchedUsers, nameSortOrder);
       }
       setUsers(fetchedUsers);
-      setTotal(res.total || 0);
+      const totalCount = res.total || 0;
+      setTotal(totalCount);
+      setTotalPages(res.total_pages || Math.max(1, Math.ceil(totalCount / pageSize)));
       if (res.counts) setCounts(res.counts);
     } catch (e) {
       console.error(e);
@@ -194,8 +203,10 @@ export const UserManagementPage: React.FC = () => {
     classFilter,
     supervisorFilter,
     isActiveFilter,
-    searchQuery,
+    debouncedSearch,
     nameSortOrder,
+    currentPage,
+    pageSize,
   ]);
 
   useEffect(() => {
@@ -1114,6 +1125,45 @@ export const UserManagementPage: React.FC = () => {
             </table>
           )}
         </div>
+
+        {/* Pagination Toolbar */}
+        {total > 0 && (
+          <div className="pagination-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', background: '#fff', borderRadius: '8px', marginTop: '14px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+            <div style={{ color: '#64748b', fontSize: '14px' }}>
+              Hiển thị <strong>{users.length}</strong> trên <strong>{total}</strong> tài khoản (Trang {currentPage} / {totalPages})
+            </div>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <select
+                value={pageSize}
+                onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', background: '#fff', cursor: 'pointer' }}
+              >
+                <option value={25}>25 dòng / trang</option>
+                <option value={50}>50 dòng / trang</option>
+                <option value={100}>100 dòng / trang</option>
+              </select>
+              <button
+                type="button"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #cbd5e1', background: currentPage <= 1 ? '#f1f5f9' : '#fff', cursor: currentPage <= 1 ? 'not-allowed' : 'pointer', fontWeight: 500 }}
+              >
+                ◀ Trước
+              </button>
+              <span style={{ fontWeight: 600, padding: '0 6px', color: '#1e293b', minWidth: '40px', textAlign: 'center' }}>
+                {currentPage} / {totalPages}
+              </span>
+              <button
+                type="button"
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #cbd5e1', background: currentPage >= totalPages ? '#f1f5f9' : '#fff', cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer', fontWeight: 500 }}
+              >
+                Sau ▶
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Modal 1: Create Single User */}
         {showCreateModal && (

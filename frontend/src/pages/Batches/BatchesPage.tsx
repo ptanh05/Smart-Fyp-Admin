@@ -234,14 +234,17 @@ export const BatchesPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchBatches();
-    fetchDepartments();
-    fetchSupervisors();
+    Promise.all([fetchBatches(), fetchDepartments(), fetchSupervisors()]);
   }, []);
 
   useEffect(() => {
     if (selectedBatchId) {
       fetchStudents(selectedBatchId);
+    }
+  }, [selectedBatchId]);
+
+  useEffect(() => {
+    if (selectedBatchId && batches.length > 0) {
       const curr = batches.find((b) => b.id === selectedBatchId);
       if (curr) {
         if (curr.program_type === 'ENGINEER') {

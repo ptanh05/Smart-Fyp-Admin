@@ -334,11 +334,17 @@ class AuditLogSerializer(serializers.ModelSerializer):
 
 
 class CourseClassSerializer(serializers.ModelSerializer):
-    student_count = serializers.IntegerField(source="students.count", read_only=True)
+    student_count = serializers.SerializerMethodField()
 
     class Meta:
         model = CourseClass
         fields = ["id", "batch", "class_code", "class_name", "program_type", "education_program", "class_group", "student_count"]
+
+    def get_student_count(self, obj):
+        annotated = getattr(obj, "student_count", None)
+        if annotated is not None:
+            return annotated
+        return obj.students.count()
 
 
 class AcademicBatchSerializer(serializers.ModelSerializer):
@@ -367,9 +373,15 @@ class AcademicBatchSerializer(serializers.ModelSerializer):
         ]
 
     def get_student_count(self, obj):
+        annotated = getattr(obj, "student_count", None)
+        if annotated is not None:
+            return annotated
         return Student.objects.filter(academic_batch=obj).count()
 
     def get_project_count(self, obj):
+        annotated = getattr(obj, "project_count", None)
+        if annotated is not None:
+            return annotated
         return GraduationProject.objects.filter(batch=obj).count()
 
 

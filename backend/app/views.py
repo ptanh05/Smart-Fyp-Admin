@@ -1,7 +1,7 @@
 import logging
 from django.utils import timezone
 from django.db import transaction
-from django.db.models import Q, Count
+from django.db.models import Q, Count, Prefetch
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
 from rest_framework.views import APIView
@@ -442,10 +442,8 @@ class AdminUserManagementAPIView(APIView):
                 users_list.reverse()
 
         total_matched = len(users_list)
-        serializer = AdminUserSerializer(users_list, many=True)
-        return Response({
-            "users": serializer.data,
-            "total": total_matched,
+        from .paginators import paginate_data_or_list
+        counts_payload = {
             "counts": {
                 "total": all_total,
                 "active": total_active,
@@ -459,7 +457,15 @@ class AdminUserManagementAPIView(APIView):
                 "cntt_students": cntt_students_count,
                 "khmt_students": khmt_students_count,
             }
-        }, status=status.HTTP_200_OK)
+        }
+        res_payload = paginate_data_or_list(
+            data_list=users_list,
+            request=request,
+            serializer_class=AdminUserSerializer,
+            extra_data=counts_payload,
+            data_key="users"
+        )
+        return Response(res_payload, status=status.HTTP_200_OK)
 
     def post(self, request):
         serializer = AdminCreateUserSerializer(data=request.data)
@@ -925,6 +931,8 @@ class AdminAuditLogListAPIView(ListAPIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
     serializer_class = AuditLogSerializer
     queryset = AuditLog.objects.all().order_by("-created_at")
+    from .paginators import FlexibleAdminPagination
+    pagination_class = FlexibleAdminPagination
 
 
 class AdminAuditLogStatsAPIView(APIView):
@@ -949,7 +957,21 @@ class AcademicBatchListCreateAPIView(ListCreateAPIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
     serializer_class = AcademicBatchSerializer
     queryset = AcademicBatch.objects.all().order_by("-created_at")
-    pagination_class = None
+    from .paginators import FlexibleAdminPagination
+    pagination_class = FlexibleAdminPagination
+    opt_in_pagination = True
+
+    def get_queryset(self):
+        classes_qs = CourseClass.objects.annotate(
+            student_count=Count("students", distinct=True)
+        ).order_by("class_code")
+
+        return AcademicBatch.objects.annotate(
+            student_count=Count("students", distinct=True),
+            project_count=Count("graduation_projects", distinct=True)
+        ).prefetch_related(
+            Prefetch("course_classes", queryset=classes_qs)
+        ).order_by("-created_at")
 
     def list(self, request, *args, **kwargs):
         cached_data = cache.get(BATCHES_CACHE_KEY)
@@ -995,6 +1017,18 @@ class AcademicBatchDetailAPIView(RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
     serializer_class = AcademicBatchSerializer
     queryset = AcademicBatch.objects.all()
+
+    def get_queryset(self):
+        classes_qs = CourseClass.objects.annotate(
+            student_count=Count("students", distinct=True)
+        ).order_by("class_code")
+
+        return AcademicBatch.objects.annotate(
+            student_count=Count("students", distinct=True),
+            project_count=Count("graduation_projects", distinct=True)
+        ).prefetch_related(
+            Prefetch("course_classes", queryset=classes_qs)
+        )
 
     def update(self, request, *args, **kwargs):
         response = super().update(request, *args, **kwargs)
@@ -1249,7 +1283,13 @@ class DefenseCouncilListCreateAPIView(APIView):
         if batch_id:
             councils = councils.filter(batch_id=batch_id)
         serializer = DefenseCouncilSerializer(councils, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        from .paginators import paginate_data_or_list
+        res_payload = paginate_data_or_list(
+            data_list=serializer.data,
+            request=request,
+            data_key="results"
+        )
+        return Response(res_payload, status=status.HTTP_200_OK)
 
     def post(self, request):
         data = request.data
@@ -1322,6 +1362,7 @@ class GraduationProjectsAdminListAPIView(APIView):
 
         projects = GraduationProject.objects.all().select_related(
             "student__user",
+            "student__course_class",
             "supervisor__user",
             "reviewer__user",
             "council",
@@ -1361,82 +1402,104 @@ class GraduationProjectsAdminListAPIView(APIView):
                 "user", "course_class"
             ).order_by("user__last_name", "user__first_name")
 
-            for st in unassigned_students:
-                pref = StudentPreference.objects.filter(student=st).select_related(
-                    "topic_direction", "preference_1__user", "preference_2__user", "preference_3__user"
-                ).first()
+            unassigned_list = list(unassigned_students)
+            if unassigned_list:
+                st_ids = [st.id for st in unassigned_list]
 
-                survey = InternshipInfo.objects.filter(student=st).first()
-
-                c_class = getattr(st.course_class, "class_name", "") if hasattr(st, "course_class") and st.course_class else (st.department or "")
-                su = st.user
-                full_name = (
-                    f"{su.last_name} {su.first_name}".strip()
-                    if (su.last_name or su.first_name)
-                    else (su.get_full_name() or su.username)
+                prefs = StudentPreference.objects.filter(
+                    student_id__in=st_ids
+                ).select_related(
+                    "topic_direction",
+                    "preference_1__user",
+                    "preference_2__user",
+                    "preference_3__user"
                 )
+                prefs_map = {p.student_id: p for p in prefs}
 
-                p1_name = f"{pref.preference_1.academic_title or ''} {pref.preference_1.user.get_full_name()}".strip() if (pref and pref.preference_1 and pref.preference_1.user) else ""
-                p2_name = f"{pref.preference_2.academic_title or ''} {pref.preference_2.user.get_full_name()}".strip() if (pref and pref.preference_2 and pref.preference_2.user) else ""
-                p3_name = f"{pref.preference_3.academic_title or ''} {pref.preference_3.user.get_full_name()}".strip() if (pref and pref.preference_3 and pref.preference_3.user) else ""
+                surveys = InternshipInfo.objects.filter(
+                    student_id__in=st_ids
+                ).only("student_id", "tentative_title")
+                surveys_map = {s.student_id: s for s in surveys}
 
-                topic_title = ""
-                if survey and survey.tentative_title:
-                    topic_title = survey.tentative_title
-                elif pref and pref.topic_direction:
-                    topic_title = pref.topic_direction.name
-                else:
-                    topic_title = f"Đề tài tốt nghiệp của {full_name}"
+                for st in unassigned_list:
+                    pref = prefs_map.get(st.id)
+                    survey = surveys_map.get(st.id)
 
-                unassigned_item = {
-                    "id": -st.id,
-                    "student": st.id,
-                    "student_name": full_name,
-                    "student_reg_no": st.registration_no,
-                    "student_class": c_class,
-                    "education_program": st.education_program or "",
-                    "supervisor": None,
-                    "supervisor_name": "Chưa phân công",
-                    "batch": int(batch_id),
-                    "topic_category": pref.topic_direction_id if (pref and pref.topic_direction) else None,
-                    "topic_category_name": pref.topic_direction.name if (pref and pref.topic_direction) else "",
-                    "topic_title_vi": topic_title,
-                    "topic_title_en": "",
-                    "status": "UNASSIGNED",
-                    "topic_review_status": "DRAFT",
-                    "topic_revision_notes": "",
-                    "outline_pdf_path": None,
-                    "initial_eligibility": "PENDING",
-                    "ineligibility_reason": None,
-                    "gpa_score": None,
-                    "debt_credits": 0,
-                    "supervisor_defense_confirmed": False,
-                    "final_academic_eligibility": "PENDING",
-                    "final_academic_notes": None,
-                    "deferral_status": "NONE",
-                    "deferral_reason": None,
-                    "reviewer": None,
-                    "reviewer_name": "",
-                    "council": None,
-                    "council_name": "",
-                    "schedule_slot_info": None,
-                    "supervisor_score": None,
-                    "reviewer_score": None,
-                    "is_eligible_for_defense": False,
-                    "final_score_10": None,
-                    "final_score_4": None,
-                    "final_letter_grade": None,
-                    "is_passed": None,
-                    "created_at": None,
-                    "updated_at": None,
-                    "is_unassigned": True,
-                    "preference_1_name": p1_name,
-                    "preference_2_name": p2_name,
-                    "preference_3_name": p3_name,
-                }
-                data.append(unassigned_item)
+                    c_class = getattr(st.course_class, "class_name", "") if hasattr(st, "course_class") and st.course_class else (st.department or "")
+                    su = st.user
+                    full_name = (
+                        f"{su.last_name} {su.first_name}".strip()
+                        if (su.last_name or su.first_name)
+                        else (su.get_full_name() or su.username)
+                    )
 
-        return Response(data, status=status.HTTP_200_OK)
+                    p1_name = f"{pref.preference_1.academic_title or ''} {pref.preference_1.user.get_full_name()}".strip() if (pref and pref.preference_1 and pref.preference_1.user) else ""
+                    p2_name = f"{pref.preference_2.academic_title or ''} {pref.preference_2.user.get_full_name()}".strip() if (pref and pref.preference_2 and pref.preference_2.user) else ""
+                    p3_name = f"{pref.preference_3.academic_title or ''} {pref.preference_3.user.get_full_name()}".strip() if (pref and pref.preference_3 and pref.preference_3.user) else ""
+
+                    topic_title = ""
+                    if survey and survey.tentative_title:
+                        topic_title = survey.tentative_title
+                    elif pref and pref.topic_direction:
+                        topic_title = pref.topic_direction.name
+                    else:
+                        topic_title = f"Đề tài tốt nghiệp của {full_name}"
+
+                    unassigned_item = {
+                        "id": -st.id,
+                        "student": st.id,
+                        "student_name": full_name,
+                        "student_reg_no": st.registration_no,
+                        "student_class": c_class,
+                        "education_program": st.education_program or "",
+                        "supervisor": None,
+                        "supervisor_name": "Chưa phân công",
+                        "batch": int(batch_id),
+                        "topic_category": pref.topic_direction_id if (pref and pref.topic_direction) else None,
+                        "topic_category_name": pref.topic_direction.name if (pref and pref.topic_direction) else "",
+                        "topic_title_vi": topic_title,
+                        "topic_title_en": "",
+                        "status": "UNASSIGNED",
+                        "topic_review_status": "DRAFT",
+                        "topic_revision_notes": "",
+                        "outline_pdf_path": None,
+                        "initial_eligibility": "PENDING",
+                        "ineligibility_reason": None,
+                        "gpa_score": None,
+                        "debt_credits": 0,
+                        "supervisor_defense_confirmed": False,
+                        "final_academic_eligibility": "PENDING",
+                        "final_academic_notes": None,
+                        "deferral_status": "NONE",
+                        "deferral_reason": None,
+                        "reviewer": None,
+                        "reviewer_name": "",
+                        "council": None,
+                        "council_name": "",
+                        "schedule_slot_info": None,
+                        "supervisor_score": None,
+                        "reviewer_score": None,
+                        "is_eligible_for_defense": False,
+                        "final_score_10": None,
+                        "final_score_4": None,
+                        "final_letter_grade": None,
+                        "is_passed": None,
+                        "created_at": None,
+                        "updated_at": None,
+                        "is_unassigned": True,
+                        "preference_1_name": p1_name,
+                        "preference_2_name": p2_name,
+                        "preference_3_name": p3_name,
+                    }
+                    data.append(unassigned_item)
+
+        from .paginators import paginate_data_or_list
+        res_payload = paginate_data_or_list(
+            data_list=data,
+            request=request,
+            data_key="results"
+        )
+        return Response(res_payload, status=status.HTTP_200_OK)
 
 
 # ==============================================================================
@@ -1520,7 +1583,13 @@ class OutlineGroupListCreateAPIView(APIView):
         if batch_id:
             qs = qs.filter(batch_id=batch_id)
         serializer = OutlineReviewGroupSerializer(qs, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        from .paginators import paginate_data_or_list
+        res_payload = paginate_data_or_list(
+            data_list=serializer.data,
+            request=request,
+            data_key="results"
+        )
+        return Response(res_payload, status=status.HTTP_200_OK)
 
     def post(self, request):
         data = request.data
@@ -1590,10 +1659,11 @@ class OutlineReviewListAPIView(APIView):
 
         projects = GraduationProject.objects.filter(batch_id=batch_id).select_related("student__user")
 
-        # Ensure OutlineReview exists for all projects
-        for p in projects:
-            if not hasattr(p, 'outline_review'):
-                OutlineReview.objects.create(project=p)
+        # Ensure OutlineReview exists for all projects (bulk create to avoid N+1 queries)
+        existing_pids = set(OutlineReview.objects.filter(project__batch_id=batch_id).values_list("project_id", flat=True))
+        missing_projects = [p for p in projects if p.id not in existing_pids]
+        if missing_projects:
+            OutlineReview.objects.bulk_create([OutlineReview(project=p) for p in missing_projects], ignore_conflicts=True)
 
         reviews = OutlineReview.objects.filter(project__batch_id=batch_id).select_related(
             "project__student__user",
@@ -1636,7 +1706,13 @@ class OutlineReviewListAPIView(APIView):
         )
 
         serializer = OutlineReviewSerializer(reviews_list, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        from .paginators import paginate_data_or_list
+        res_payload = paginate_data_or_list(
+            data_list=serializer.data,
+            request=request,
+            data_key="results"
+        )
+        return Response(res_payload, status=status.HTTP_200_OK)
 
 
 class OutlineReviewDetailAPIView(APIView):
@@ -1772,7 +1848,9 @@ class DepartmentListCreateAPIView(ListCreateAPIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
     serializer_class = DepartmentSerializer
     queryset = Department.objects.all().order_by("code")
-    pagination_class = None
+    from .paginators import FlexibleAdminPagination
+    pagination_class = FlexibleAdminPagination
+    opt_in_pagination = True
 
 
 class DepartmentDetailAPIView(RetrieveUpdateDestroyAPIView):
@@ -2003,7 +2081,9 @@ class SupervisorListAPIView(ListAPIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
     serializer_class = SupervisorDetailSerializer
     queryset = Supervisor.objects.all().select_related("user", "department_obj").prefetch_related("quotas")
-    pagination_class = None
+    from .paginators import FlexibleAdminPagination
+    pagination_class = FlexibleAdminPagination
+    opt_in_pagination = True
 
 
 # ==============================================================================

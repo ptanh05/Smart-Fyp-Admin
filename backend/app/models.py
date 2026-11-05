@@ -205,6 +205,9 @@ class Student(models.Model):
     class Meta:
         db_table = "app_student"
         ordering = ["registration_no"]
+        indexes = [
+            models.Index(fields=["academic_batch", "course_class"], name="idx_student_batch_class"),
+        ]
         verbose_name = "Sinh viên"
         verbose_name_plural = "Danh sách Sinh viên"
 
@@ -560,6 +563,11 @@ class GraduationProject(models.Model):
     class Meta:
         db_table = "app_graduationproject"
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["council", "status", "-created_at"], name="idx_gp_council_stat_created"),
+            models.Index(fields=["batch", "status"], name="idx_gp_batch_status"),
+            models.Index(fields=["supervisor", "status"], name="idx_gp_supervisor_status"),
+        ]
         verbose_name = "Đồ án tốt nghiệp"
         verbose_name_plural = "Danh sách Đồ án tốt nghiệp"
 
