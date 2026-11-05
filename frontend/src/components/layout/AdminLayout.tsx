@@ -1,19 +1,155 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../../auth/AdminAuthContext';
+import { apiClient } from '../../api/client';
+import BatchProgressBar, { type BatchProgressData } from '../BatchProgressBar';
 import './AdminLayout.css';
+
+/**
+ * Menu theo vai trò:
+ *  - admin        : toàn bộ nghiệp vụ quản trị (kể cả bảo mật / nhật ký / tài khoản)
+ *  - academic_staff (Giáo vụ Khoa): chỉ các nghiệp vụ thuộc Khoa
+ */
+interface NavItem {
+  to: string;
+  icon: string;
+  label: string;
+  roles: Array<'admin' | 'academic_staff'>;
+  highlight?: boolean;
+}
+
+const NAV_ITEMS: NavItem[] = [
+  {
+    to: '/dashboard',
+    icon: '📊',
+    label: 'Tổng Quan Dashboard',
+    roles: ['admin', 'academic_staff'],
+  },
+  {
+    to: '/academic-staff',
+    icon: '💼',
+    label: 'Phân Hệ Giáo Vụ (Mới)',
+    roles: ['academic_staff'],
+    highlight: true,
+  },
+  {
+    to: '/users',
+    icon: '👥',
+    label: 'Quản Lý Tài Khoản',
+    roles: ['admin'],
+  },
+  {
+    to: '/supervisors',
+    icon: '👨‍🏫',
+    label: 'Quản Lý Giảng Viên',
+    roles: ['admin'],
+  },
+  {
+    to: '/batches',
+    icon: '📅',
+    label: 'GĐ1: Đợt & Bộ Môn',
+    roles: ['admin', 'academic_staff'],
+  },
+  {
+    to: '/archived-batches',
+    icon: '🗄️',
+    label: 'Lưu Trữ Đợt ĐATN',
+    roles: ['admin', 'academic_staff'],
+  },
+  {
+    to: '/allocations',
+    icon: '🤝',
+    label: 'GĐ2: Phân Công GVHD',
+    roles: ['admin', 'academic_staff'],
+  },
+  {
+    to: '/topics',
+    icon: '📑',
+    label: 'GĐ3: Duyệt Đề Tài',
+    roles: ['admin', 'academic_staff'],
+  },
+  {
+    to: '/eligibility',
+    icon: '⚖️',
+    label: 'GĐ4: Xét ĐK & Force Approve',
+    roles: ['admin', 'academic_staff'],
+  },
+  {
+    to: '/progress',
+    icon: '📈',
+    label: 'GĐ5: Giám Sát Tiến Độ',
+    roles: ['admin', 'academic_staff'],
+  },
+  {
+    to: '/outlines',
+    icon: '📋',
+    label: 'Duyệt Đề Cương',
+    roles: ['admin', 'academic_staff'],
+  },
+  {
+    to: '/councils',
+    icon: '🏛️',
+    label: 'GĐ6: Hội Đồng & Lịch BV',
+    roles: ['admin', 'academic_staff'],
+  },
+  {
+    to: '/defense',
+    icon: '📝',
+    label: 'Điểm, Bảo Lưu & Chốt',
+    roles: ['admin', 'academic_staff'],
+  },
+  {
+    to: '/security',
+    icon: '🛡️',
+    label: 'Trung Tâm Bảo Mật',
+    roles: ['admin'],
+  },
+  {
+    to: '/audit-logs',
+    icon: '📜',
+    label: 'Nhật Ký Hệ Thống',
+    roles: ['admin'],
+  },
+];
 
 export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { logout, userType, currentUser } = useAdminAuth();
   const navigate = useNavigate();
+
+  const [progress, setProgress] = useState<BatchProgressData | null>(null);
+  const [progressLoading, setProgressLoading] = useState<boolean>(true);
 
   const handleLogout = async () => {
     await logout();
     navigate('/login');
   };
 
+  const fetchProgress = async () => {
+    try {
+      setProgressLoading(true);
+      const res = await apiClient.get('/admin/batches/progress/');
+      setProgress(res.data);
+    } catch (err) {
+      console.error('Failed to load batch progress:', err);
+      setProgress(null);
+    } finally {
+      setProgressLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchProgress();
+    // Làm mới tiến trình mỗi 60s để Admin theo dõi kịp thời
+    const timer = window.setInterval(fetchProgress, 60000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const displayName = currentUser?.full_name || currentUser?.username || 'Administrator';
   const displayUsername = currentUser?.username ? `@${currentUser.username}` : '';
+
+  const effectiveRole: 'admin' | 'academic_staff' =
+    userType === 'academic_staff' ? 'academic_staff' : 'admin';
+  const visibleNavItems = NAV_ITEMS.filter((item) => item.roles.includes(effectiveRole));
 
   return (
     <div className="admin-layout-wrapper">
@@ -22,53 +158,23 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
           <span className="admin-seal">🎓</span>
           <div>
             <div className="admin-title-main">SMART FYP UTC</div>
-            <div className="admin-title-sub">ADMIN PORTAL</div>
+            <div className="admin-title-sub">
+              {effectiveRole === 'academic_staff' ? 'GIAO VỤ KHOA PORTAL' : 'ADMIN PORTAL'}
+            </div>
           </div>
         </div>
 
         <nav className="admin-nav">
-          <NavLink to="/dashboard" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>📊</span> Tổng Quan Dashboard
-          </NavLink>
-          <NavLink to="/academic-staff" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`} style={{ background: 'rgba(0, 51, 102, 0.08)', fontWeight: 700 }}>
-            <span>💼</span> Phân Hệ Giáo Vụ (Mới)
-          </NavLink>
-          <NavLink to="/users" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>👥</span> Quản Lý Tài Khoản
-          </NavLink>
-          <NavLink to="/supervisors" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>👨‍🏫</span> Quản Lý Giảng Viên
-          </NavLink>
-          <NavLink to="/batches" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>📅</span> GĐ1: Đợt & Bộ Môn
-          </NavLink>
-          <NavLink to="/archived-batches" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>🗄️</span> Lưu Trữ Đợt ĐATN
-          </NavLink>
-          <NavLink to="/allocations" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>🤝</span> GĐ2: Phân Công GVHD
-          </NavLink>
-          <NavLink to="/topics" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>📑</span> GĐ3: Duyệt Đề Tài
-          </NavLink>
-          <NavLink to="/eligibility" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>⚖️</span> GĐ4: Xét ĐK & Force Approve
-          </NavLink>
-          <NavLink to="/progress" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>📈</span> GĐ5: Giám Sát Tiến Độ
-          </NavLink>
-          <NavLink to="/outlines" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>📋</span> Duyệt Đề Cương
-          </NavLink>
-          <NavLink to="/councils" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>🏛️</span> GĐ6: Hội Đồng & Lịch BV
-          </NavLink>
-          <NavLink to="/defense" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>📝</span> Điểm, Bảo Lưu & Chốt
-          </NavLink>
-          <NavLink to="/audit-logs" className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}>
-            <span>📜</span> Nhật Ký Hệ Thống
-          </NavLink>
+          {visibleNavItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
+              style={item.highlight ? { background: 'rgba(0, 51, 102, 0.08)', fontWeight: 700 } : undefined}
+            >
+              <span>{item.icon}</span> {item.label}
+            </NavLink>
+          ))}
         </nav>
       </aside>
 
@@ -76,14 +182,33 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
         <header className="admin-header">
           <div className="admin-header-title">Hệ Thống Quản Trị Dữ Liệu Đồ Án Tốt Nghiệp UTC</div>
           <div className="admin-header-user">
-            <span className="admin-user-badge" title={currentUser?.email ? `Email: ${currentUser.email}` : undefined}>
-              {userType === 'academic_staff' ? '💼 Giáo vụ Khoa CNTT' : `🛡️ ${displayName}`} {displayUsername && <span style={{ opacity: 0.85, fontSize: '0.9em', marginLeft: 4 }}>({displayUsername})</span>}
+            <span
+              className="admin-user-badge"
+              title={currentUser?.email ? `Email: ${currentUser.email}` : undefined}
+            >
+              {effectiveRole === 'academic_staff'
+                ? '💼 Giáo vụ Khoa CNTT'
+                : `🛡️ ${displayName}`}{' '}
+              {displayUsername && (
+                <span style={{ opacity: 0.85, fontSize: '0.9em', marginLeft: 4 }}>({displayUsername})</span>
+              )}
             </span>
-            <button className="admin-logout-btn" onClick={handleLogout}>Đăng Xuất</button>
+            <button className="admin-logout-btn" onClick={handleLogout}>
+              Đăng Xuất
+            </button>
           </div>
         </header>
 
         <div className="admin-page-container">
+          {/* ===== Thanh tiến trình đợt đồ án (6 giai đoạn) ===== */}
+          <BatchProgressBar
+            data={progress}
+            loading={progressLoading}
+            variant="admin"
+            onRefresh={fetchProgress}
+            title="Tiến Trình Đợt Đồ Án Hiện Tại"
+          />
+
           {children}
         </div>
       </main>

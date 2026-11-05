@@ -530,6 +530,25 @@
   transform: translateY(-1px);
 }
 
+.utc-btn-open-batch {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #86efac;
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.utc-btn-open-batch:hover {
+  background: #86efac;
+  color: #14532d;
+  transform: translateY(-1px);
+}
+
 .utc-badge-edu {
   padding: 0.2rem 0.5rem;
   border-radius: 4px;

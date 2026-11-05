@@ -42,7 +42,12 @@ from .models import (
     FinalGradeSummary,
     EvaluationPolicy
 )
-from .permissions import IsAdminUserRole
+from .permissions import (
+    IsAdminUserRole,
+    IsSuperAdminOnly,
+    IsSuperAdminOnlyForWrite,
+    IsSuperAdminOnlyOrStaffStudentWrite,
+)
 from .serializers import (
     AdminUserSerializer,
     AdminRegisterSerializer,
@@ -278,7 +283,7 @@ class AdminCookieLogoutAPIView(APIView):
 
 
 class AdminUserManagementAPIView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminUserRole]
+    permission_classes = [IsAuthenticated, IsSuperAdminOnlyOrStaffStudentWrite]
 
     def get(self, request):
         summary_only = str(request.query_params.get("summary_only", "")).lower() in ["true", "1"]
@@ -706,7 +711,7 @@ class AdminUserManagementAPIView(APIView):
 
 
 class AdminImportExcelAPIView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminUserRole]
+    permission_classes = [IsAuthenticated, IsSuperAdminOnlyForWrite]
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
@@ -750,7 +755,6 @@ class AdminImportExcelAPIView(APIView):
 
 class AdminDownloadTemplateAPIView(APIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
-
     def get(self, request):
         buffer = ExcelImportService.generate_student_template()
         response = HttpResponse(
@@ -833,7 +837,7 @@ class AdminExportUsersExcelAPIView(APIView):
 
 
 class AdminResetUserPasswordAPIView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminUserRole]
+    permission_classes = [IsAuthenticated, IsSuperAdminOnly]
 
     def post(self, request, pk=None):
         if not pk:
@@ -879,7 +883,7 @@ class AdminResetUserPasswordAPIView(APIView):
 
 
 class AdminSecurityCenterAPIView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminUserRole]
+    permission_classes = [IsAuthenticated, IsSuperAdminOnly]
 
     def get(self, request):
         cached_sec = cache.get(SECURITY_METRICS_CACHE_KEY)
@@ -930,7 +934,7 @@ class AdminSecurityCenterAPIView(APIView):
 
 
 class AdminAuditLogListAPIView(ListAPIView):
-    permission_classes = [IsAuthenticated, IsAdminUserRole]
+    permission_classes = [IsAuthenticated, IsSuperAdminOnly]
     serializer_class = AuditLogSerializer
     queryset = AuditLog.objects.all().order_by("-created_at")
     from .paginators import FlexibleAdminPagination
@@ -938,7 +942,7 @@ class AdminAuditLogListAPIView(ListAPIView):
 
 
 class AdminAuditLogStatsAPIView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminUserRole]
+    permission_classes = [IsAuthenticated, IsSuperAdminOnly]
 
     def get(self, request):
         total = AuditLog.objects.count()
@@ -1045,6 +1049,84 @@ class AcademicBatchDetailAPIView(RetrieveUpdateDestroyAPIView):
         return response
 
 
+class OpenBatchAPIView(APIView):
+    """Khoa mở đợt (OPEN) cho sinh viên bắt đầu đăng ký nguyện vọng (GĐ1 -> GĐ2)."""
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def post(self, request, pk):
+        batch = get_object_or_404(AcademicBatch, pk=pk)
+
+        if batch.is_closed or batch.current_stage == "COMPLETED":
+            return Response(
+                {"detail": "Đợt đã kết thúc. Hãy mở lại từ kho lưu trữ trước khi tiếp tục."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        batch.is_active = True
+        batch.is_closed = False
+        if batch.current_stage == "PHASE_1_SETUP":
+            batch.current_stage = "PHASE_2_ALLOCATING"
+        batch.save(update_fields=["is_active", "is_closed", "current_stage"])
+
+        try:
+            cache.delete(BATCHES_CACHE_KEY)
+            invalidate_user_summary_cache()
+            cache.delete(SECURITY_METRICS_CACHE_KEY)
+        except Exception:
+            pass
+
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="group_status_change",
+            description=f"Khoa đã mở đợt đồ án {batch.batch_code} cho sinh viên đăng ký nguyện vọng.",
+        )
+
+        from .services.batch_progress import compute_batch_progress
+
+        return Response(
+            {
+                "message": f"Đợt {batch.batch_code} đã được MỞ. Sinh viên có thể đăng ký nguyện vọng.",
+                "batch_id": batch.id,
+                "is_active": True,
+                "is_closed": False,
+                "current_stage": batch.current_stage,
+                "progress": compute_batch_progress(batch),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class BatchProgressAPIView(APIView):
+    """Tiến trình 6 giai đoạn của một đợt đồ án (dùng cho thanh tiến trình trên đầu trang)."""
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def get(self, request, pk=None):
+        from .services.batch_progress import compute_batch_progress
+
+        if pk:
+            batch = get_object_or_404(AcademicBatch, pk=pk)
+            return Response(compute_batch_progress(batch), status=status.HTTP_200_OK)
+
+        batch_id = request.query_params.get("batch_id")
+        if batch_id:
+            batch = get_object_or_404(AcademicBatch, pk=batch_id)
+            return Response(compute_batch_progress(batch), status=status.HTTP_200_OK)
+
+        batch = AcademicBatch.get_active_batch() or AcademicBatch.objects.order_by("-id").first()
+        if not batch:
+            return Response(
+                {
+                    "is_open": False,
+                    "current_stage_number": 1,
+                    "overall_percent": 0,
+                    "stages": [],
+                    "next_actions": ["Chưa có đợt đồ án nào. Hãy tạo đợt mới ở GĐ1."],
+                },
+                status=status.HTTP_200_OK,
+            )
+        return Response(compute_batch_progress(batch), status=status.HTTP_200_OK)
+
+
 class ExcelStudentImportAPIView(APIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
     parser_classes = [MultiPartParser, FormParser]
@@ -1077,7 +1159,12 @@ class ExcelStudentImportAPIView(APIView):
                 except (ValueError, TypeError):
                     pass
 
-            res = ExcelImportService.import_students_from_excel(file_obj, batch_id)
+            res = ExcelImportService.import_students_from_excel(
+                file_obj,
+                batch_id,
+                password_strategy=request.data.get("password_strategy", "FIXED"),
+                custom_fixed_password=request.data.get("custom_fixed_password", "Password@123"),
+            )
 
             try:
                 AuditLog.objects.create(
@@ -1351,6 +1438,40 @@ class AutoReviewerAllocationAPIView(APIView):
             user=request.user,
             action_type="admin_user_update",
             description=f"Ran No-Conflict Reviewer Allocation for Batch #{batch_id}: Assigned={res.get('assigned_count')}"
+        )
+
+        return Response(res, status=status.HTTP_200_OK if res.get("success") else status.HTTP_400_BAD_REQUEST)
+
+
+class AutoGenerateCouncilAPIView(APIView):
+    """
+    ⚡ Sinh Hội đồng tự động (GĐ6 - Bước 40)
+    Mỗi hội đồng gồm 5 giảng viên: 1 Chủ tịch, 2 Thư ký, 2 Ủy viên.
+    Hệ thống tự loại trừ GVHD của sinh viên khỏi hội đồng chấm đề tài đó
+    và tự gán Giảng viên phản biện (GVPB ≠ GVHD).
+    """
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def post(self, request):
+        batch_id = request.data.get("batch_id") or request.query_params.get("batch_id")
+        if not batch_id:
+            return Response({"detail": "batch_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        projects_per_council = request.data.get("projects_per_council", 8)
+        try:
+            projects_per_council = int(projects_per_council)
+        except (TypeError, ValueError):
+            projects_per_council = 8
+
+        from .services.council_generator import CouncilGeneratorEngine
+
+        res = CouncilGeneratorEngine.generate_councils_for_batch(
+            batch_id=batch_id,
+            projects_per_council=projects_per_council,
+            defense_room_prefix=request.data.get("defense_room_prefix", "P"),
+            session_date=request.data.get("session_date") or None,
+            session_time=request.data.get("session_time", "MORNING"),
+            user=request.user,
         )
 
         return Response(res, status=status.HTTP_200_OK if res.get("success") else status.HTTP_400_BAD_REQUEST)
@@ -2580,7 +2701,7 @@ class AdminSeedDataAPIView(APIView):
     Khôi phục và nạp bộ dữ liệu mẫu UTC cho Admin Portal
     (Bao gồm Admin, Giảng viên, Sinh viên, Đợt đồ án, Bộ môn, Hội đồng)
     """
-    permission_classes = [IsAuthenticated, IsAdminUserRole]
+    permission_classes = [IsAuthenticated, IsSuperAdminOnly]
 
     def post(self, request):
         from django.core.management import call_command

@@ -1,0 +1,407 @@
+/* =============================================================
+   Thanh tiến trình đợt đồ án (6 giai đoạn)
+   Dùng chung cho Admin Portal + Cổng Sinh viên / Giảng viên
+   ============================================================= */
+
+.utc-bpb {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 14px 18px 12px;
+  margin-bottom: 18px;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
+}
+
+.utc-bpb-admin {
+  border-left: 4px solid #0284c7;
+}
+
+/* ---------- Header ---------- */
+.utc-bpb-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.utc-bpb-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.utc-bpb-title-icon {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.utc-bpb-title-group {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.utc-bpb-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: #0f172a;
+}
+
+.utc-bpb-batch-code {
+  background: #0f2b5c;
+  color: #ffffff;
+  border-radius: 9999px;
+  padding: 1px 9px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.utc-bpb-subtitle {
+  font-size: 0.78rem;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.utc-bpb-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.utc-bpb-status-pill {
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 9999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+.utc-bpb-status-pill.open {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+
+.utc-bpb-status-pill.closed {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.utc-bpb-percent {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #0284c7;
+  min-width: 46px;
+  text-align: right;
+}
+
+.utc-bpb-refresh {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.2s ease;
+}
+
+.utc-bpb-refresh:hover {
+  background: #e2e8f0;
+}
+
+/* ---------- Thanh % tổng thể ---------- */
+.utc-bpb-overall-track {
+  height: 7px;
+  background: #e2e8f0;
+  border-radius: 9999px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.utc-bpb-overall-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #0f2b5c 0%, #0284c7 55%, #38bdf8 100%);
+  border-radius: 9999px;
+  transition: width 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ---------- 6 bước ---------- */
+.utc-bpb-steps {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+
+.utc-bpb-step {
+  min-width: 0;
+}
+
+.utc-bpb-step-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  width: 100%;
+  text-align: left;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 8px 9px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.utc-bpb-step-head:hover {
+  border-color: #0284c7;
+  background: #f0f9ff;
+}
+
+.utc-bpb-step.current .utc-bpb-step-head {
+  background: #eff6ff;
+  border-color: #0284c7;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
+}
+
+.utc-bpb-step.done .utc-bpb-step-head {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.utc-bpb-step-dot {
+  flex-shrink: 0;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.utc-bpb-step.done .utc-bpb-step-dot {
+  background: #16a34a;
+  color: #ffffff;
+}
+
+.utc-bpb-step.current .utc-bpb-step-dot {
+  background: #0284c7;
+  color: #ffffff;
+}
+
+.utc-bpb-step-icon {
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.utc-bpb-step-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.utc-bpb-step-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.25;
+}
+
+.utc-bpb-step-status {
+  font-size: 0.63rem;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.utc-bpb-step.done .utc-bpb-step-status {
+  color: #16a34a;
+}
+
+.utc-bpb-step.current .utc-bpb-step-status {
+  color: #0284c7;
+}
+
+/* ---------- Chi tiết giai đoạn ---------- */
+.utc-bpb-step-detail {
+  margin-top: 6px;
+  padding: 9px 10px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  font-size: 0.73rem;
+  color: #475569;
+  line-height: 1.45;
+}
+
+.utc-bpb-step-desc {
+  margin: 0 0 4px;
+}
+
+.utc-bpb-step-role,
+.utc-bpb-step-action {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+
+.utc-bpb-step-action {
+  color: #b45309;
+}
+
+.utc-bpb-step-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.utc-bpb-stat-chip {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 9999px;
+  padding: 1px 8px;
+  font-size: 0.66rem;
+  color: #64748b;
+}
+
+.utc-bpb-stat-chip strong {
+  color: #0f172a;
+}
+
+.utc-bpb-mini-track {
+  position: relative;
+  height: 5px;
+  background: #e2e8f0;
+  border-radius: 9999px;
+  margin-top: 7px;
+}
+
+.utc-bpb-mini-fill {
+  height: 100%;
+  background: #0284c7;
+  border-radius: 9999px;
+  transition: width 0.5s ease;
+}
+
+.utc-bpb-mini-label {
+  position: absolute;
+  right: 0;
+  top: -14px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #0284c7;
+}
+
+/* ---------- Giai đoạn hiện tại ---------- */
+.utc-bpb-next {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #f1f5f9;
+  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.utc-bpb-next-label {
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.utc-bpb-next-value {
+  color: #0f2b5c;
+  font-weight: 800;
+}
+
+.utc-bpb-next-hint {
+  color: #b45309;
+  font-weight: 600;
+}
+
+/* ---------- Empty / Loading ---------- */
+.utc-bpb-empty {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+}
+
+.utc-bpb-empty-icon {
+  font-size: 1.4rem;
+}
+
+.utc-bpb-empty-text {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.82rem;
+  color: #64748b;
+}
+
+.utc-bpb-empty-text strong {
+  color: #0f172a;
+  font-size: 0.9rem;
+}
+
+.utc-bpb-skeleton-line {
+  height: 16px;
+  width: 45%;
+  border-radius: 6px;
+  background: #e2e8f0;
+  margin-bottom: 12px;
+  animation: utcBpbPulse 1.4s ease-in-out infinite;
+}
+
+.utc-bpb-skeleton-steps {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+
+.utc-bpb-skeleton-step {
+  height: 46px;
+  border-radius: 10px;
+  background: #e2e8f0;
+  animation: utcBpbPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes utcBpbPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1100px) {
+  .utc-bpb-steps {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .utc-bpb-steps {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .utc-bpb-skeleton-steps {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .utc-bpb-header {
+    align-items: flex-start;
+  }
+}

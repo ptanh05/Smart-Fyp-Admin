@@ -98,9 +98,9 @@ def seed_database():
     policy, _ = EvaluationPolicy.objects.get_or_create(
         batch=batch,
         defaults={
-            "weight_supervisor": 0.4,
+            "weight_supervisor": 0.3,
             "weight_reviewer": 0.2,
-            "weight_council": 0.4
+            "weight_council": 0.5
         }
     )
     print(f"[OK] [4/9] Quy che diem: GVHD {int(policy.weight_supervisor*100)}% - GVPB {int(policy.weight_reviewer*100)}% - HD {int(policy.weight_council*100)}%")

@@ -43,6 +43,10 @@ export const CouncilsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [assigning, setAssigning] = useState(false);
   const [assignResult, setAssignResult] = useState<any>(null);
+  // ⚡ Sinh Hội đồng tự động (1CT-2TK-2UV)
+  const [generating, setGenerating] = useState(false);
+  const [generateResult, setGenerateResult] = useState<any>(null);
+  const [projectsPerCouncil, setProjectsPerCouncil] = useState(8);
 
   // Create Council Form (1 Chủ tịch, 2 Thư ký, 2 Ủy viên)
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -112,6 +116,35 @@ export const CouncilsPage: React.FC = () => {
       fetchData();
     }
   }, [selectedBatchId]);
+
+  const handleAutoGenerateCouncils = async () => {
+    if (!selectedBatchId) return;
+    if (!confirm(
+      `Tự động sinh Hội đồng cho đợt này?\n\n` +
+      `Mỗi Hội đồng gồm 5 giảng viên: 1 Chủ tịch, 2 Thư ký, 2 Ủy viên.\n` +
+      `Hệ thống sẽ tự loại trừ GVHD của sinh viên khỏi hội đồng chấm đề tài đó ` +
+      `và tự gán Giảng viên phản biện (GVPB ≠ GVHD).\n\n` +
+      `Lưu ý: Các hội đồng cũ chưa chấm điểm sẽ bị thay thế.`
+    )) return;
+
+    try {
+      setGenerating(true);
+      setGenerateResult(null);
+      const res = await apiClient.post('/admin/councils/auto-generate/', {
+        batch_id: selectedBatchId,
+        projects_per_council: projectsPerCouncil,
+      });
+      setGenerateResult(res.data);
+      fetchData();
+    } catch (err: any) {
+      setGenerateResult({
+        success: false,
+        error: err.response?.data?.detail || err.response?.data?.error || err.message,
+      });
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const handleAutoAssignReviewers = async () => {
     if (!selectedBatchId) return;
@@ -255,7 +288,30 @@ export const CouncilsPage: React.FC = () => {
             </select>
           </div>
 
+          <div className="utc-batch-select-group">
+            <label>📦 Số ĐT/Hội đồng:</label>
+            <select
+              value={projectsPerCouncil}
+              onChange={(e) => setProjectsPerCouncil(Number(e.target.value))}
+              className="utc-batch-dropdown"
+            >
+              {[3, 4, 5, 6, 8, 10, 12].map((n) => (
+                <option key={n} value={n}>
+                  {n} đề tài
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="utc-council-actions">
+            <button
+              onClick={handleAutoGenerateCouncils}
+              disabled={generating}
+              className="utc-btn-primary"
+              title="Tự động lập Hội đồng chuẩn 1CT-2TK-2UV, gán đề tài & GVPB (loại trừ GVHD)"
+            >
+              <span>⚡</span> {generating ? 'Đang sinh Hội đồng...' : 'Sinh Hội Đồng Tự Động'}
+            </button>
             <button onClick={() => setShowCreateModal(true)} className="utc-btn-primary">
               <span>➕</span> Tạo Hội Đồng Chuẩn (1CT-2TK-2UV)
             </button>
@@ -280,6 +336,53 @@ export const CouncilsPage: React.FC = () => {
         {/* TAB 1: COUNCILS */}
         {activeTab === 'councils' && (
           <>
+            {/* ⚡ Kết quả Sinh Hội đồng Tự động */}
+            {generateResult && (
+              <div className="utc-assign-feedback">
+                {generateResult.success ? (
+                  <>
+                    <h4>⚡ Kết Quả Sinh Hội Đồng Tự Động:</h4>
+                    <p>{generateResult.message}</p>
+                    <p>
+                      Số Hội đồng: <strong>{generateResult.councils?.length || 0}</strong> |
+                      Đề tài đã gán: <strong>{generateResult.assigned_projects || 0}</strong> |
+                      GVPB đã gán: <strong>{generateResult.assigned_reviewers || 0}</strong>
+                    </p>
+                    {generateResult.councils && generateResult.councils.length > 0 && (
+                      <div className="utc-conflicts-box" style={{ maxHeight: '180px', overflowY: 'auto' }}>
+                        <strong>Cơ cấu Hội đồng (1CT - 2TK - 2UV):</strong>
+                        <ul>
+                          {generateResult.councils.map((c: any) => (
+                            <li key={c.id}>
+                              <strong>{c.council_name}</strong> ({c.defense_room}):{' '}
+                              {c.members.map((m: any) => `${m.academic_title} ${m.name} [${m.role}]`).join(' · ')}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <h4 style={{ color: '#b91c1c' }}>❌ Không thể sinh Hội đồng tự động:</h4>
+                    <p>{generateResult.error}</p>
+                  </>
+                )}
+                {generateResult.conflicts && generateResult.conflicts.length > 0 && (
+                  <div className="utc-conflicts-box">
+                    <strong>Xung đột lợi ích phát hiện ({generateResult.conflicts.length}):</strong>
+                    <ul>
+                      {generateResult.conflicts.slice(0, 10).map((c: any, idx: number) => (
+                        <li key={idx}>
+                          {c.student_name ? `${c.student_name} (${c.registration_no}): ` : ''}{c.reason}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Auto-Assign Feedback */}
             {assignResult && (
               <div className="utc-assign-feedback">

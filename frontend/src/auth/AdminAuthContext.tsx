@@ -34,8 +34,24 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return null;
     }
   });
-  const [userType, setUserType] = useState<UserType | null>(null);
+  const [userType, setUserType] = useState<UserType | null>(() => {
+    try {
+      const saved = localStorage.getItem('admin_user_type');
+      return saved ? (saved as UserType) : null;
+    } catch {
+      return null;
+    }
+  });
   const [loading, setLoading] = useState<boolean>(true);
+
+  const applyUserType = (role: UserType) => {
+    setUserType(role);
+    try {
+      localStorage.setItem('admin_user_type', role);
+    } catch {
+      /* ignore */
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -50,13 +66,14 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           setAccessToken(res.access);
           setIsAuthenticated(true);
           const role = (res as any).user_type || (res as any).user?.user_type || 'admin';
-          setUserType(role as UserType);
+          applyUserType(role as UserType);
         } else if (isMounted) {
           setAccessToken(null);
           setIsAuthenticated(false);
           setUserType(null);
           setCurrentUser(null);
           localStorage.removeItem('admin_user');
+          localStorage.removeItem('admin_user_type');
         }
       } catch (err) {
         if (isMounted) {
@@ -65,6 +82,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           setUserType(null);
           setCurrentUser(null);
           localStorage.removeItem('admin_user');
+          localStorage.removeItem('admin_user_type');
         }
       } finally {
         if (isMounted) {
@@ -87,7 +105,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
     setAccessToken(res.access);
     setIsAuthenticated(true);
-    setUserType((res.user_type || 'admin') as UserType);
+    applyUserType((res.user_type || 'admin') as UserType);
   };
 
   const loginWithSso = async (credential?: string, email?: string) => {
@@ -98,7 +116,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
     setAccessToken(res.access);
     setIsAuthenticated(true);
-    setUserType((res.user_type || 'admin') as UserType);
+    applyUserType((res.user_type || 'admin') as UserType);
   };
 
   const register = async (username: string, email: string, password: string, adminSecret: string) => {
@@ -117,6 +135,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setUserType(null);
     setCurrentUser(null);
     localStorage.removeItem('admin_user');
+    localStorage.removeItem('admin_user_type');
   };
 
   return (

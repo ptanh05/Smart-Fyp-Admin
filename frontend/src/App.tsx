@@ -1,6 +1,6 @@
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AdminAuthProvider } from './auth/AdminAuthContext';
+import { AdminAuthProvider, useAdminAuth } from './auth/AdminAuthContext';
 import { ProtectedAdminRoute } from './auth/ProtectedAdminRoute';
 
 // Route Code Splitting: Lazy-load admin pages for fast initial load & reduced bundle size
@@ -39,6 +39,26 @@ const AdminLoadingFallback: React.FC = () => (
   </div>
 );
 
+/**
+ * Bọc route bằng quyền theo vai trò:
+ *  - admin        : được vào TẤT CẢ nghiệp vụ
+ *  - academic_staff (Giáo vụ Khoa): chỉ các nghiệp vụ thuộc Khoa
+ * Truy cập trái quyền -> chuyển hướng về trang mặc định của vai trò.
+ */
+const RoleRoute: React.FC<{
+  children: React.ReactNode;
+  allow: Array<'admin' | 'academic_staff'>;
+}> = ({ children, allow }) => {
+  const { userType } = useAdminAuth();
+  const role: 'admin' | 'academic_staff' =
+    userType === 'academic_staff' ? 'academic_staff' : 'admin';
+
+  if (!allow.includes(role)) {
+    return <Navigate to={role === 'academic_staff' ? '/academic-staff' : '/dashboard'} replace />;
+  }
+  return <>{children}</>;
+};
+
 export const App: React.FC = () => {
   return (
     <Router>
@@ -47,12 +67,14 @@ export const App: React.FC = () => {
           <Routes>
             <Route path="/login" element={<AdminLoginPage />} />
             <Route path="/register" element={<AdminRegisterPage />} />
-            
+
             <Route
               path="/dashboard"
               element={
                 <ProtectedAdminRoute>
-                  <AdminDashboard />
+                  <RoleRoute allow={['admin', 'academic_staff']}>
+                    <AdminDashboard />
+                  </RoleRoute>
                 </ProtectedAdminRoute>
               }
             />
@@ -61,7 +83,9 @@ export const App: React.FC = () => {
               path="/batches"
               element={
                 <ProtectedAdminRoute>
-                  <BatchesPage />
+                  <RoleRoute allow={['admin', 'academic_staff']}>
+                    <BatchesPage />
+                  </RoleRoute>
                 </ProtectedAdminRoute>
               }
             />
@@ -70,7 +94,9 @@ export const App: React.FC = () => {
               path="/archived-batches"
               element={
                 <ProtectedAdminRoute>
-                  <ArchivedBatchesPage />
+                  <RoleRoute allow={['admin', 'academic_staff']}>
+                    <ArchivedBatchesPage />
+                  </RoleRoute>
                 </ProtectedAdminRoute>
               }
             />
@@ -79,7 +105,9 @@ export const App: React.FC = () => {
               path="/allocations"
               element={
                 <ProtectedAdminRoute>
-                  <AllocationsPage />
+                  <RoleRoute allow={['admin', 'academic_staff']}>
+                    <AllocationsPage />
+                  </RoleRoute>
                 </ProtectedAdminRoute>
               }
             />
@@ -88,7 +116,9 @@ export const App: React.FC = () => {
               path="/topics"
               element={
                 <ProtectedAdminRoute>
-                  <TopicApprovalPage />
+                  <RoleRoute allow={['admin', 'academic_staff']}>
+                    <TopicApprovalPage />
+                  </RoleRoute>
                 </ProtectedAdminRoute>
               }
             />
@@ -97,7 +127,9 @@ export const App: React.FC = () => {
               path="/outlines"
               element={
                 <ProtectedAdminRoute>
-                  <OutlineManagementPage />
+                  <RoleRoute allow={['admin', 'academic_staff']}>
+                    <OutlineManagementPage />
+                  </RoleRoute>
                 </ProtectedAdminRoute>
               }
             />
@@ -106,7 +138,9 @@ export const App: React.FC = () => {
               path="/eligibility"
               element={
                 <ProtectedAdminRoute>
-                  <EligibilityPage />
+                  <RoleRoute allow={['admin', 'academic_staff']}>
+                    <EligibilityPage />
+                  </RoleRoute>
                 </ProtectedAdminRoute>
               }
             />
@@ -115,7 +149,9 @@ export const App: React.FC = () => {
               path="/progress"
               element={
                 <ProtectedAdminRoute>
-                  <ProgressMonitoringPage />
+                  <RoleRoute allow={['admin', 'academic_staff']}>
+                    <ProgressMonitoringPage />
+                  </RoleRoute>
                 </ProtectedAdminRoute>
               }
             />
@@ -124,7 +160,9 @@ export const App: React.FC = () => {
               path="/councils"
               element={
                 <ProtectedAdminRoute>
-                  <CouncilsPage />
+                  <RoleRoute allow={['admin', 'academic_staff']}>
+                    <CouncilsPage />
+                  </RoleRoute>
                 </ProtectedAdminRoute>
               }
             />
@@ -133,16 +171,21 @@ export const App: React.FC = () => {
               path="/defense"
               element={
                 <ProtectedAdminRoute>
-                  <DefenseManagementPage />
+                  <RoleRoute allow={['admin', 'academic_staff']}>
+                    <DefenseManagementPage />
+                  </RoleRoute>
                 </ProtectedAdminRoute>
               }
             />
 
+            {/* --- Chỉ Admin --- */}
             <Route
               path="/users"
               element={
                 <ProtectedAdminRoute>
-                  <UserManagementPage />
+                  <RoleRoute allow={['admin']}>
+                    <UserManagementPage />
+                  </RoleRoute>
                 </ProtectedAdminRoute>
               }
             />
@@ -151,7 +194,9 @@ export const App: React.FC = () => {
               path="/supervisors"
               element={
                 <ProtectedAdminRoute>
-                  <SupervisorsPage />
+                  <RoleRoute allow={['admin']}>
+                    <SupervisorsPage />
+                  </RoleRoute>
                 </ProtectedAdminRoute>
               }
             />
@@ -160,7 +205,9 @@ export const App: React.FC = () => {
               path="/security"
               element={
                 <ProtectedAdminRoute>
-                  <SecurityCenterPage />
+                  <RoleRoute allow={['admin']}>
+                    <SecurityCenterPage />
+                  </RoleRoute>
                 </ProtectedAdminRoute>
               }
             />
@@ -169,16 +216,21 @@ export const App: React.FC = () => {
               path="/audit-logs"
               element={
                 <ProtectedAdminRoute>
-                  <AuditLogsPage />
+                  <RoleRoute allow={['admin']}>
+                    <AuditLogsPage />
+                  </RoleRoute>
                 </ProtectedAdminRoute>
               }
             />
 
+            {/* --- Chỉ Giáo vụ Khoa --- */}
             <Route
               path="/academic-staff"
               element={
                 <ProtectedAdminRoute>
-                  <AcademicStaffPage />
+                  <RoleRoute allow={['academic_staff']}>
+                    <AcademicStaffPage />
+                  </RoleRoute>
                 </ProtectedAdminRoute>
               }
             />
@@ -187,7 +239,9 @@ export const App: React.FC = () => {
               path="/giao-vu"
               element={
                 <ProtectedAdminRoute>
-                  <AcademicStaffPage />
+                  <RoleRoute allow={['academic_staff']}>
+                    <AcademicStaffPage />
+                  </RoleRoute>
                 </ProtectedAdminRoute>
               }
             />

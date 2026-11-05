@@ -670,7 +670,12 @@ class GraduationProject(models.Model):
 
     @property
     def supervisor_score_is_draft(self):
-        return False
+        """Điểm GVHD đang ở trạng thái nháp (chưa công bố cho sinh viên)."""
+        return getattr(self, "_supervisor_score_is_draft", False)
+
+    @supervisor_score_is_draft.setter
+    def supervisor_score_is_draft(self, value):
+        self._supervisor_score_is_draft = bool(value)
 
     @property
     def reviewer_verdict(self):
@@ -1007,11 +1012,11 @@ class CouncilLiveScore(models.Model):
 
 
 class EvaluationPolicy(models.Model):
-    """Trọng số tính điểm tổng kết bảo vệ theo kỳ học (Mặc định chuẩn UTC: 40% GVHD + 20% GVPB + 40% HĐ)"""
+    """Trọng số tính điểm tổng kết bảo vệ theo kỳ học (Mặc định chuẩn UTC: 30% GVHD + 20% GVPB + 50% HĐ)"""
     batch = models.OneToOneField(AcademicBatch, on_delete=models.CASCADE, related_name="evaluation_policy")
-    weight_supervisor = models.FloatField(default=0.4)
+    weight_supervisor = models.FloatField(default=0.3)
     weight_reviewer = models.FloatField(default=0.2)
-    weight_council = models.FloatField(default=0.4)
+    weight_council = models.FloatField(default=0.5)
 
     class Meta:
         db_table = "app_evaluationpolicy"
@@ -1049,9 +1054,9 @@ class FinalGradeSummary(models.Model):
 
     def calculate_and_save(self, policy=None):
         """Tính toán quy đổi điểm theo chuẩn UTC"""
-        w_sup = policy.weight_supervisor if policy else 0.4
+        w_sup = policy.weight_supervisor if policy else 0.3
         w_rev = policy.weight_reviewer if policy else 0.2
-        w_cou = policy.weight_council if policy else 0.4
+        w_cou = policy.weight_council if policy else 0.5
 
         s_sup = self.supervisor_score or 0.0
         s_rev = self.reviewer_score or 0.0
@@ -1117,6 +1122,96 @@ class FinalGradeSummary(models.Model):
 # MODULE 6: AUDIT LOGS & NOTIFICATIONS (CROSS-REPO)
 # ==============================================================================
 
+class Group(models.Model):
+    """
+    Model tương thích (unmanaged) cho bảng `app_group` của module Nhóm/Legacy.
+
+    Bảng này đã tồn tại trên production (Neon PostgreSQL) và được dùng làm
+    khóa ngoại cho `Notification.related_group`.
+    """
+    STATUS_CHOICES = (
+        ("pending", "Pending"),
+        ("accepted", "Accepted"),
+        ("rejected", "Rejected"),
+        ("canceled", "Canceled"),
+    )
+
+    group_name = models.CharField(max_length=255, blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    max_members = models.IntegerField(default=5)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "app_group"
+        managed = False
+        verbose_name = "Nhóm sinh viên (Legacy)"
+        verbose_name_plural = "Danh sách nhóm sinh viên (Legacy)"
+
+    def __str__(self):
+        return self.group_name or f"Group #{self.id}"
+
+
+class Document(models.Model):
+    """
+    Model tương thích (unmanaged) cho bảng `app_document` của module Tài liệu/Legacy.
+
+    Bảng này đã tồn tại trên production (Neon PostgreSQL) và được dùng làm
+    khóa ngoại cho `Notification.related_document`.
+    """
+    DOCUMENT_TYPE_CHOICES = (
+        ("scope_document", "Scope Document"),
+        ("srs_document", "SRS Document"),
+        ("sdd_document", "SDD Document"),
+        ("final_report", "Final Report"),
+    )
+
+    title = models.CharField(max_length=255)
+    document_type = models.CharField(max_length=50, choices=DOCUMENT_TYPE_CHOICES, default="scope_document")
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "app_document"
+        managed = False
+        verbose_name = "Tài liệu (Legacy)"
+        verbose_name_plural = "Danh sách tài liệu (Legacy)"
+
+    def __str__(self):
+        return self.title
+
+
+class SupervisorOfStudentGroup(models.Model):
+    """
+    Model tương thích (unmanaged) cho bảng `app_supervisorofstudentgroup`.
+
+    Bảng này thuộc module Nhóm/Legacy của hệ thống và đã tồn tại sẵn trên
+    production (Neon PostgreSQL). Admin backend cần khai báo model này để
+    định nghĩa quan hệ khóa ngoại `AuditLog.supervisor_group` trỏ đúng bảng,
+    đồng thời dùng chung cấu trúc với smart-fyp-management backend.
+    """
+    STATUS_CHOICES = (
+        ("pending", "Pending"),
+        ("accepted_by_student", "Accepted by Student"),
+        ("accepted", "Accepted"),
+        ("rejected", "Rejected"),
+        ("canceled", "Canceled"),
+    )
+
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    created_at = models.DateTimeField(auto_now_add=True)
+    supervisor = models.ForeignKey(
+        Supervisor, on_delete=models.DO_NOTHING, null=True, blank=True, related_name="group_request"
+    )
+
+    class Meta:
+        db_table = "app_supervisorofstudentgroup"
+        managed = False
+        verbose_name = "Nhóm sinh viên được phân công GV"
+        verbose_name_plural = "Danh sách nhóm sinh viên được phân công GV"
+
+    def __str__(self):
+        return f"Nhóm SV - GV {self.supervisor_id} ({self.status})"
+
+
 class AuditLog(models.Model):
     """Nhật ký kiểm toán hành động quản trị, bảo mật & cập nhật điểm"""
     user = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="audit_logs")
@@ -1125,6 +1220,18 @@ class AuditLog(models.Model):
     field_name = models.CharField(max_length=100, blank=True, null=True)
     old_value = models.TextField(blank=True, null=True)
     new_value = models.TextField(blank=True, null=True)
+    # Loại bản đánh giá (vd: srs_supervisor, sdd_committee, evaluation3_...)
+    evaluation_type = models.CharField(max_length=50, blank=True, null=True)
+    # Nhóm sinh viên liên quan (dùng để lọc nhật ký theo GV / Hội đồng)
+    supervisor_group = models.ForeignKey(
+        "SupervisorOfStudentGroup",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="audit_logs",
+    )
+    # Địa chỉ IP thực hiện hành động (dùng cho trung tâm bảo mật / nhật ký)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
@@ -1142,6 +1249,19 @@ class Notification(models.Model):
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="notifications")
     title = models.CharField(max_length=255)
     message = models.TextField()
+    # Đường dẫn điều hướng khi người dùng bấm vào thông báo
+    action_url = models.CharField(max_length=255, blank=True, null=True)
+    # Liên kết tới nhóm / nhóm GV / tài liệu liên quan (nếu có)
+    related_group = models.ForeignKey(
+        "Group", on_delete=models.SET_NULL, null=True, blank=True, related_name="notifications"
+    )
+    related_supervisor_group = models.ForeignKey(
+        "SupervisorOfStudentGroup", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="notifications",
+    )
+    related_document = models.ForeignKey(
+        "Document", on_delete=models.SET_NULL, null=True, blank=True, related_name="notifications"
+    )
     notification_type = models.CharField(max_length=50, default="system")
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)

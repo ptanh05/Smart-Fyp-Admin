@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/layout/AdminLayout';
 import { apiClient } from '../../api/client';
+import QuotaRow from './QuotaRow';
 import './BatchesPage.css';
 import '../../components/common/Modal.css';
 
@@ -57,11 +58,16 @@ export const BatchesPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null);
 
-  // Subtabs inside selected batch: 'students' or 'classes'
-  const [batchDetailTab, setBatchDetailTab] = useState<'students' | 'classes'>('students');
+  // Subtabs inside selected batch: 'students' | 'classes' | 'supervisors'
+  const [batchDetailTab, setBatchDetailTab] = useState<'students' | 'classes' | 'supervisors'>('students');
   const [students, setStudents] = useState<any[]>([]);
   const [studentsLoading, setStudentsLoading] = useState(false);
   const [studentSearch, setStudentSearch] = useState('');
+
+  // Quota của giảng viên trong đợt (GĐ1 - cấu hình chỉ tiêu hướng dẫn)
+  const [quotas, setQuotas] = useState<any[]>([]);
+  const [quotasLoading, setQuotasLoading] = useState(false);
+  const [quotaSearch, setQuotaSearch] = useState('');
 
   // Toast Notification State
   const [toast, setToast] = useState<{ show: boolean; type: 'success' | 'error' | 'info'; message: string } | null>(null);
@@ -83,6 +89,9 @@ export const BatchesPage: React.FC = () => {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<any>(null);
+  // Cơ chế mật khẩu khi import sinh viên vào đợt
+  const [importPasswordStrategy, setImportPasswordStrategy] = useState<'MSSV' | 'FIXED' | 'RANDOM'>('FIXED');
+  const [importFixedPassword, setImportFixedPassword] = useState('Password@123');
 
   // Add Manual Student Modal form
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
@@ -246,6 +255,37 @@ export const BatchesPage: React.FC = () => {
     }
   };
 
+  const fetchQuotas = async (batchId: number) => {
+    try {
+      setQuotasLoading(true);
+      const res = await apiClient.get(`/admin/quotas/?batch_id=${batchId}`);
+      const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+      setQuotas(list);
+    } catch (err) {
+      console.error('Error fetching quotas of batch:', err);
+      setQuotas([]);
+    } finally {
+      setQuotasLoading(false);
+    }
+  };
+
+  const handleSaveQuota = async (quota: any, maxTotal: number) => {
+    try {
+      await apiClient.put('/admin/quotas/', [
+        {
+          id: quota.id,
+          max_total_quota: maxTotal,
+          viet_anh_quota: quota.viet_anh_quota,
+          general_cntt_quota: quota.general_cntt_quota,
+        },
+      ]);
+      showToast(`✓ Đã cập nhật quota của ${quota.supervisor_name || 'giảng viên'}: ${maxTotal} SV`, 'success');
+      fetchQuotas(selectedBatchId!);
+    } catch (err: any) {
+      showToast('❌ Lỗi cập nhật quota: ' + (err.response?.data?.detail || err.message), 'error');
+    }
+  };
+
   useEffect(() => {
     Promise.all([fetchBatches(), fetchDepartments(), fetchSupervisors(), fetchTopicAreas()]);
   }, []);
@@ -253,6 +293,7 @@ export const BatchesPage: React.FC = () => {
   useEffect(() => {
     if (selectedBatchId) {
       fetchStudents(selectedBatchId);
+      fetchQuotas(selectedBatchId);
     }
   }, [selectedBatchId]);
 
@@ -302,6 +343,10 @@ export const BatchesPage: React.FC = () => {
       const formData = new FormData();
       formData.append('file', importFile);
       formData.append('batch_id', selectedBatchId.toString());
+      formData.append('password_strategy', importPasswordStrategy);
+      if (importPasswordStrategy === 'FIXED') {
+        formData.append('custom_fixed_password', importFixedPassword || 'Password@123');
+      }
 
       const res = await apiClient.post('/admin/students/import-excel/', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
@@ -525,6 +570,26 @@ export const BatchesPage: React.FC = () => {
     }
   };
 
+  const handleOpenBatch = async (batchId: number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!confirm('Mở đợt cho sinh viên đăng ký nguyện vọng ngay bây giờ?')) return;
+    try {
+      setBatches((prev) =>
+        prev.map((b) =>
+          b.id === batchId
+            ? { ...b, is_closed: false, is_active: true, current_stage: 'PHASE_2_ALLOCATING' }
+            : b
+        )
+      );
+      const res = await apiClient.post(`/admin/batches/${batchId}/open/`);
+      showToast(res.data?.message || '✓ Đã MỞ đợt. Sinh viên có thể đăng ký nguyện vọng!', 'success');
+      fetchBatches();
+    } catch (err: any) {
+      showToast('❌ Lỗi mở đợt: ' + (err.response?.data?.detail || err.message), 'error');
+      fetchBatches();
+    }
+  };
+
   // Filter students for table display
   const filteredStudents = students.filter((s) => {
     if (!studentSearch.trim()) return true;
@@ -539,6 +604,16 @@ export const BatchesPage: React.FC = () => {
   const currBatch = batches.find((b) => b.id === selectedBatchId);
   const activeBatches = batches.filter((b) => !b.is_closed && b.is_active !== false && b.current_stage !== 'COMPLETED');
   const archivedBatches = batches.filter((b) => b.is_closed || b.is_active === false || b.current_stage === 'COMPLETED');
+
+  const filteredQuotas = quotas.filter((q) => {
+    if (!quotaSearch.trim()) return true;
+    const t = quotaSearch.trim().toLowerCase();
+    return (
+      (q.supervisor_name || '').toLowerCase().includes(t) ||
+      (q.supervisor_id_code || '').toLowerCase().includes(t) ||
+      (q.department || '').toLowerCase().includes(t)
+    );
+  });
 
   return (
     <AdminLayout>
@@ -688,16 +763,30 @@ export const BatchesPage: React.FC = () => {
 
                     <div className="utc-batch-footer">
                       <span>Nhấp để xem sinh viên & lớp học</span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleCloseBatch(batch.id);
-                        }}
-                        className="utc-btn-close-batch"
-                        title="Kết thúc đợt đồ án này và chuyển vào kho lưu trữ"
-                      >
-                        Kết thúc đợt
-                      </button>
+                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                        {batch.current_stage === 'PHASE_1_SETUP' && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenBatch(batch.id);
+                            }}
+                            className="utc-btn-open-batch"
+                            title="Mở đợt cho sinh viên đăng ký nguyện vọng"
+                          >
+                            🔓 Mở đợt (OPEN)
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCloseBatch(batch.id);
+                          }}
+                          className="utc-btn-close-batch"
+                          title="Kết thúc đợt đồ án này và chuyển vào kho lưu trữ"
+                        >
+                          Kết thúc đợt
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -729,7 +818,81 @@ export const BatchesPage: React.FC = () => {
                     <span>🏫</span> Danh Sách Lớp Học Phần
                     <span className="utc-batch-subtab-badge">{currBatch?.classes?.length || 0}</span>
                   </button>
+                  <button
+                    type="button"
+                    className={`utc-batch-subtab-btn ${batchDetailTab === 'supervisors' ? 'active' : ''}`}
+                    onClick={() => setBatchDetailTab('supervisors')}
+                  >
+                    <span>👨‍🏫</span> Giảng Viên Trong Đợt &amp; Quota
+                    <span className="utc-batch-subtab-badge">{quotas.length}</span>
+                  </button>
                 </div>
+
+                {/* Subtab Content: Supervisors in batch + quota */}
+                {batchDetailTab === 'supervisors' && (
+                  <div>
+                    <div className="utc-student-search-bar">
+                      <input
+                        type="text"
+                        placeholder="🔍 Tìm giảng viên theo tên, mã GV, bộ môn..."
+                        value={quotaSearch}
+                        onChange={(e) => setQuotaSearch(e.target.value)}
+                        className="utc-search-input"
+                      />
+                      <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                        Hiển thị <strong>{filteredQuotas.length}</strong> / {quotas.length} giảng viên
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        background: '#eff6ff',
+                        border: '1px solid #bfdbfe',
+                        borderRadius: 8,
+                        padding: '0.7rem 0.9rem',
+                        marginBottom: '0.8rem',
+                        fontSize: '0.82rem',
+                        color: '#1e40af',
+                      }}
+                    >
+                      ℹ️ Giảng viên chưa có trong danh sách sẽ được thêm tự động khi bấm "Lưu" (hệ số mặc định x5).
+                      Đây là chỉ tiêu số sinh viên mỗi giảng viên được phép hướng dẫn tối đa trong đợt này.
+                    </div>
+
+                    {quotasLoading ? (
+                      <div className="utc-loading-box">Đang tải danh sách giảng viên & quota...</div>
+                    ) : filteredQuotas.length === 0 ? (
+                      <div className="utc-empty-box" style={{ padding: '1.5rem', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.6rem', marginBottom: '0.3rem' }}>👨‍🏫</div>
+                        <div style={{ fontWeight: 600, color: '#1e293b' }}>Chưa có giảng viên nào trong đợt này.</div>
+                        <p style={{ color: '#64748b', fontSize: '0.85rem', margin: '0.3rem 0 0' }}>
+                          Truy cập tab <strong>Học Vị &amp; Hướng Nghiên Cứu GV</strong> hoặc gọi API quota để nạp giảng viên.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="utc-table-container">
+                        <table className="utc-classes-table">
+                          <thead>
+                            <tr>
+                              <th>Mã GV</th>
+                              <th>Họ và Tên</th>
+                              <th>Học Vị</th>
+                              <th>Bộ Môn</th>
+                              <th style={{ width: '160px' }}>Max Quota (SV)</th>
+                              <th>Đã phân công</th>
+                              <th>Hành động</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredQuotas.map((q: any) => (
+                              <QuotaRow key={q.id} quota={q} onSave={handleSaveQuota} />
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Subtab Content: Students */}
                 {batchDetailTab === 'students' && (
@@ -1340,6 +1503,68 @@ export const BatchesPage: React.FC = () => {
                   </small>
                 </div>
 
+                {/* Cơ chế thiết lập mật khẩu tự động cho SV vừa import */}
+                <div className="utc-form-group">
+                  <label>🔐 Mật khẩu đăng nhập cho sinh viên vừa import:</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="importPwdStrategy"
+                        checked={importPasswordStrategy === 'FIXED'}
+                        onChange={() => setImportPasswordStrategy('FIXED')}
+                      />
+                      <span>
+                        <strong>Mật khẩu chung cố định (Khuyến nghị)</strong>
+                        <small style={{ display: 'block', color: '#64748b' }}>
+                          Tất cả sinh viên được cấp cùng một mật khẩu, ví dụ <code>Password@123</code>
+                        </small>
+                      </span>
+                    </label>
+                    {importPasswordStrategy === 'FIXED' && (
+                      <input
+                        type="text"
+                        className="utc-input"
+                        value={importFixedPassword}
+                        onChange={(e) => setImportFixedPassword(e.target.value)}
+                        placeholder="Password@123"
+                        style={{ marginLeft: '1.5rem' }}
+                      />
+                    )}
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="importPwdStrategy"
+                        checked={importPasswordStrategy === 'MSSV'}
+                        onChange={() => setImportPasswordStrategy('MSSV')}
+                      />
+                      <span>
+                        <strong>Mật khẩu = Mã sinh viên (MSSV)</strong>
+                        <small style={{ display: 'block', color: '#64748b' }}>
+                          Mỗi sinh viên đăng nhập lần đầu bằng chính MSSV của mình
+                        </small>
+                      </span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="importPwdStrategy"
+                        checked={importPasswordStrategy === 'RANDOM'}
+                        onChange={() => setImportPasswordStrategy('RANDOM')}
+                      />
+                      <span>
+                        <strong>Mật khẩu ngẫu nhiên</strong>
+                        <small style={{ display: 'block', color: '#64748b' }}>
+                          Hệ thống tự sinh mật khẩu ngẫu nhiên cho từng sinh viên
+                        </small>
+                      </span>
+                    </label>
+                  </div>
+                  <small style={{ color: '#0284c7', display: 'block', marginTop: '0.4rem' }}>
+                    ℹ️ Danh sách tài khoản &amp; mật khẩu sẽ hiển thị ở kết quả import bên dưới.
+                  </small>
+                </div>
+
                 {importResult && (
                   <div className="utc-alert-box" style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '1rem', borderRadius: 8, margin: '1rem 0' }}>
                     <strong style={{ color: '#065f46' }}>✅ Kết quả import Excel:</strong>
@@ -1356,6 +1581,36 @@ export const BatchesPage: React.FC = () => {
                           ))}
                           {importResult.errors.length > 10 && <li>...và {importResult.errors.length - 10} dòng khác</li>}
                         </ul>
+                      </div>
+                    )}
+                    {importResult.created_accounts && importResult.created_accounts.length > 0 && (
+                      <div style={{ marginTop: '0.6rem', maxHeight: '160px', overflowY: 'auto', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 4, padding: '0.5rem', fontSize: '0.78rem' }}>
+                        <strong style={{ color: '#075985' }}>🔑 Tài khoản đăng nhập đã tạo ({importResult.created_accounts.length}):</strong>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.35rem' }}>
+                          <thead>
+                            <tr style={{ background: '#e0f2fe', color: '#075985' }}>
+                              <th style={{ textAlign: 'left', padding: '0.25rem' }}>MSSV (Tên đăng nhập)</th>
+                              <th style={{ textAlign: 'left', padding: '0.25rem' }}>Họ tên</th>
+                              <th style={{ textAlign: 'left', padding: '0.25rem' }}>Mật khẩu</th>
+                              <th style={{ textAlign: 'left', padding: '0.25rem' }}>Trạng thái</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {importResult.created_accounts.slice(0, 50).map((acc: any, idx: number) => (
+                              <tr key={idx} style={{ borderTop: '1px solid #e0f2fe' }}>
+                                <td style={{ padding: '0.25rem', fontWeight: 700, color: '#0c4a6e' }}>{acc.username}</td>
+                                <td style={{ padding: '0.25rem' }}>{acc.full_name}</td>
+                                <td style={{ padding: '0.25rem', fontFamily: 'monospace', color: '#b45309' }}>{acc.plain_password}</td>
+                                <td style={{ padding: '0.25rem' }}>
+                                  {acc.status === 'created' ? '🆕 Tạo mới' : '♻️ Cập nhật'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        {importResult.created_accounts.length > 50 && (
+                          <small style={{ color: '#64748b' }}>...và {importResult.created_accounts.length - 50} tài khoản khác</small>
+                        )}
                       </div>
                     )}
                     <div style={{ marginTop: '0.75rem' }}>
