@@ -1,6 +1,15 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001/app';
+let rawBaseUrl = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? 'https://smart-fyp-admin.onrender.com/app' : 'http://localhost:8001/app')).trim();
+
+if (rawBaseUrl.includes('smart-fyp-admin-backend.onrender.com')) {
+  rawBaseUrl = rawBaseUrl.replace('smart-fyp-admin-backend.onrender.com', 'smart-fyp-admin.onrender.com');
+}
+if (rawBaseUrl.includes('smart-fyp-backend.onrender.com')) {
+  rawBaseUrl = rawBaseUrl.replace('smart-fyp-backend.onrender.com', 'smart-fyp-admin.onrender.com');
+}
+
+export const API_BASE_URL = rawBaseUrl;
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,

@@ -48,7 +48,7 @@ describe('Admin Authentication Flow', () => {
 
     expect(screen.getByText(/ĐĂNG KÝ ADMIN/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/admin_username/i)).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/Nhập khóa bảo mật Backend Admin/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/utc-smart-fyp-admin-secret-key-2026|Nhập khóa bảo mật Backend Admin/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Tạo Tài Khoản Admin/i })).toBeInTheDocument();
   });
 
@@ -65,7 +65,7 @@ describe('Admin Authentication Flow', () => {
     const passwordInputs = screen.getAllByPlaceholderText(/••••••••/i);
     fireEvent.change(passwordInputs[0], { target: { value: 'Password123!' } });
     fireEvent.change(passwordInputs[1], { target: { value: 'MismatchPassword!' } });
-    fireEvent.change(screen.getByPlaceholderText(/Nhập khóa bảo mật Backend Admin/i), { target: { value: 'secret123' } });
+    fireEvent.change(screen.getByPlaceholderText(/utc-smart-fyp-admin-secret-key-2026|Nhập khóa bảo mật Backend Admin/i), { target: { value: 'secret123' } });
 
     fireEvent.click(screen.getByRole('button', { name: /Tạo Tài Khoản Admin/i }));
 
@@ -89,7 +89,7 @@ describe('Admin Authentication Flow', () => {
     const passwordInputs = screen.getAllByPlaceholderText(/••••••••/i);
     fireEvent.change(passwordInputs[0], { target: { value: 'SecureAdminPassword123' } });
     fireEvent.change(passwordInputs[1], { target: { value: 'SecureAdminPassword123' } });
-    fireEvent.change(screen.getByPlaceholderText(/Nhập khóa bảo mật Backend Admin/i), { target: { value: 'utc-smart-fyp-admin-secret-key-2026' } });
+    fireEvent.change(screen.getByPlaceholderText(/utc-smart-fyp-admin-secret-key-2026|Nhập khóa bảo mật Backend Admin/i), { target: { value: 'utc-smart-fyp-admin-secret-key-2026' } });
 
     fireEvent.click(screen.getByRole('button', { name: /Tạo Tài Khoản Admin/i }));
 
