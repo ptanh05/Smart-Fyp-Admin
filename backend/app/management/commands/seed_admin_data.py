@@ -189,113 +189,58 @@ class Command(BaseCommand):
                 area_map[a["code"]] = area_obj
 
             # 6. Supervisors (Giảng viên hướng dẫn UTC)
-            supervisors_data = [
-                {
-                    "username": "gv_nguyenvana",
-                    "email": "vana@utc.edu.vn",
-                    "first_name": "Văn An",
-                    "last_name": "TS. Nguyễn",
-                    "title": "TS",
-                    "dep_code": "CNPM",
-                    "phone": "0912345001",
-                    "quota": 6,
-                    "multiplier": 1.2,
-                    "research": "Phần mềm phân tán, Kiến trúc Microservices, Clean Architecture"
-                },
-                {
-                    "username": "gv_tranthib",
-                    "email": "thibinh@utc.edu.vn",
-                    "first_name": "Thị Bình",
-                    "last_name": "PGS.TS Trần",
-                    "title": "PGS.TS",
-                    "dep_code": "KHMT",
-                    "phone": "0912345002",
-                    "quota": 8,
-                    "multiplier": 1.5,
-                    "research": "Thị giác máy tính, Xử lý ngôn ngữ tự nhiên, Trợ lý AI"
-                },
-                {
-                    "username": "gv_levanc",
-                    "email": "vancuong@utc.edu.vn",
-                    "first_name": "Văn Cường",
-                    "last_name": "ThS. Lê",
-                    "title": "ThS",
-                    "dep_code": "HTTT",
-                    "phone": "0912345003",
-                    "quota": 5,
-                    "multiplier": 1.0,
-                    "research": "Cơ sở dữ liệu nâng cao, ERP, Business Intelligence"
-                },
-                {
-                    "username": "gv_phamminhd",
-                    "email": "minhduc@utc.edu.vn",
-                    "first_name": "Minh Đức",
-                    "last_name": "TS. Phạm",
-                    "title": "TS",
-                    "dep_code": "MMT",
-                    "phone": "0912345004",
-                    "quota": 6,
-                    "multiplier": 1.2,
-                    "research": "Mạng không dây thế hệ mới, IoT Protocols, Cloud Security"
-                },
-                {
-                    "username": "gv_hoangvanh",
-                    "email": "vanhung@utc.edu.vn",
-                    "first_name": "Văn Hùng",
-                    "last_name": "GS.TS Hoàng",
-                    "title": "GS.TS",
-                    "dep_code": "CNPM",
-                    "phone": "0912345005",
-                    "quota": 10,
-                    "multiplier": 2.0,
-                    "research": "Hệ thống thông minh quy mô lớn, Trí tuệ nhân tạo y tế"
-                },
+            # ------------------------------------------------------------------
+            # KHÔNG seed tài khoản giảng viên DEMO nữa (gv_nguyenvana, gv_tranthib,
+            # gv_levanc, gv_phamminhd, gv_hoangvanh). Những tài khoản đó đã bị
+            # gỡ khỏi DB dùng chung và trùng lặp với danh sách giảng viên chính
+            # thức (UTC001..UTC033) được nạp bởi
+            #   smart-fyp-management/app/management/commands/seed_official_supervisors.py
+            # Lệnh này chỉ TÌM các giảng viên chính thức đã tồn tại trong DB
+            # dùng chung và tái sử dụng chúng. Nếu chưa có thì bỏ qua (không tạo
+            # tài khoản giả), để mỗi lần deploy trên Render không tái sinh demo.
+            official_supervisor_usernames = [
+                "gv_tran_thi_ngan",      # UTC001 - PGS.TS. Trần Thị Ngân
+                "gv_nguyen_van_long",    # UTC002 - PGS.TS. Nguyễn Văn Long
+                "gv_bui_ngoc_dung",      # UTC003 - TS. Bùi Ngọc Dũng
+                "gv_cao_thi_luyen",      # UTC004 - TS. Cao Thị Luyên
+                "gv_ao_thi_le_thuy",     # UTC005 - TS. Đào Thị Lệ Thủy
             ]
 
             spv_map = {}
-            for spv in supervisors_data:
-                spv_user, _ = CustomUser.objects.get_or_create(
-                    username=spv["username"],
-                    defaults={
-                        "email": spv["email"],
-                        "first_name": spv["first_name"],
-                        "last_name": spv["last_name"],
-                        "user_type": "supervisor",
-                        "is_active": True,
-                    }
-                )
-                if not spv_user.has_usable_password():
-                    spv_user.set_password("gv123456")
-                    spv_user.save()
+            missing_official = []
+            for sup_username in official_supervisor_usernames:
+                spv_user = CustomUser.objects.filter(username=sup_username).first()
+                if spv_user is None:
+                    missing_official.append(sup_username)
+                    continue
+                spv_profile = Supervisor.objects.filter(user=spv_user).first()
+                if spv_profile is None:
+                    missing_official.append(sup_username)
+                    continue
+                spv_map[sup_username] = spv_profile
 
-                dep_obj = dep_map.get(spv["dep_code"])
-                spv_profile, _ = Supervisor.objects.get_or_create(
-                    user=spv_user,
-                    defaults={
-                        "supervisor_id": f"GV_{spv['username'].upper()}",
-                        "academic_title": spv["title"],
-                        "department_name": dep_obj.name if dep_obj else "Khoa CNTT - UTC",
-                        "department_obj": dep_obj,
-                        "phone_number": spv["phone"],
-                        "academic_rank_multiplier": spv["multiplier"],
-                        "research_interest": spv["research"],
-                        "is_external": False
-                    }
-                )
-                spv_map[spv["username"]] = spv_profile
-
-                # SupervisorQuota for Batch 1
+                # SupervisorQuota cho Batch 1 (get_or_create => idempotent)
                 quota_obj, _ = SupervisorQuota.objects.get_or_create(
                     supervisor=spv_profile,
                     batch=batch1,
                     defaults={
-                        "base_quota": spv["quota"],
-                        "rank_multiplier": spv["multiplier"],
-                        "max_total_quota": int(round(spv["quota"] * spv["multiplier"])),
+                        "base_quota": 5,
+                        "rank_multiplier": spv_profile.academic_rank_multiplier or 1.0,
+                        "max_total_quota": int(round(5 * (spv_profile.academic_rank_multiplier or 1.0))),
                         "viet_anh_quota": 2,
-                        "general_cntt_quota": int(round(spv["quota"] * spv["multiplier"])) - 2,
+                        "general_cntt_quota": int(round(5 * (spv_profile.academic_rank_multiplier or 1.0))) - 2,
                         "current_assigned": 0
                     }
+                )
+
+            if missing_official:
+                self.stdout.write(
+                    self.style.WARNING(
+                        "  ! Bỏ qua %d giảng viên chính thức chưa có trong DB: %s. "
+                        "Hãy chạy `python manage.py seed_official_supervisors` ở backend "
+                        "smart-fyp-management trước."
+                        % (len(missing_official), ", ".join(missing_official))
+                    )
                 )
 
             # 7. External Examiners / Council Members
@@ -345,7 +290,7 @@ class Command(BaseCommand):
                     "phone": "0912345671",
                     "class_code": "CNTT1_K62",
                     "edu": "BACHELOR",
-                    "spv_username": "gv_nguyenvana",
+                    "spv_username": "gv_tran_thi_ngan",
                     "topic_title": "Xây dựng hệ thống quản lý đồ án tốt nghiệp thông minh Smart FYP ứng dụng React và Django REST",
                     "status": "IN_PROGRESS",
                     "review_status": "APPROVED",
@@ -361,7 +306,7 @@ class Command(BaseCommand):
                     "phone": "0912345672",
                     "class_code": "CNTT_VA_K62",
                     "edu": "BACHELOR",
-                    "spv_username": "gv_tranthib",
+                    "spv_username": "gv_nguyen_van_long",
                     "topic_title": "Nghiên cứu mô hình nhận diện khuôn mặt điểm danh sinh viên bằng Deep Learning và Vision Transformer",
                     "status": "IN_PROGRESS",
                     "review_status": "APPROVED",
@@ -410,7 +355,7 @@ class Command(BaseCommand):
                     "phone": "0912345675",
                     "class_code": "CNTT1_K62",
                     "edu": "BACHELOR",
-                    "spv_username": "gv_levanc",
+                    "spv_username": "gv_bui_ngoc_dung",
                     "topic_title": "Xây dựng ứng dụng đặt lịch khám và quản lý hồ sơ y tế phòng khám thông minh trên nền tảng Flutter",
                     "status": "IN_PROGRESS",
                     "review_status": "APPROVED",
@@ -426,7 +371,7 @@ class Command(BaseCommand):
                     "phone": "0912345676",
                     "class_code": "CNTT2_K62",
                     "edu": "BACHELOR",
-                    "spv_username": "gv_phamminhd",
+                    "spv_username": "gv_cao_thi_luyen",
                     "topic_title": "Phát triển hệ thống IoT giám sát chất lượng không khí đô thị và cảnh báo tự động",
                     "status": "ALLOCATED",
                     "review_status": "DRAFT",
@@ -442,7 +387,7 @@ class Command(BaseCommand):
                     "phone": "0912345677",
                     "class_code": "KHMT1_K62",
                     "edu": "BACHELOR",
-                    "spv_username": "gv_hoangvanh",
+                    "spv_username": "gv_ao_thi_le_thuy",
                     "topic_title": "Nghiên cứu ứng dụng Blockchain trong xác thực bằng tốt nghiệp và chứng chỉ trực tuyến",
                     "status": "DEFENSE_READY", # Test GĐ6 Hội đồng bảo vệ
                     "review_status": "APPROVED",
@@ -520,9 +465,9 @@ class Command(BaseCommand):
                         batch=batch1,
                         defaults={
                             "topic_direction": area_map.get("AI_ML"),
-                            "preference_1": spv_map.get("gv_tranthib"),
-                            "preference_2": spv_map.get("gv_nguyenvana"),
-                            "preference_3": spv_map.get("gv_levanc"),
+                            "preference_1": spv_map.get("gv_nguyen_van_long"),
+                            "preference_2": spv_map.get("gv_tran_thi_ngan"),
+                            "preference_3": spv_map.get("gv_bui_ngoc_dung"),
                             "sub_criteria": "Ưu tiên đề tài liên quan đến Trí tuệ nhân tạo hoặc Web"
                         }
                     )
@@ -570,17 +515,17 @@ class Command(BaseCommand):
 
             # Members: 1 Chủ tịch, 2 Thư ký, 2 Ủy viên (Mô hình 5 thành viên UTC)
             council_roles = [
-                {"spv_user": "gv_hoangvanh", "role": "CHAIR", "ext": None},
-                {"spv_user": "gv_nguyenvana", "role": "SECRETARY", "ext": None},
-                {"spv_user": "gv_levanc", "role": "SECRETARY", "ext": None},
-                {"spv_user": "gv_phamminhd", "role": "MEMBER", "ext": None},
+                {"spv_user": "gv_tran_thi_ngan", "role": "CHAIR", "ext": None},
+                {"spv_user": "gv_nguyen_van_long", "role": "SECRETARY", "ext": None},
+                {"spv_user": "gv_bui_ngoc_dung", "role": "SECRETARY", "ext": None},
+                {"spv_user": "gv_cao_thi_luyen", "role": "MEMBER", "ext": None},
                 {"spv_user": "cb_nguyenvanx", "role": "EXTERNAL_MEMBER", "ext": "Học viện CNBC Viễn thông"},
             ]
             for cr in council_roles:
                 u_obj = CustomUser.objects.filter(username=cr["spv_user"]).first()
                 if u_obj:
                     spv_p = getattr(u_obj, "admin_supervisor_profile", None)
-                    CouncilMember.objects.get_or_create(
+                    cm, created = CouncilMember.objects.get_or_create(
                         council=council,
                         user=u_obj,
                         defaults={
@@ -589,12 +534,25 @@ class Command(BaseCommand):
                             "external_institution": cr["ext"]
                         }
                     )
+                    # Giữ vai trò nhất quán với danh sách khai báo ở trên (idempotent).
+                    changed = False
+                    if cm.role != cr["role"]:
+                        cm.role = cr["role"]
+                        changed = True
+                    if cm.supervisor_id != (spv_p.id if spv_p else None):
+                        cm.supervisor = spv_p
+                        changed = True
+                    if cm.external_institution != (cr["ext"] or ""):
+                        cm.external_institution = cr["ext"] or ""
+                        changed = True
+                    if changed:
+                        cm.save(update_fields=["role", "supervisor", "external_institution"])
 
             # Assign ready student to this council
             ready_proj = GraduationProject.objects.filter(status="DEFENSE_READY").first()
             if ready_proj:
                 ready_proj.council = council
-                ready_proj.reviewer = spv_map.get("gv_tranthib")
+                ready_proj.reviewer = spv_map.get("gv_nguyen_van_long")
                 ready_proj.save(update_fields=["council", "reviewer"])
 
                 DefenseScheduleSlot.objects.get_or_create(
