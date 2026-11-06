@@ -43,13 +43,43 @@ class Command(BaseCommand):
             StudentPreference.objects.all().delete()
             SupervisorQuota.objects.all().delete()
             Student.objects.all().delete()
-            Supervisor.objects.all().delete()
+            # CHỈ xóa hồ sơ GV demo (không phải GV chính thức UTC001..UTC033).
+            # Xóa toàn bộ Supervisor.objects.all() sẽ xóa luôn danh sách giảng
+            # viên chính thức trong DB dùng chung và không thể nạp lại từ repo
+            # admin (lệnh seed_official_supervisors nằm ở repo smart-fyp-management).
+            demo_supervisor_usernames = [
+                "gv_nguyenvana", "gv_tranthib", "gv_levanc",
+                "gv_phamminhd", "gv_hoangvanh",
+            ]
+            demo_sup_ids = list(
+                Supervisor.objects.filter(
+                    user__username__in=demo_supervisor_usernames
+                ).values_list("id", flat=True)
+            )
+            if demo_sup_ids:
+                Supervisor.objects.filter(id__in=demo_sup_ids).delete()
+            # Giữ lại các hồ sơ GV chính thức (supervisor_id bắt đầu bằng "UTC").
+            Supervisor.objects.exclude(supervisor_id__startswith="UTC").delete()
             CourseClass.objects.all().delete()
             AcademicBatch.objects.all().delete()
             Department.objects.all().delete()
             ProjectTopicArea.objects.all().delete()
-            # Do not delete superusers if any exist
-            CustomUser.objects.filter(is_superuser=False, user_type__in=["student", "supervisor", "committee_member", "external_examiner"]).delete()
+            # Do not delete superusers if any exist.
+            # Cũng KHÔNG xóa user của giảng viên chính thức (UTC001..UTC033):
+            # xóa user sẽ cascade sang Supervisor -> GraduationProject -> mất dữ liệu.
+            official_sup_user_ids = list(
+                Supervisor.objects.filter(
+                    supervisor_id__startswith="UTC"
+                ).values_list("user_id", flat=True)
+            )
+            CustomUser.objects.filter(
+                is_superuser=False,
+                user_type__in=["student", "committee_member", "external_examiner"],
+            ).delete()
+            CustomUser.objects.filter(
+                is_superuser=False,
+                user_type="supervisor",
+            ).exclude(id__in=official_sup_user_ids).delete()
 
         with transaction.atomic():
             # 1. Admin & Superuser Accounts
