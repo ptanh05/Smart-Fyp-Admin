@@ -470,32 +470,47 @@ class Command(BaseCommand):
 
             created_students = 0
             for s_data in students_data:
-                u, _ = CustomUser.objects.get_or_create(
-                    username=s_data["mssv"],
-                    defaults={
-                        "email": s_data["email"],
-                        "first_name": s_data["first_name"],
-                        "last_name": s_data["last_name"],
-                        "user_type": "student",
-                        "is_active": True,
-                    }
+                # `registration_no` là UNIQUE trên `app_student`. Trước đây lệnh seed
+                # luôn tạo user mới theo MSSV, nên nếu MSSV đã tồn tại (do backend
+                # smart-fyp-management hoặc lần seed trước tạo với user khác) thì
+                # sẽ vi phạm unique constraint và làm build trên Render fail.
+                # -> Tái sử dụng profile hiện có nếu MSSV đã tồn tại.
+                existing_profile = (
+                    Student.objects.filter(registration_no=s_data["mssv"])
+                    .select_related("user")
+                    .first()
                 )
-                if not u.has_usable_password():
-                    u.set_password(s_data["mssv"]) # Mặc định pass = MSSV
-                    u.save()
 
-                c_obj = class_map.get(s_data["class_code"])
-                std_profile, _ = Student.objects.get_or_create(
-                    user=u,
-                    defaults={
-                        "registration_no": s_data["mssv"],
-                        "department": c_obj.class_name if c_obj else "CNTT",
-                        "education_program": s_data["edu"],
-                        "course_class": c_obj,
-                        "academic_batch": batch1,
-                        "phone_number": s_data["phone"]
-                    }
-                )
+                if existing_profile is not None:
+                    u = existing_profile.user
+                    std_profile = existing_profile
+                else:
+                    u, _ = CustomUser.objects.get_or_create(
+                        username=s_data["mssv"],
+                        defaults={
+                            "email": s_data["email"],
+                            "first_name": s_data["first_name"],
+                            "last_name": s_data["last_name"],
+                            "user_type": "student",
+                            "is_active": True,
+                        }
+                    )
+                    if not u.has_usable_password():
+                        u.set_password(s_data["mssv"]) # Mặc định pass = MSSV
+                        u.save()
+
+                    c_obj = class_map.get(s_data["class_code"])
+                    std_profile, _ = Student.objects.get_or_create(
+                        user=u,
+                        defaults={
+                            "registration_no": s_data["mssv"],
+                            "department": c_obj.class_name if c_obj else "CNTT",
+                            "education_program": s_data["edu"],
+                            "course_class": c_obj,
+                            "academic_batch": batch1,
+                            "phone_number": s_data["phone"]
+                        }
+                    )
                 created_students += 1
 
                 # If student has preference (for GĐ2 testing)

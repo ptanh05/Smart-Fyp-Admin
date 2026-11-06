@@ -50,16 +50,16 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='notification',
             name='related_supervisor_group',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='notifications', to='app.supervisorofstudentgroup'),
+            field=models.ForeignKey(blank=True, db_constraint=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='notifications', to='app.supervisorofstudentgroup'),
         ),
         migrations.AddField(
             model_name='notification',
             name='related_document',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='notifications', to='app.document'),
+            field=models.ForeignKey(blank=True, db_constraint=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='notifications', to='app.document'),
         ),
         migrations.AddField(
             model_name='notification',
             name='related_group',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='notifications', to='app.group'),
+            field=models.ForeignKey(blank=True, db_constraint=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='notifications', to='app.group'),
         ),
     ]

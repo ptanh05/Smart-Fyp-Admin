@@ -1229,6 +1229,9 @@ class AuditLog(models.Model):
         null=True,
         blank=True,
         related_name="audit_logs",
+        # Bảng legacy `app_supervisorofstudentgroup` do smart-fyp-management quản lý
+        # và không tồn tại trên Neon -> không tạo FK constraint ở tầng DB.
+        db_constraint=False,
     )
     # Địa chỉ IP thực hiện hành động (dùng cho trung tâm bảo mật / nhật ký)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
@@ -1253,14 +1256,16 @@ class Notification(models.Model):
     action_url = models.CharField(max_length=255, blank=True, null=True)
     # Liên kết tới nhóm / nhóm GV / tài liệu liên quan (nếu có)
     related_group = models.ForeignKey(
-        "Group", on_delete=models.SET_NULL, null=True, blank=True, related_name="notifications"
+        "Group", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="notifications", db_constraint=False,
     )
     related_supervisor_group = models.ForeignKey(
         "SupervisorOfStudentGroup", on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="notifications",
+        related_name="notifications", db_constraint=False,
     )
     related_document = models.ForeignKey(
-        "Document", on_delete=models.SET_NULL, null=True, blank=True, related_name="notifications"
+        "Document", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="notifications", db_constraint=False,
     )
     notification_type = models.CharField(max_length=50, default="system")
     is_read = models.BooleanField(default=False)
