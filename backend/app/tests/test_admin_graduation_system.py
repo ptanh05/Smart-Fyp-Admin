@@ -143,6 +143,147 @@ class AdminGraduationSystemTests(TestCase):
         assert student1.course_class is not None
         self.assertEqual(student1.course_class.class_code, "CNTT1 K62")
 
+    # ------------------------------------------------------------------
+    # Regression: Import Excel phải dò được cột MSSV với nhiều định dạng header
+    # (bug: import ra 0 dòng mà không báo lỗi rõ ràng)
+    # ------------------------------------------------------------------
+    def _make_xlsx(self, sheet_name, header_row, headers, rows):
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.title = sheet_name
+        for c, h in enumerate(headers, start=1):
+            ws.cell(header_row, c, h)
+        for i, row in enumerate(rows, start=header_row + 1):
+            for c, v in enumerate(row, start=1):
+                ws.cell(i, c, v)
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return buf
+
+    def test_excel_import_detects_mssv_column_variants(self):
+        """Cột MSSV được nhận diện dù header dùng 'Mã số SV' / 'Sinh viên' / nằm ở dòng bất kỳ."""
+        variants = [
+            # (sheet, header_row, headers, rows, expected_total)
+            ("DS_Sinh_Vien", 1,
+             ["STT", "Mã sinh viên (MSSV) *", "Họ đệm *", "Tên *", "Lớp sinh hoạt"],
+             [[1, "201200101", "Nguyễn Văn", "An", "CNTT1 K62"],
+              [2, "201200102", "Trần Thị", "Bình", "CNTT2 K62"]], 2),
+            ("IT1.659.103", 6,
+             ["STT", "Mã số SV", "Họ đệm", "Tên"],
+             [[1, "211200001", "Nguyễn Văn", "An"],
+              [2, "211200002", "Trần Thị", "Bình"]], 2),
+            ("Sheet1", 1,
+             ["STT", "Sinh viên", "Họ và tên", "Lớp"],
+             [[1, "211200003", "Lê Hoàng Cường", "CNTT3 K62"]], 1),
+        ]
+
+        for sheet, hrow, headers, rows, expected in variants:
+            with self.subTest(sheet=sheet, header_row=hrow):
+                batch = AcademicBatch.objects.create(
+                    batch_code=f"V{hrow}{len(sheet)}",
+                    batch_name=f"Variant {sheet}",
+                    is_active=False,
+                )
+                buf = self._make_xlsx(sheet, hrow, headers, rows)
+                res = ExcelImportService.import_students_from_excel(buf, batch.id)
+
+                self.assertTrue(res["success"])
+                self.assertEqual(
+                    res["total"], expected,
+                    f"Sheet '{sheet}' phải import {expected} sinh viên, lỗi: {res['errors']}",
+                )
+                self.assertEqual(res["created"], expected)
+                self.assertEqual(res["skipped"], 0)
+                self.assertTrue(
+                    Student.objects.filter(academic_batch=batch).count() == expected
+                )
+
+    def test_excel_import_falls_back_when_no_header_row(self):
+        """File không có dòng tiêu đề vẫn được import nhờ tự suy luận cột MSSV từ dữ liệu."""
+        batch = AcademicBatch.objects.create(
+            batch_code="NOHDR", batch_name="No Header", is_active=False
+        )
+        buf = self._make_xlsx(
+            "Sheet1", 1,
+            [1, "211200004", "Phạm Minh", "Đức", "CNTT1 K62"],
+            [[2, "211200005", "Võ Thị", "Hà", "CNTT2 K62"]],
+        )
+        res = ExcelImportService.import_students_from_excel(buf, batch.id)
+
+        self.assertTrue(res["success"])
+        self.assertEqual(res["total"], 2)
+        self.assertEqual(res["created"], 2)
+        self.assertTrue(Student.objects.filter(registration_no="211200004").exists())
+        self.assertTrue(Student.objects.filter(registration_no="211200005").exists())
+
+    def test_excel_import_reports_error_when_no_valid_rows(self):
+        """MSSV sai định dạng -> báo lỗi rõ ràng thay vì im lặng báo 0 dòng."""
+        batch = AcademicBatch.objects.create(
+            batch_code="BADMSSV", batch_name="Bad MSSV", is_active=False
+        )
+        buf = self._make_xlsx(
+            "DS", 1,
+            ["STT", "Mã sinh viên", "Họ và tên"],
+            [[1, "2012001", "Sai Định Dạng"]],
+        )
+        res = ExcelImportService.import_students_from_excel(buf, batch.id)
+
+        self.assertEqual(res["total"], 0)
+        self.assertEqual(res["created"], 0)
+        self.assertGreaterEqual(res["skipped"], 1)
+        self.assertTrue(res["errors"], "Phải có thông báo lỗi khi không import được dòng nào")
+        self.assertIn(
+            "KHÔNG import được dòng dữ liệu nào",
+            " ".join(res["errors"]),
+            "Phải có cảnh báo tổng quát khi import 0 dòng",
+        )
+
+    def test_generate_sample_roster_is_importable(self):
+        """File danh sách sinh viên mẫu (download từ mục Download) phải import được 100%."""
+        buf = ExcelImportService.generate_sample_roster()
+        self.assertIsNotNone(buf)
+
+        batch = AcademicBatch.objects.create(
+            batch_code="SAMPLE_ROSTER", batch_name="Sample Roster", is_active=False
+        )
+        buf.seek(0)
+        res = ExcelImportService.import_students_from_excel(buf, batch.id)
+
+        self.assertTrue(res["success"])
+        self.assertEqual(res["total"], 216, f"Lỗi: {res['errors'][:5]}")
+        self.assertEqual(res["created"], 216)
+        self.assertEqual(res["skipped"], 0)
+        self.assertEqual(len(res["errors"]), 0)
+        self.assertEqual(
+            Student.objects.filter(academic_batch=batch).count(), 216
+        )
+        # MSSV phải đúng 9 chữ số và không trùng dữ liệu đang có
+        mssvs = list(
+            Student.objects.filter(academic_batch=batch).values_list(
+                "registration_no", flat=True
+            )
+        )
+        self.assertTrue(all(len(m) == 9 and m.isdigit() for m in mssvs))
+        self.assertEqual(len(set(mssvs)), 216, "MSSV trong file mẫu phải là duy nhất")
+
+    def test_download_sample_roster_endpoint(self):
+        """API GET /admin/students/sample-roster/ trả về file .xlsx hợp lệ."""
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.get("/admin/students/sample-roster/")
+
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("attachment", res["Content-Disposition"])
+        self.assertIn(".xlsx", res["Content-Disposition"])
+        self.assertGreater(len(res.content), 1000)
+
+        # Nội dung phải là file Excel đọc được
+        import openpyxl as _oxl
+        wb = _oxl.load_workbook(io.BytesIO(res.content))
+        self.assertIn("Danh_Sach_Sinh_Vien", wb.sheetnames)
+        self.assertGreaterEqual(len(wb.sheetnames), 5)
+
     def test_mcmf_supervisor_allocation_engine(self):
         """Test Min-Cost Max-Flow matching engine"""
         # Create 2 students

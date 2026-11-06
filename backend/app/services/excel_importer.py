@@ -21,6 +21,88 @@ def generate_random_password(length=8):
     chars = string.ascii_letters + string.digits + "!@#"
     return "".join(random.choice(chars) for _ in range(length))
 
+
+def _infer_mssv_column(ws):
+    """Tự suy luận cột chứa Mã sinh viên khi file không có dòng tiêu đề chuẩn.
+
+    Chiến lược: quét các dòng dữ liệu, thử từng cột và chấm điểm theo số lượng
+    giá trị khớp mẫu MSSV UTC (9 chữ số). Cột có tỉ lệ khớp cao nhất và đủ số
+    lượng mẫu sẽ được chọn.
+
+    Trả về chỉ số cột (1-based) hoặc None nếu không xác định được.
+    """
+    if not ws or ws.max_row < 1 or ws.max_column < 1:
+        return None
+
+    sample_rows = list(range(1, min(ws.max_row, 60) + 1))
+    if not sample_rows:
+        return None
+
+    best_col, best_ratio, best_count = None, 0.0, 0
+
+    for col in range(1, ws.max_column + 1):
+        matches = 0
+        considered = 0
+        for r in sample_rows:
+            val = ws.cell(r, col).value
+            if val is None or str(val).strip() == "":
+                continue
+            considered += 1
+            s = str(val).strip()
+            if s.endswith(".0"):
+                s = s[:-2]
+            if re.match(r"^\d{9}$", s):
+                matches += 1
+
+        if considered == 0 or matches == 0:
+            continue
+
+        ratio = matches / considered
+        # Yêu cầu tỉ lệ khớp cao (>=60%). Nếu sheet chỉ có 1 dòng dữ liệu thì
+        # vẫn chấp nhận (ratio = 1.0) vì các cột khác không thể chứa toàn
+        # giá trị 9 chữ số.
+        if ratio < 0.6:
+            continue
+        if matches > best_count or (matches == best_count and ratio > best_ratio):
+            best_col, best_ratio, best_count = col, ratio, matches
+
+    return best_col
+
+
+def _infer_name_column(ws, exclude_col=None):
+    """Tự suy luận cột chứa Họ tên khi không có dòng tiêu đề.
+
+    Chọn cột (khác cột MSSV) có nhiều giá trị chữ khác nhau nhất.
+    """
+    if not ws or ws.max_row < 1 or ws.max_column < 1:
+        return None
+
+    sample_rows = list(range(1, min(ws.max_row, 60) + 1))
+    best_col, best_score = None, 0
+
+    for col in range(1, ws.max_column + 1):
+        if exclude_col and col == exclude_col:
+            continue
+        values = []
+        for r in sample_rows:
+            val = ws.cell(r, col).value
+            if val is None:
+                continue
+            s = str(val).strip()
+            if not s or re.match(r"^\d+$", s):
+                continue
+            values.append(s)
+        if len(values) < 2:
+            continue
+        # Ưu tiên cột có tên nhiều từ (họ + tên) và nhiều giá trị khác nhau.
+        unique = len(set(values))
+        multiword = sum(1 for v in values if len(v.split()) >= 2)
+        score = multiword * 2 + unique
+        if score > best_score:
+            best_score, best_col = score, col
+
+    return best_col
+
 class ExcelImportService:
     @staticmethod
     def import_students_from_excel(
@@ -145,47 +227,175 @@ class ExcelImportService:
                 s = re.sub(r"\s+", " ", s)
                 return s.strip()
 
-            for r in range(1, min(15, ws.max_row + 1)):
-                row_vals = [_clean_header_cell(ws.cell(r, c).value) for c in range(1, ws.max_column + 1)]
+            def _is_blank(val):
+                return val is None or str(val).strip() == ""
+
+            # --- Điểm số cho từng cột, chọn cột MSSV theo điểm cao nhất ---
+            # Bảng từ khóa mở rộng để nhận diện được file xuất từ Cổng đào tạo UTC,
+            # file export mẫu của hệ thống, và file do Khoa tự chỉnh sửa.
+            MSSV_STRONG_KEYS = [
+                "mã sinh viên", "ma sinh vien", "mã số sinh viên", "ma so sinh vien",
+                "mssv", "mã sv", "ma sv", "masv", "mã số sv", "ma so sv",
+                "student id", "student_id", "studentid", "mã trình", "số hiệu sinh viên",
+            ]
+            # Từ khóa mơ hồ: chỉ dùng khi không tìm được từ khóa mạnh.
+            MSSV_WEAK_KEYS = ["sinh viên", "sinh vien", "mã", "ma"]
+            MSSV_KEYS = MSSV_STRONG_KEYS + MSSV_WEAK_KEYS
+            FULLNAME_KEYS = [
+                "họ và tên", "ho va ten", "họ tên", "ho ten", "họ và tên sinh viên",
+                "tên sinh viên", "ten sinh vien", "full name", "fullname", "hoten",
+                "họ và tên đầy đủ",
+            ]
+            LASTNAME_KEYS = [
+                "họ đệm", "ho dem", "họ và tên", "họ lót", "ho lot", "họ",
+                "last name", "lastname", "họ và tên cuối",
+            ]
+            FIRSTNAME_KEYS = [
+                "tên", "ten", "tên sv", "ten sinh vien", "first name", "firstname",
+                "tên thật",
+            ]
+            CLASS_KEYS = [
+                "lớp sinh hoạt", "lop sinh hoat", "lớp quản lý", "lop quan ly",
+                "lớp sinh viên", "lop sinh vien", "lớp", "lop", "class", "course class",
+                "course_class", "lớp học", "lop hoc", "nhóm", "nhom",
+            ]
+            MAJOR_KEYS = ["ngành", "nganh", "chuyên ngành", "chuyen nganh", "major", "khoa"]
+            PHONE_KEYS = [
+                "số điện thoại", "so dien thoai", "điện thoại", "dien thoai",
+                "sđt", "sdt", "phone", "mobile", "số di động", "so di dong",
+                "điện thoại liên hệ",
+            ]
+            EMAIL_KEYS = ["email", "e-mail", "hòm thư", "hom thu", "mail", "thư điện tử"]
+
+            def _match_col(row_vals, keywords, exclude_keywords=(), exclude_cols=()):
+                """Trả về (col_index, điểm) cho cột khớp từ khóa."""
+                best_idx, best_score = None, 0
                 for c_idx, val in enumerate(row_vals, start=1):
                     if not val:
                         continue
-                    if any(k in val for k in ["mã sinh viên", "mã số sv", "mssv", "mã sv", "masv", "student id", "ma_sv", "student_id"]):
-                        header_row_idx = r
-                        col_mssv = c_idx
-                    elif any(k in val for k in ["họ và tên", "họ tên", "tên sinh viên", "full name", "fullname", "hoten"]):
-                        col_full_name = c_idx
-                    elif any(k in val for k in ["họ đệm", "họ và", "họ lót", "họ", "last name", "lastname"]):
-                        col_last_name = c_idx
-                    elif any(k in val for k in ["tên", "tên sv", "first name", "firstname"]) and not any(k in val for k in ["họ", "đệm"]):
-                        col_first_name = c_idx
-                    elif any(k in val for k in ["lớp sinh hoạt", "lớp quản lý", "lớp sinh viên", "lớp", "class", "course_class"]):
-                        col_class = c_idx
-                    elif any(k in val for k in ["ngành", "chuyên ngành", "major"]):
-                        col_major = c_idx
-                    elif any(k in val for k in ["số điện thoại", "điện thoại", "sđt", "sdt", "phone", "mobile", "so dien thoai"]):
-                        col_phone = c_idx
-                    elif any(k in val for k in ["email", "hòm thư", "mail"]):
-                        col_email = c_idx
+                    if c_idx in exclude_cols:
+                        continue
+                    if any(ex in val for ex in exclude_keywords):
+                        continue
+                    for kw in keywords:
+                        if kw == val:
+                            score = 100
+                        elif kw in val:
+                            score = 60 + len(kw)
+                        else:
+                            continue
+                        # Ưu tiên cột có từ khóa dài / khớp chính xác
+                        if score > best_score:
+                            best_score, best_idx = score, c_idx
+                return best_idx, best_score
 
-                if header_row_idx is not None and col_mssv is not None:
-                    break
+            for r in range(1, min(60, ws.max_row + 1)):
+                row_vals = [_clean_header_cell(ws.cell(r, c).value) for c in range(1, ws.max_column + 1)]
+                if not any(row_vals):
+                    continue
+
+                # Ưu tiên cột MSSV khớp CHÍNH XÁC từ khóa mạnh (mã sv, mssv, mã số sv...)
+                # trước; các từ khóa mơ hồ ("sinh viên") chỉ dùng làm phương án dự phòng.
+                cand_mssv, score_mssv = _match_col(row_vals, MSSV_STRONG_KEYS)
+                if cand_mssv is None:
+                    # Từ khóa mơ hồ: loại trừ các cột họ tên để không chọn nhầm
+                    # cột "Họ và tên sinh viên" làm cột MSSV.
+                    cand_mssv, score_mssv = _match_col(
+                        row_vals, MSSV_WEAK_KEYS,
+                        exclude_keywords=("họ", "ho", "tên sinh viên", "ten sinh vien"),
+                    )
+                if cand_mssv is None:
+                    continue
+
+                # Chỉ coi là hàng header nếu bên cạnh cột MSSV có thêm ít nhất
+                # 1 cột thông tin khác (tên / lớp / ngành / STT...) => tránh nhầm
+                # dòng dữ liệu đầu tiên làm header.
+                other_cols = sum(
+                    1 for v in row_vals
+                    if v and not any(k in v for k in MSSV_KEYS)
+                )
+                has_support = any(
+                    _match_col(row_vals, kws)[0] is not None
+                    for kws in (FULLNAME_KEYS, LASTNAME_KEYS, FIRSTNAME_KEYS, CLASS_KEYS, MAJOR_KEYS)
+                )
+                if score_mssv < 70 and not (has_support and other_cols >= 2):
+                    continue
+
+                header_row_idx = r
+                col_mssv = cand_mssv
+
+                # Tên: loại trừ cột MSSV để không chọn nhầm "Sinh viên" làm cột họ tên.
+                cand_full, _ = _match_col(
+                    row_vals, FULLNAME_KEYS,
+                    exclude_keywords=("họ đệm", "ho dem"),
+                    exclude_cols=(col_mssv,),
+                )
+                if cand_full:
+                    col_full_name = cand_full
+                else:
+                    cand_last, _ = _match_col(row_vals, LASTNAME_KEYS, exclude_cols=(col_mssv,))
+                    cand_first, _ = _match_col(
+                        row_vals, FIRSTNAME_KEYS,
+                        exclude_keywords=("họ", "ho"),
+                        exclude_cols=(col_mssv,),
+                    )
+                    if cand_last:
+                        col_last_name = cand_last
+                    if cand_first:
+                        col_first_name = cand_first
+                cand_class, _ = _match_col(row_vals, CLASS_KEYS, exclude_cols=(col_mssv,))
+                if cand_class:
+                    col_class = cand_class
+                cand_major, _ = _match_col(row_vals, MAJOR_KEYS, exclude_cols=(col_mssv,))
+                if cand_major:
+                    col_major = cand_major
+                cand_phone, _ = _match_col(row_vals, PHONE_KEYS, exclude_cols=(col_mssv,))
+                if cand_phone:
+                    col_phone = cand_phone
+                cand_email, _ = _match_col(row_vals, EMAIL_KEYS, exclude_cols=(col_mssv,))
+                if cand_email:
+                    col_email = cand_email
+                break
+
+            # --- FALLBACK: Nếu không dò được header, tự suy luận cột MSSV từ dữ liệu ---
+            if col_mssv is None:
+                col_mssv = _infer_mssv_column(ws)
+                if col_mssv is not None:
+                    header_row_idx = 0  # coi như không có hàng header, bắt đầu đọc từ dòng 1
+                    col_full_name = _infer_name_column(ws, exclude_col=col_mssv)
+                    errors.append(
+                        f"Sheet '{sheet_name}': Không tìm thấy dòng tiêu đề chuẩn. "
+                        f"Hệ thống tự động nhận diện cột Mã sinh viên ở cột {col_mssv}."
+                    )
 
             if header_row_idx is None or col_mssv is None:
+                errors.append(
+                    f"Sheet '{sheet_name}': Không tìm thấy cột 'Mã sinh viên (MSSV)' "
+                    f"và không thể tự động nhận diện. Sheet này bị bỏ qua."
+                )
                 continue
 
             # First pass: collect valid rows to pre-fetch in batch (drastically accelerates import)
             valid_rows = []
-            for r in range(header_row_idx + 1, ws.max_row + 1):
+            data_start_row = (header_row_idx or 0) + 1
+            for r in range(data_start_row, ws.max_row + 1):
                 mssv_cell = ws.cell(r, col_mssv).value
                 if not mssv_cell:
                     continue
                 mssv = str(mssv_cell).strip()
                 if mssv.endswith('.0'):
                     mssv = mssv[:-2]
-                
+
                 # TC: Validate UTC Student Code (Must be exactly 9 digits)
                 if not re.match(r"^\d{9}$", mssv):
+                    # Ô chứa chữ (không phải số) => nhiều khả năng là dòng tiêu đề lặp lại
+                    # hoặc dòng ghi chú ở cuối bảng -> bỏ qua im lặng.
+                    if not re.match(r"^\d+$", mssv):
+                        continue
+                    # Bỏ qua dòng tiêu đề lặp lại / dòng tổng kết, không báo lỗi.
+                    low = mssv.lower()
+                    if low in ("stt", "mssv", "mã sv", "mã sinh viên", "tổng", "total"):
+                        continue
                     skipped_count += 1
                     errors.append(f"Dòng {r}: Mã sinh viên '{mssv}' không hợp lệ (Mã sinh viên UTC phải gồm đúng 9 chữ số).")
                     continue
@@ -193,6 +403,10 @@ class ExcelImportService:
                 valid_rows.append((r, mssv))
 
             if not valid_rows:
+                errors.append(
+                    f"Sheet '{sheet_name}': Không có dòng dữ liệu sinh viên hợp lệ "
+                    f"(MSSV phải gồm đúng 9 chữ số)."
+                )
                 continue
 
             # Pre-fetch existing users, students, and course classes in single queries
@@ -393,6 +607,20 @@ class ExcelImportService:
                     errors.append(f"Sheet '{sheet_name}', Dòng {r}, MSSV {mssv}: {str(ex)}")
                     skipped_count += 1
 
+        # Nếu không import được dòng nào -> báo rõ nguyên nhân để Admin không bị "im lặng"
+        if total_count == 0:
+            if not errors:
+                errors.append(
+                    "File Excel không có dòng dữ liệu sinh viên nào. "
+                    "Vui lòng kiểm tra lại nội dung file hoặc tải file mẫu từ nút 'Tải mẫu Import'."
+                )
+            else:
+                errors.insert(0, (
+                    "⚠️ KHÔNG import được dòng dữ liệu nào. "
+                    "Vui lòng kiểm tra các lỗi bên dưới, hoặc tải file mẫu chuẩn từ nút 'Tải mẫu Import' "
+                    "để đảm bảo định dạng cột (Mã sinh viên = 9 chữ số) đúng."
+                ))
+
         # Delete unused placeholder sheet classes if specific classes were created with students
         try:
             CourseClass.objects.filter(
@@ -485,6 +713,149 @@ class ExcelImportService:
         ws.column_dimensions["F"].width = 25
         ws.column_dimensions["G"].width = 18
         ws.column_dimensions["H"].width = 30
+
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        return buffer
+
+    @staticmethod
+    def generate_sample_roster():
+        """
+        Sinh file Excel danh sách sinh viên MẪU (nhiều lớp, có dữ liệu đầy đủ)
+        để Admin dùng ngay cho việc test chức năng Import.
+
+        File gồm nhiều sheet mô phỏng danh sách theo lớp học phần UTC:
+        - Các sheet lớp: có dòng "Học phần: ..." ở trên + tiêu đề bảng ở dòng 3
+          (mô phỏng file xuất từ Cổng đào tạo UTC).
+        - Sheet "Danh_Sach_Sinh_Vien": tiêu đề ngay dòng 1 (định dạng file export mẫu).
+
+        MSSV sinh ra luôn là 9 chữ số và KHÔNG trùng với dữ liệu đang có trong
+        hệ thống (dùng tiền tố 241/242 tương ứng CNTT/KHMT).
+        """
+        import random
+
+        # Tiền tố MSSV: 241 = CNTT, 242 = KHMT (tránh trùng dữ liệu đang có)
+        # MSSV UTC = 9 chữ số = 4 chữ tiền tố + 5 chữ số thứ tự.
+        class_specs = [
+            ("CNTT1 - K62", "CNTT1 - K62", 18, "CNTT", False, "2411"),
+            ("CNTT2 - K62", "CNTT2 - K62", 16, "CNTT", False, "2412"),
+            ("CNTT3 - K62", "CNTT3 - K62", 15, "CNTT", False, "2413"),
+            ("CNTT Việt Anh - K62", "CNTT Việt Anh - K62", 10, "CNTT", False, "2414"),
+            ("CNTT Kỹ sư 1 - K62", "CNTT Kỹ sư 1 - K62", 12, "CNTT", True, "2415"),
+            ("CNTT Kỹ sư 2 - K62", "CNTT Kỹ sư 2 - K62", 11, "CNTT", True, "2416"),
+            ("KHMT1 - K62", "KHMT1 - K62", 14, "KHMT", False, "2421"),
+            ("KHMT2 - K62", "KHMT2 - K62", 12, "KHMT", False, "2422"),
+        ]
+
+        ho_list = [
+            "Nguyễn", "Trần", "Lê", "Phạm", "Hoàng", "Phan", "Vũ", "Võ", "Đặng", "Bùi",
+            "Đỗ", "Hồ", "Ngô", "Dương", "Lý", "Đinh", "Trịnh", "Cao", "Mai", "Trương",
+            "Tạ", "Hà", "Kiều", "Lương", "Chu", "Tô", "Đoàn", "Lâm", "Hứa", "Vương",
+        ]
+        ten_list = [
+            "Văn An", "Thị Bình", "Hoàng Cường", "Minh Đức", "Thị Hà", "Quốc Huy",
+            "Ngọc Lan", "Thu Trang", "Đình Nam", "Hải Phong", "Mai Phương", "Quỳnh Nhi",
+            "Thành Long", "Khánh Linh", "Gia Bảo", "Phương Chi", "Tuấn Kiệt", "Thùy Dung",
+            "Hoài An", "Hữu Phước", "Diệu Linh", "Vĩnh Phú", "Thanh Tùng", "Như Ý",
+            "Đông Triều", "Bảo Châu", "Khắc Duy", "Hoài Thu", "Trọng Nghĩa", "Mỹ Duyên",
+        ]
+        ten_nam_list = [
+            "Văn An", "Hoàng Cường", "Minh Đức", "Quốc Huy", "Đình Nam", "Hải Phong",
+            "Thành Long", "Gia Bảo", "Tuấn Kiệt", "Hoài An", "Hữu Phước", "Vĩnh Phú",
+            "Thanh Tùng", "Đông Triều", "Khắc Duy", "Trọng Nghĩa", "Quang Huy", "Văn Kiên",
+            "Trung Kiên", "Đức Anh", "Ngọc Bảo", "Hải Đăng", "Gia Huy", "Trí Thức",
+        ]
+
+        headers = [
+            "STT",
+            "Mã sinh viên (MSSV) *",
+            "Họ đệm *",
+            "Tên *",
+            "Ngành (CNTT/KHMT) *",
+            "Lớp sinh hoạt *",
+            "Hệ đào tạo",
+            "Số điện thoại",
+            "Email",
+        ]
+        widths = [8, 24, 20, 16, 22, 26, 14, 16, 30]
+
+        header_fill = PatternFill(start_color="0284C7", end_color="0284C7", fill_type="solid")
+        header_font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
+        border = Border(
+            left=Side(style='thin', color='D0D5DD'),
+            right=Side(style='thin', color='D0D5DD'),
+            top=Side(style='thin', color='D0D5DD'),
+            bottom=Side(style='thin', color='D0D5DD')
+        )
+        body_font = Font(name="Arial", size=10)
+
+        random.seed(20261106)
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+
+        def _style_header(ws, row_idx):
+            for c, h in enumerate(headers, start=1):
+                cell = ws.cell(row_idx, c, h)
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            ws.row_dimensions[row_idx].height = 32
+
+        def _style_body(ws, row_idx, values):
+            for c, v in enumerate(values, start=1):
+                cell = ws.cell(row_idx, c, v)
+                cell.font = body_font
+                cell.border = border
+                if c in (1, 2, 5, 7):
+                    cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        def _make_row(stt, mssv, lop_name, nganh, la_ky_su):
+            is_nam = random.random() < 0.55
+            return [
+                stt,
+                mssv,
+                random.choice(ho_list),
+                random.choice(ten_nam_list if is_nam else ten_list),
+                nganh,
+                lop_name,
+                "Kỹ sư" if la_ky_su else "Cử nhân",
+                f"09{random.randint(10, 99)}{random.randint(100000, 999999)}",
+                f"{mssv}@sv.utc.edu.vn",
+            ]
+
+        # --- Các sheet theo lớp học phần (mô phỏng file Cổng đào tạo UTC) ---
+        for idx, (sheet_name, lop_name, so_sv, nganh, la_ky_su, prefix) in enumerate(class_specs):
+            ws = wb.create_sheet(title=sheet_name[:31])
+
+            hoc_phan = "Học phần: Đồ án tốt nghiệp"
+            if la_ky_su:
+                hoc_phan += " Kỹ sư"
+            hoc_phan += f" CNTT-{idx + 1}-1-26(N{idx + 1:02d}).DA"
+            ws.cell(1, 1, hoc_phan)
+            ws.cell(1, 1).font = Font(name="Arial", size=11, bold=True, italic=True, color="475569")
+
+            header_row = 3
+            _style_header(ws, header_row)
+
+            for i in range(so_sv):
+                mssv = f"{prefix}{i + 1:05d}"
+                _style_body(ws, header_row + i + 1, _make_row(i + 1, mssv, lop_name, nganh, la_ky_su))
+
+            for c_idx, w in enumerate(widths, start=1):
+                ws.column_dimensions[chr(64 + c_idx)].width = w
+
+        # --- Sheet tổng hợp: header ngay dòng 1 (định dạng file export mẫu) ---
+        ws_sum = wb.create_sheet(title="Danh_Sach_Sinh_Vien")
+        _style_header(ws_sum, 1)
+        stt = 0
+        for (_s, lop_name, so_sv, nganh, la_ky_su, prefix) in class_specs:
+            for i in range(so_sv):
+                stt += 1
+                mssv = f"{prefix}{1000 + i + 1:05d}"
+                _style_body(ws_sum, 1 + stt, _make_row(stt, mssv, lop_name, nganh, la_ky_su))
+        for c_idx, w in enumerate(widths, start=1):
+            ws_sum.column_dimensions[chr(64 + c_idx)].width = w
 
         buffer = io.BytesIO()
         wb.save(buffer)

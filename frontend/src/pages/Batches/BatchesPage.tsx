@@ -374,6 +374,30 @@ export const BatchesPage: React.FC = () => {
     }
   };
 
+  // Tải file danh sách sinh viên MẪU (dùng để test chức năng Import)
+  const handleDownloadSampleRoster = async () => {
+    try {
+      showToast('Đang tải file danh sách sinh viên mẫu...', 'info');
+      const res = await apiClient.get('/admin/students/sample-roster/', {
+        responseType: 'blob',
+      });
+      const blob = new Blob([res.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'Danh_Sach_Sinh_Vien_Mau_Import_UTC_K62.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      showToast('✓ Đã tải file danh sách sinh viên mẫu (216 SV, 9 lớp)!', 'success');
+    } catch (err: any) {
+      showToast('❌ Lỗi tải file mẫu: ' + (err.message || 'Không thể tải file'), 'error');
+    }
+  };
+
   // Export Students in the exact format of Import Excel
   const handleExportStudents = async () => {
     if (!selectedBatchId) {
@@ -1501,6 +1525,24 @@ export const BatchesPage: React.FC = () => {
                   <small style={{ color: '#64748b', display: 'block', marginTop: '0.4rem' }}>
                     File Excel xuất từ Cổng đào tạo UTC hoặc file xuất từ nút "Export Sinh Viên" đều được hỗ trợ.
                   </small>
+                  <button
+                    type="button"
+                    onClick={handleDownloadSampleRoster}
+                    style={{
+                      marginTop: '0.6rem',
+                      padding: '0.45rem 0.9rem',
+                      borderRadius: 6,
+                      border: '1px dashed #0284c7',
+                      background: '#f0f9ff',
+                      color: '#075985',
+                      fontSize: '0.82rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      width: '100%',
+                    }}
+                  >
+                    📥 Tải Danh Sách Sinh Viên Mẫu (216 SV · 9 lớp) để test
+                  </button>
                 </div>
 
                 {/* Cơ chế thiết lập mật khẩu tự động cho SV vừa import */}

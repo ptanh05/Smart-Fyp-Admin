@@ -765,6 +765,25 @@ class AdminDownloadTemplateAPIView(APIView):
         return response
 
 
+class AdminDownloadSampleRosterAPIView(APIView):
+    """
+    Tải file Excel danh sách sinh viên MẪU (nhiều lớp, 216 SV, có dữ liệu đầy đủ)
+    để Admin test ngay chức năng Import mà không cần chuẩn bị file thủ công.
+    """
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def get(self, request):
+        buffer = ExcelImportService.generate_sample_roster()
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response["Content-Disposition"] = (
+            'attachment; filename="Danh_Sach_Sinh_Vien_Mau_Import_UTC_K62.xlsx"'
+        )
+        return response
+
+
 class AdminExportUsersExcelAPIView(APIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
 
