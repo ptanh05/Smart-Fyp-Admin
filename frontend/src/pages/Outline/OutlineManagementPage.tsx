@@ -29,6 +29,7 @@ interface OutlineReviewItem {
   outline_file_url?: string;
   verdict: 'PENDING' | 'APPROVED' | 'REVISION_REQUIRED' | 'REJECTED';
   verdict_display?: string;
+  project_status?: string;
   comments: string;
   submitted_at?: string;
   reviewed_at?: string;
@@ -222,8 +223,8 @@ export const OutlineManagementPage: React.FC = () => {
   // Statistics
   const stats = useMemo(() => {
     const total = reviews.length;
-    const pending = reviews.filter((r) => r.verdict === 'PENDING').length;
-    const approved = reviews.filter((r) => r.verdict === 'APPROVED').length;
+    const pending = reviews.filter((r) => r.project_status !== 'OUTLINE_APPROVED').length;
+    const approved = reviews.filter((r) => r.project_status === 'OUTLINE_APPROVED').length;
     const revision = reviews.filter((r) => r.verdict === 'REVISION_REQUIRED').length;
     const unassigned = reviews.filter((r) => !r.review_group).length;
     return { total, pending, approved, revision, unassigned };
@@ -744,11 +745,13 @@ export const OutlineManagementPage: React.FC = () => {
                         </td>
                         <td>
                           <span className={`utc-badge ${
-                            r.verdict === 'APPROVED' ? 'approved' :
+                            r.project_status === 'OUTLINE_APPROVED' ? 'approved' :
+                            r.verdict === 'APPROVED' ? 'pending' :
                             r.verdict === 'REVISION_REQUIRED' ? 'revision' :
                             r.verdict === 'REJECTED' ? 'rejected' : 'pending'
                           }`}>
-                            {r.verdict === 'APPROVED' ? 'Đã duyệt đạt' :
+                            {r.project_status === 'OUTLINE_APPROVED' ? 'Khoa đã duyệt đạt' :
+                             r.verdict === 'APPROVED' ? 'GVHD đã duyệt - chờ Khoa' :
                              r.verdict === 'REVISION_REQUIRED' ? 'Yêu cầu sửa' :
                              r.verdict === 'REJECTED' ? 'Không đạt' : 'Chờ xét duyệt'}
                           </span>

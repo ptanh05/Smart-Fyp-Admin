@@ -225,7 +225,9 @@ class MinCostMaxFlowAllocationEngine:
                 pref = preferences.get(student.id)
                 survey = surveys.get(student.id)
                 topic_category = (pref.topic_direction if pref else None) or (survey.topic_direction if survey else None)
-                tentative_title = (survey.tentative_title if survey else None) or f"Đề tài tốt nghiệp của {student.user.get_full_name() or student.registration_no}"
+                # Allocation assigns a GVHD only.  Do not turn a survey answer
+                # into an official topic; the supervisor creates/confirms it.
+                tentative_title = ""
 
                 if matched_sup:
                     existing_proj = GraduationProject.objects.filter(student=student).first()

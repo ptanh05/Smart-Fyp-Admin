@@ -37,6 +37,76 @@ class ProjectTopicAreaSerializer(serializers.ModelSerializer):
         fields = ["id", "code", "name", "description", "is_active", "supervisor_count"]
 
 
+class OutlineReviewGroupSerializer(serializers.ModelSerializer):
+    members_detail = serializers.SerializerMethodField()
+    total_projects = serializers.IntegerField(source="reviewed_outlines.count", read_only=True)
+
+    class Meta:
+        model = OutlineReviewGroup
+        fields = [
+            "id", "batch", "name", "department", "members",
+            "members_detail", "total_projects",
+        ]
+
+    def get_members_detail(self, obj):
+        return [
+            {
+                "id": member.id,
+                "name": member.user.get_full_name() or member.user.username,
+                "title": member.academic_title or "",
+            }
+            for member in obj.members.all()
+        ]
+
+
+class OutlineReviewSerializer(serializers.ModelSerializer):
+    student_name = serializers.SerializerMethodField()
+    student_reg_no = serializers.CharField(source="project.student.registration_no", read_only=True, default="")
+    student_class = serializers.SerializerMethodField()
+    supervisor_name = serializers.SerializerMethodField()
+    topic_title = serializers.CharField(source="project.topic_title_vi", read_only=True, default="")
+    group_name = serializers.CharField(source="review_group.name", read_only=True, default="")
+    reviewer_name = serializers.SerializerMethodField()
+    outline_file_url = serializers.SerializerMethodField()
+    verdict_display = serializers.CharField(source="get_verdict_display", read_only=True)
+    project_status = serializers.CharField(source="project.status", read_only=True)
+
+    class Meta:
+        model = OutlineReview
+        fields = [
+            "id", "project", "student_name", "student_reg_no", "student_class",
+            "supervisor_name", "topic_title", "review_group", "group_name",
+            "reviewer", "reviewer_name", "outline_file", "outline_file_url",
+            "verdict", "verdict_display", "project_status", "comments", "submitted_at", "reviewed_at",
+        ]
+
+    def get_student_name(self, obj):
+        user = obj.project.student.user
+        return user.get_full_name() or user.username
+
+    def get_student_class(self, obj):
+        student = obj.project.student
+        if student.course_class:
+            return student.course_class.class_name
+        return student.department or ""
+
+    def get_supervisor_name(self, obj):
+        supervisor = obj.project.supervisor
+        if not supervisor:
+            return ""
+        prefix = f"{supervisor.academic_title} " if supervisor.academic_title else ""
+        return f"{prefix}{supervisor.user.get_full_name() or supervisor.user.username}".strip()
+
+    def get_reviewer_name(self, obj):
+        if not obj.reviewer:
+            return ""
+        prefix = f"{obj.reviewer.academic_title} " if obj.reviewer.academic_title else ""
+        return f"{prefix}{obj.reviewer.user.get_full_name() or obj.reviewer.user.username}".strip()
+
+    def get_outline_file_url(self, obj):
+        return obj.outline_file.url if obj.outline_file else ""
+
+
 class StudentDetailSerializer(serializers.ModelSerializer):
     batch_name = serializers.CharField(source="academic_batch.batch_name", read_only=True, default="")
     class_code = serializers.CharField(source="course_class.class_code", read_only=True, default="")
