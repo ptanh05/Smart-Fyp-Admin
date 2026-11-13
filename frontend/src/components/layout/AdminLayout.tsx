@@ -1,8 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../../auth/AdminAuthContext';
-import { apiClient } from '../../api/client';
-import BatchProgressBar, { type BatchProgressData } from '../BatchProgressBar';
 import './AdminLayout.css';
 
 /**
@@ -116,33 +114,10 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
   const { logout, userType, currentUser } = useAdminAuth();
   const navigate = useNavigate();
 
-  const [progress, setProgress] = useState<BatchProgressData | null>(null);
-  const [progressLoading, setProgressLoading] = useState<boolean>(true);
-
   const handleLogout = async () => {
     await logout();
     navigate('/login');
   };
-
-  const fetchProgress = async () => {
-    try {
-      setProgressLoading(true);
-      const res = await apiClient.get('/admin/batches/progress/');
-      setProgress(res.data);
-    } catch (err) {
-      console.error('Failed to load batch progress:', err);
-      setProgress(null);
-    } finally {
-      setProgressLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchProgress();
-    // Làm mới tiến trình mỗi 60s để Admin theo dõi kịp thời
-    const timer = window.setInterval(fetchProgress, 60000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   const displayName = currentUser?.full_name || currentUser?.username || 'Administrator';
   const displayUsername = currentUser?.username ? `@${currentUser.username}` : '';
@@ -200,15 +175,6 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
         </header>
 
         <div className="admin-page-container">
-          {/* ===== Thanh tiến trình đợt đồ án (6 giai đoạn) ===== */}
-          <BatchProgressBar
-            data={progress}
-            loading={progressLoading}
-            variant="admin"
-            onRefresh={fetchProgress}
-            title="Tiến Trình Đợt Đồ Án Hiện Tại"
-          />
-
           {children}
         </div>
       </main>

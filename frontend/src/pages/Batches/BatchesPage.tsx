@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/layout/AdminLayout';
 import { apiClient } from '../../api/client';
+import SelectedBatchProgress from '../../components/SelectedBatchProgress';
 import QuotaRow from './QuotaRow';
 import './BatchesPage.css';
 import '../../components/common/Modal.css';
@@ -646,13 +647,27 @@ export const BatchesPage: React.FC = () => {
         <div className="utc-subnav-tabs">
           <button
             className={`utc-subnav-btn ${activeTab === 'batches' ? 'active' : ''}`}
-            onClick={() => setActiveTab('batches')}
+            onClick={() => {
+              setActiveTab('batches');
+              if (!activeBatches.some((batch) => batch.id === selectedBatchId)) {
+                const nextBatchId = activeBatches[0]?.id ?? null;
+                setSelectedBatchId(nextBatchId);
+                if (nextBatchId) localStorage.setItem('utc_selected_batch_id', String(nextBatchId));
+              }
+            }}
           >
             📅 Đợt Đang Hoạt Động ({activeBatches.length})
           </button>
           <button
             className={`utc-subnav-btn ${activeTab === 'archived' ? 'active' : ''}`}
-            onClick={() => setActiveTab('archived')}
+            onClick={() => {
+              setActiveTab('archived');
+              if (!archivedBatches.some((batch) => batch.id === selectedBatchId)) {
+                const nextBatchId = archivedBatches[0]?.id ?? null;
+                setSelectedBatchId(nextBatchId);
+                if (nextBatchId) localStorage.setItem('utc_selected_batch_id', String(nextBatchId));
+              }
+            }}
           >
             🗄️ Kho Lưu Trữ Đợt Đã Kết Thúc ({archivedBatches.length})
           </button>
@@ -824,6 +839,11 @@ export const BatchesPage: React.FC = () => {
                   <h4>Quản lý Dữ liệu Đợt ĐATN: #{selectedBatchId} - {currBatch?.batch_name}</h4>
                   <span className="utc-classes-subtitle">Rà soát danh sách sinh viên & các lớp học phần được phân công trong đợt</span>
                 </div>
+
+                <SelectedBatchProgress
+                  key={`${selectedBatchId}-${currBatch?.current_stage}-${currBatch?.is_closed}`}
+                  batchId={selectedBatchId}
+                />
 
                 <div className="utc-batch-subtabs">
                   <button
@@ -1165,6 +1185,11 @@ export const BatchesPage: React.FC = () => {
                   <h4>Hồ sơ Lưu Trữ Đợt ĐATN: #{selectedBatchId} - {currBatch?.batch_name}</h4>
                   <span className="utc-classes-subtitle">Tra cứu danh sách sinh viên & các lớp học phần trong đợt đã lưu trữ</span>
                 </div>
+
+                <SelectedBatchProgress
+                  key={`${selectedBatchId}-${currBatch?.current_stage}-${currBatch?.is_closed}`}
+                  batchId={selectedBatchId}
+                />
 
                 <div className="utc-batch-subtabs">
                   <button

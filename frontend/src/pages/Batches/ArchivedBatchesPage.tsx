@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/layout/AdminLayout';
 import { apiClient } from '../../api/client';
 import { NavLink } from 'react-router-dom';
+import SelectedBatchProgress from '../../components/SelectedBatchProgress';
 import './BatchesPage.css';
 
 interface AcademicBatch {
@@ -382,6 +383,11 @@ export const ArchivedBatchesPage: React.FC = () => {
                 </button>
               </div>
             </div>
+
+            <SelectedBatchProgress
+              key={`${selectedBatchId}-${currBatch.current_stage}-${currBatch.is_closed}`}
+              batchId={selectedBatchId}
+            />
 
             <div className="utc-batch-subtabs" style={{ display: 'flex', gap: '0.75rem', margin: '1rem 0' }}>
               <button
