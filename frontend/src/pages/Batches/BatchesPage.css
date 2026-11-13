@@ -767,3 +767,27 @@
 }
 
 
+.utc-btn-track-batch {
+  border: 1px solid #0284c7;
+  border-radius: 8px;
+  background: #f0f9ff;
+  color: #0369a1;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 0.45rem 0.7rem;
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+
+.utc-btn-track-batch:hover {
+  background: #0284c7;
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.utc-btn-track-batch[aria-pressed='true'] {
+  border-color: #059669;
+  background: #ecfdf5;
+  color: #047857;
+}
+

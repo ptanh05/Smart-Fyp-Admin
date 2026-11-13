@@ -4,13 +4,17 @@ import BatchProgressBar, { type BatchProgressData } from './BatchProgressBar';
 
 interface SelectedBatchProgressProps {
   batchId: number | null;
+  title?: string;
 }
 
 /**
  * Hiển thị tiến trình của đúng đợt đang được chọn.
- * Component này nằm trong phần chi tiết đợt, không render toàn cục ở AdminLayout.
+ * Component được đặt ở đầu trang quản lý và luôn nhận ID đợt người dùng đang theo dõi.
  */
-export const SelectedBatchProgress: React.FC<SelectedBatchProgressProps> = ({ batchId }) => {
+export const SelectedBatchProgress: React.FC<SelectedBatchProgressProps> = ({
+  batchId,
+  title = 'Tiến Trình Đợt Đồ Án Đang Theo Dõi',
+}) => {
   const [progress, setProgress] = useState<BatchProgressData | null>(null);
   const [loading, setLoading] = useState(false);
   const selectedBatchRef = useRef<number | null>(batchId);
@@ -49,8 +53,19 @@ export const SelectedBatchProgress: React.FC<SelectedBatchProgressProps> = ({ ba
 
   useEffect(() => {
     void fetchProgress();
-    const timer = window.setInterval(() => void fetchProgress(), 60000);
-    return () => window.clearInterval(timer);
+    const timer = window.setInterval(() => void fetchProgress(), 15000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void fetchProgress();
+    };
+
+    window.addEventListener('focus', fetchProgress);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', fetchProgress);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
   }, [fetchProgress]);
 
   if (!batchId) return null;
@@ -61,7 +76,7 @@ export const SelectedBatchProgress: React.FC<SelectedBatchProgressProps> = ({ ba
       loading={loading}
       variant="admin"
       onRefresh={fetchProgress}
-      title="Tiến Trình Đợt Đồ Án Đang Chọn"
+      title={title}
     />
   );
 };

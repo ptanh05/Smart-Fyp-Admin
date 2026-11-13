@@ -192,7 +192,9 @@ export const BatchesPage: React.FC = () => {
       if (list.length > 0 && !selectedBatchId) {
         const savedId = localStorage.getItem('utc_selected_batch_id');
         const found = savedId ? list.find((b: any) => b.id === Number(savedId)) : null;
-        setSelectedBatchId(found ? found.id : list[0].id);
+        // Chỉ khôi phục đúng đợt người dùng đã chủ động chọn theo dõi trước đó.
+        // Không tự lấy phần tử đầu tiên vì có thể có nhiều đợt cùng hoạt động.
+        if (found) setSelectedBatchId(found.id);
       }
     } catch (err) {
       console.error('Error fetching batches:', err);
@@ -643,6 +645,14 @@ export const BatchesPage: React.FC = () => {
   return (
     <AdminLayout>
       <div className="utc-batches-portal">
+        {/* Thanh trên cùng luôn bám theo đúng đợt người dùng chọn ở danh sách. */}
+        {selectedBatchId && currBatch && (
+          <SelectedBatchProgress
+            key={`tracked-${selectedBatchId}-${currBatch.current_stage}-${currBatch.is_closed}`}
+            batchId={selectedBatchId}
+          />
+        )}
+
         {/* Navigation Tabs */}
         <div className="utc-subnav-tabs">
           <button
@@ -801,7 +811,19 @@ export const BatchesPage: React.FC = () => {
                     </div>
 
                     <div className="utc-batch-footer">
-                      <span>Nhấp để xem sinh viên & lớp học</span>
+                      <button
+                        type="button"
+                        className="utc-btn-track-batch"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedBatchId(batch.id);
+                          localStorage.setItem('utc_selected_batch_id', String(batch.id));
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        aria-pressed={selectedBatchId === batch.id}
+                      >
+                        {selectedBatchId === batch.id ? '✓ Đang theo dõi' : '👁 Theo dõi tiến trình'}
+                      </button>
                       <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
                         {batch.current_stage === 'PHASE_1_SETUP' && (
                           <button
@@ -839,11 +861,6 @@ export const BatchesPage: React.FC = () => {
                   <h4>Quản lý Dữ liệu Đợt ĐATN: #{selectedBatchId} - {currBatch?.batch_name}</h4>
                   <span className="utc-classes-subtitle">Rà soát danh sách sinh viên & các lớp học phần được phân công trong đợt</span>
                 </div>
-
-                <SelectedBatchProgress
-                  key={`${selectedBatchId}-${currBatch?.current_stage}-${currBatch?.is_closed}`}
-                  batchId={selectedBatchId}
-                />
 
                 <div className="utc-batch-subtabs">
                   <button
