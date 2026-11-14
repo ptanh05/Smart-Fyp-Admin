@@ -189,13 +189,6 @@ export const BatchesPage: React.FC = () => {
       const res = await apiClient.get(`/admin/batches/?_t=${Date.now()}`);
       const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
       setBatches(list);
-      if (list.length > 0 && !selectedBatchId) {
-        const savedId = localStorage.getItem('utc_selected_batch_id');
-        const found = savedId ? list.find((b: any) => b.id === Number(savedId)) : null;
-        // Chỉ khôi phục đúng đợt người dùng đã chủ động chọn theo dõi trước đó.
-        // Không tự lấy phần tử đầu tiên vì có thể có nhiều đợt cùng hoạt động.
-        if (found) setSelectedBatchId(found.id);
-      }
     } catch (err) {
       console.error('Error fetching batches:', err);
       setBatches([]);
@@ -659,11 +652,7 @@ export const BatchesPage: React.FC = () => {
             className={`utc-subnav-btn ${activeTab === 'batches' ? 'active' : ''}`}
             onClick={() => {
               setActiveTab('batches');
-              if (!activeBatches.some((batch) => batch.id === selectedBatchId)) {
-                const nextBatchId = activeBatches[0]?.id ?? null;
-                setSelectedBatchId(nextBatchId);
-                if (nextBatchId) localStorage.setItem('utc_selected_batch_id', String(nextBatchId));
-              }
+              setSelectedBatchId(null);
             }}
           >
             📅 Đợt Đang Hoạt Động ({activeBatches.length})
@@ -701,42 +690,9 @@ export const BatchesPage: React.FC = () => {
             <div className="utc-batches-header-bar">
               <div className="utc-batches-header-info">
                 <h3>Giai Đoạn 1: Khởi Tạo Đợt Đồ Án & Quản Lý Sinh Viên UTC</h3>
-                <p>Khởi tạo đợt đồ án, thêm sinh viên thủ công hoặc import/export danh sách Excel chuẩn format đào tạo UTC</p>
+                <p>Khởi tạo đợt đồ án mới. Chọn một đợt bên dưới để quản lý sinh viên và dữ liệu của đợt đó.</p>
               </div>
               <div className="utc-batches-actions">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAddError(null);
-                    if (currBatch && currBatch.program_type !== 'BOTH') {
-                      setAddEduProgram(currBatch.program_type);
-                    }
-                    setShowAddStudentModal(true);
-                  }}
-                  className="utc-btn-primary"
-                  title="Thêm sinh viên thủ công vào đợt ĐATN"
-                >
-                  <span>👤➕</span> Thêm Sinh Viên
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowImportModal(true)}
-                  className="utc-btn-emerald"
-                  title="Import sinh viên từ file Excel UTC"
-                >
-                  <span>📊</span> Import Sinh Viên (Excel)
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleExportStudents}
-                  className="utc-btn-outline"
-                  title="Xuất danh sách sinh viên đợt này ra file Excel đúng định dạng file mẫu import"
-                >
-                  <span>📤</span> Export Sinh Viên (.xlsx)
-                </button>
-
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(true)}
@@ -858,8 +814,42 @@ export const BatchesPage: React.FC = () => {
             {selectedBatchId && (
               <div className="utc-classes-section">
                 <div className="utc-classes-header">
-                  <h4>Quản lý Dữ liệu Đợt ĐATN: #{selectedBatchId} - {currBatch?.batch_name}</h4>
-                  <span className="utc-classes-subtitle">Rà soát danh sách sinh viên & các lớp học phần được phân công trong đợt</span>
+                  <div>
+                    <h4>Quản lý Dữ liệu Đợt ĐATN: #{selectedBatchId} - {currBatch?.batch_name}</h4>
+                    <span className="utc-classes-subtitle">Rà soát danh sách sinh viên & các lớp học phần được phân công trong đợt</span>
+                  </div>
+                  <div className="utc-batches-actions">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAddError(null);
+                        if (currBatch && currBatch.program_type !== 'BOTH') {
+                          setAddEduProgram(currBatch.program_type);
+                        }
+                        setShowAddStudentModal(true);
+                      }}
+                      className="utc-btn-primary"
+                      title="Thêm sinh viên thủ công vào đợt ĐATN đang chọn"
+                    >
+                      <span>👤➕</span> Thêm Sinh Viên
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowImportModal(true)}
+                      className="utc-btn-emerald"
+                      title="Import sinh viên vào đợt ĐATN đang chọn từ file Excel UTC"
+                    >
+                      <span>📊</span> Import Sinh Viên (Excel)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleExportStudents}
+                      className="utc-btn-outline"
+                      title="Xuất danh sách sinh viên của đợt ĐATN đang chọn"
+                    >
+                      <span>📤</span> Export Sinh Viên (.xlsx)
+                    </button>
+                  </div>
                 </div>
 
                 <div className="utc-batch-subtabs">

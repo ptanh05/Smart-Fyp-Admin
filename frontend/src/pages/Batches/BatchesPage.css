@@ -38,6 +38,26 @@
   flex-wrap: wrap;
 }
 
+.utc-classes-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.utc-classes-header .utc-batches-actions {
+  justify-content: flex-end;
+}
+
+@media (max-width: 900px) {
+  .utc-classes-header .utc-batches-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
 .utc-btn-primary {
   display: inline-flex;
   align-items: center;
