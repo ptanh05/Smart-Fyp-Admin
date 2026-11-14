@@ -251,47 +251,51 @@
 /* ---------- Chi tiết giai đoạn ---------- */
 .utc-bpb-step-detail {
   margin-top: 6px;
-  padding: 9px 10px;
+  padding: 10px 12px;
   background: #f8fafc;
-  border: 1px dashed #cbd5e1;
+  border: 1px solid #e2e8f0;
   border-radius: 10px;
-  font-size: 0.73rem;
-  color: #475569;
-  line-height: 1.45;
+  font-size: 0.74rem;
+  color: #334155;
+  line-height: 1.5;
 }
 
 .utc-bpb-step-desc {
-  margin: 0 0 4px;
+  margin: 0 0 5px;
+  color: #475569;
 }
 
-.utc-bpb-step-role,
-.utc-bpb-step-action {
+.utc-bpb-step-role {
   margin: 0 0 4px;
   font-weight: 600;
+  color: #6b21a8;
 }
 
 .utc-bpb-step-action {
+  margin: 0 0 5px;
+  font-weight: 700;
   color: #b45309;
 }
 
 .utc-bpb-step-stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 5px;
+  gap: 5px;
+  margin-top: 6px;
 }
 
 .utc-bpb-stat-chip {
   background: #ffffff;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #cbd5e1;
   border-radius: 9999px;
-  padding: 1px 8px;
-  font-size: 0.66rem;
-  color: #64748b;
+  padding: 2px 8px;
+  font-size: 0.68rem;
+  color: #475569;
 }
 
 .utc-bpb-stat-chip strong {
-  color: #0f172a;
+  color: #0284c7;
+  font-weight: 800;
 }
 
 .utc-bpb-mini-track {
@@ -481,6 +485,134 @@
 }
 
 [data-theme="dark"] .utc-bpb-overall-track,
-[data-theme="dark"] .utc-bpb-mini-track { background: var(--divider); }
+[data-theme="dark"] .utc-bpb-mini-track,
+.dark .utc-bpb-overall-track,
+.dark .utc-bpb-mini-track { background: var(--divider); }
+
 [data-theme="dark"] .utc-bpb-next,
-[data-theme="dark"] .utc-bpb-step-detail { border-color: var(--divider); }
+.dark .utc-bpb-next {
+  background: rgba(15, 23, 42, 0.6) !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
+[data-theme="dark"] .utc-bpb-next-value,
+.dark .utc-bpb-next-value {
+  color: #38bdf8 !important;
+}
+
+[data-theme="dark"] .utc-bpb-next-hint,
+.dark .utc-bpb-next-hint {
+  color: #94a3b8 !important;
+}
+
+/* Step details box in Dark Mode - High Contrast & Harmonious */
+[data-theme="dark"] .utc-bpb-step-detail,
+.dark .utc-bpb-step-detail {
+  background: rgba(15, 23, 42, 0.9) !important;
+  border: 1px solid rgba(148, 163, 184, 0.25) !important;
+  color: #e2e8f0 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="dark"] .utc-bpb-step.current .utc-bpb-step-detail,
+.dark .utc-bpb-step.current .utc-bpb-step-detail {
+  background: rgba(15, 23, 42, 0.95) !important;
+  border: 1px solid rgba(59, 130, 246, 0.45) !important;
+  box-shadow: 0 4px 20px rgba(37, 99, 235, 0.2);
+}
+
+[data-theme="dark"] .utc-bpb-step-desc,
+.dark .utc-bpb-step-desc {
+  color: #cbd5e1 !important;
+}
+
+[data-theme="dark"] .utc-bpb-step-role,
+.dark .utc-bpb-step-role {
+  color: #c084fc !important;
+}
+
+[data-theme="dark"] .utc-bpb-step-action,
+.dark .utc-bpb-step-action {
+  color: #fbbf24 !important;
+  font-weight: 700 !important;
+}
+
+[data-theme="dark"] .utc-bpb-stat-chip,
+.dark .utc-bpb-stat-chip {
+  background: rgba(30, 41, 59, 0.95) !important;
+  border: 1px solid rgba(148, 163, 184, 0.3) !important;
+  color: #cbd5e1 !important;
+  padding: 2px 8px !important;
+}
+
+[data-theme="dark"] .utc-bpb-stat-chip strong,
+.dark .utc-bpb-stat-chip strong {
+  color: #38bdf8 !important;
+  font-weight: 800 !important;
+}
+
+[data-theme="dark"] .utc-bpb-step.current .utc-bpb-stat-chip,
+.dark .utc-bpb-step.current .utc-bpb-stat-chip {
+  background: rgba(30, 58, 138, 0.4) !important;
+  border-color: rgba(96, 165, 250, 0.45) !important;
+  color: #e0f2fe !important;
+}
+
+[data-theme="dark"] .utc-bpb-step.current .utc-bpb-stat-chip strong,
+.dark .utc-bpb-step.current .utc-bpb-stat-chip strong {
+  color: #60a5fa !important;
+}
+
+[data-theme="dark"] .utc-bpb-mini-track,
+.dark .utc-bpb-mini-track {
+  background: rgba(51, 65, 85, 0.6) !important;
+}
+
+[data-theme="dark"] .utc-bpb-mini-fill,
+.dark .utc-bpb-mini-fill {
+  background: linear-gradient(90deg, #38bdf8, #2563eb) !important;
+}
+
+[data-theme="dark"] .utc-bpb-mini-label,
+.dark .utc-bpb-mini-label {
+  color: #38bdf8 !important;
+}
+
+[data-theme="dark"] .utc-bpb-batch-code,
+.dark .utc-bpb-batch-code {
+  background: rgba(2, 132, 199, 0.3) !important;
+  color: #38bdf8 !important;
+  border: 1px solid rgba(56, 189, 248, 0.4) !important;
+}
+
+[data-theme="dark"] .utc-bpb-status-pill.open,
+.dark .utc-bpb-status-pill.open {
+  background: rgba(16, 185, 129, 0.15) !important;
+  color: #34d399 !important;
+  border-color: rgba(52, 211, 153, 0.4) !important;
+}
+
+[data-theme="dark"] .utc-bpb-status-pill.closed,
+.dark .utc-bpb-status-pill.closed {
+  background: rgba(239, 68, 68, 0.15) !important;
+  color: #f87171 !important;
+  border-color: rgba(248, 113, 113, 0.4) !important;
+}
+
+[data-theme="dark"] .utc-bpb-percent,
+.dark .utc-bpb-percent {
+  color: #38bdf8 !important;
+}
+
+[data-theme="dark"] .utc-bpb-refresh,
+.dark .utc-bpb-refresh {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+  color: #cbd5e1 !important;
+}
+
+[data-theme="dark"] .utc-bpb-refresh:hover,
+.dark .utc-bpb-refresh:hover {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+}
