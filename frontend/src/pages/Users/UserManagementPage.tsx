@@ -15,6 +15,7 @@ import { SkeletonTable } from '../../components/common/SkeletonLoader';
 import './UserManagementPage.css';
 import '../../components/common/Modal.css';
 import { useDebounce } from '../../hooks/useDebounce';
+import { formatFullName } from '../../utils/nameHelper';
 
 export const UserManagementPage: React.FC = () => {
   // Data state
@@ -107,7 +108,7 @@ export const UserManagementPage: React.FC = () => {
   const sortVietnameseUsers = (userList: any[], order: 'asc' | 'desc') => {
     return [...userList].sort((a, b) => {
       const getParts = (u: any) => {
-        const full = (u.full_name || `${u.last_name || ''} ${u.first_name || ''}`.trim() || u.username || '').trim();
+        const full = formatFullName(u);
         const parts = full.split(/\s+/);
         const given = parts.length > 0 ? parts[parts.length - 1] : '';
         const family = parts.length > 1 ? parts.slice(0, -1).join(' ') : '';
@@ -960,7 +961,7 @@ export const UserManagementPage: React.FC = () => {
                             {std?.registration_no || u.username}
                           </td>
                           <td style={{ fontWeight: 600 }}>
-                            {u.full_name || u.username}
+                            {formatFullName(u)}
                           </td>
                           <td>
                             <span style={{ fontWeight: 700, color: std?.major === 'KHMT' ? '#be185d' : '#0369a1' }}>
@@ -1018,7 +1019,7 @@ export const UserManagementPage: React.FC = () => {
                             {spv?.supervisor_id || u.username}
                           </td>
                           <td style={{ fontWeight: 600 }}>
-                            {u.full_name}
+                            {formatFullName(u)}
                           </td>
                           <td>
                             <span style={{ fontWeight: 600, color: '#475569' }}>
@@ -1047,7 +1048,7 @@ export const UserManagementPage: React.FC = () => {
                             {u.username}
                           </td>
                           <td style={{ fontWeight: 600 }}>
-                            {u.full_name}
+                            {formatFullName(u)}
                           </td>
                           <td>
                             <span style={{ textTransform: 'capitalize' }}>
