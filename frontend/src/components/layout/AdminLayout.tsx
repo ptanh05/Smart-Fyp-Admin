@@ -14,7 +14,16 @@ interface NavItem {
   label: string;
   roles: Array<'admin' | 'academic_staff'>;
   highlight?: boolean;
+  group: 'overview' | 'people' | 'batches' | 'workflow' | 'system';
 }
+
+const NAV_GROUPS = [
+  { key: 'overview', label: 'Tổng quan' },
+  { key: 'people', label: 'Tài khoản & Nhân sự' },
+  { key: 'batches', label: 'Thiết lập Đợt ĐATN' },
+  { key: 'workflow', label: 'Quy trình Nghiệp vụ' },
+  { key: 'system', label: 'Hệ thống & Bảo mật' },
+] as const;
 
 const NAV_ITEMS: NavItem[] = [
   {
@@ -22,6 +31,7 @@ const NAV_ITEMS: NavItem[] = [
     icon: '📊',
     label: 'Tổng Quan Dashboard',
     roles: ['admin', 'academic_staff'],
+    group: 'overview',
   },
   {
     to: '/academic-staff',
@@ -29,84 +39,98 @@ const NAV_ITEMS: NavItem[] = [
     label: 'Phân Hệ Giáo Vụ (Mới)',
     roles: ['academic_staff'],
     highlight: true,
+    group: 'overview',
   },
   {
     to: '/users',
     icon: '👥',
     label: 'Quản Lý Tài Khoản',
     roles: ['admin'],
+    group: 'people',
   },
   {
     to: '/supervisors',
     icon: '👨‍🏫',
     label: 'Quản Lý Giảng Viên',
     roles: ['admin'],
+    group: 'people',
   },
   {
     to: '/batches',
     icon: '📅',
     label: 'GĐ1: Đợt & Bộ Môn',
     roles: ['admin', 'academic_staff'],
+    group: 'batches',
   },
   {
     to: '/archived-batches',
     icon: '🗄️',
     label: 'Lưu Trữ Đợt ĐATN',
     roles: ['admin', 'academic_staff'],
+    group: 'batches',
   },
   {
     to: '/allocations',
     icon: '🤝',
     label: 'GĐ2: Phân Công GVHD',
     roles: ['admin', 'academic_staff'],
+    group: 'workflow',
   },
   {
     to: '/topics',
     icon: '📑',
     label: 'GĐ3: Duyệt Đề Tài',
     roles: ['admin', 'academic_staff'],
+    group: 'workflow',
   },
   {
     to: '/eligibility',
     icon: '⚖️',
     label: 'GĐ4: Xét ĐK & Force Approve',
     roles: ['admin', 'academic_staff'],
+    group: 'workflow',
   },
   {
     to: '/progress',
     icon: '📈',
     label: 'GĐ5: Giám Sát Tiến Độ',
     roles: ['admin', 'academic_staff'],
+    group: 'workflow',
   },
   {
     to: '/outlines',
     icon: '📋',
     label: 'Duyệt Đề Cương',
     roles: ['admin', 'academic_staff'],
+    group: 'workflow',
   },
   {
     to: '/councils',
     icon: '🏛️',
     label: 'GĐ6: Hội Đồng & Lịch BV',
     roles: ['admin', 'academic_staff'],
+    group: 'workflow',
   },
   {
     to: '/defense',
     icon: '📝',
     label: 'Điểm, Bảo Lưu & Chốt',
     roles: ['admin', 'academic_staff'],
+    group: 'workflow',
   },
   {
     to: '/security',
     icon: '🛡️',
     label: 'Trung Tâm Bảo Mật',
     roles: ['admin'],
+    group: 'system',
   },
   {
     to: '/audit-logs',
     icon: '📜',
     label: 'Nhật Ký Hệ Thống',
     roles: ['admin'],
+    group: 'system',
   },
 ];
 
@@ -140,16 +164,27 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
         </div>
 
         <nav className="admin-nav">
-          {visibleNavItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
-              style={item.highlight ? { background: 'rgba(0, 51, 102, 0.08)', fontWeight: 700 } : undefined}
-            >
-              <span>{item.icon}</span> {item.label}
-            </NavLink>
-          ))}
+          {NAV_GROUPS.map((group) => {
+            const items = visibleNavItems.filter((item) => item.group === group.key);
+            if (items.length === 0) return null;
+            return (
+              <section className="admin-nav-group" key={group.key}>
+                <div className="admin-nav-group-title">{group.label}</div>
+                <div className="admin-nav-group-items">
+                  {items.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
+                    >
+                      <span className="admin-nav-icon">{item.icon}</span>
+                      <span>{item.label}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              </section>
+            );
+          })}
         </nav>
       </aside>
 
