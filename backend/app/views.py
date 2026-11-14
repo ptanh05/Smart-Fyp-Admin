@@ -2041,7 +2041,10 @@ class DatabaseHealthCheckAPIView(APIView):
 class DepartmentListCreateAPIView(ListCreateAPIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
     serializer_class = DepartmentSerializer
-    queryset = Department.objects.all().order_by("code")
+    queryset = Department.objects.all().prefetch_related(
+        "supervisors__user",
+        "supervisors__topic_area_links__topic_area"
+    ).order_by("code")
     from .paginators import FlexibleAdminPagination
     pagination_class = FlexibleAdminPagination
     opt_in_pagination = True
@@ -2050,7 +2053,10 @@ class DepartmentListCreateAPIView(ListCreateAPIView):
 class DepartmentDetailAPIView(RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
     serializer_class = DepartmentSerializer
-    queryset = Department.objects.all()
+    queryset = Department.objects.all().prefetch_related(
+        "supervisors__user",
+        "supervisors__topic_area_links__topic_area"
+    )
 
 
 class TopicAreaListAPIView(ListAPIView):

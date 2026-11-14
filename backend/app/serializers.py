@@ -21,12 +21,50 @@ from .models import (
     AcademicStaff
 )
 
+class DepartmentSupervisorSerializer(serializers.ModelSerializer):
+    user_full_name = serializers.SerializerMethodField()
+    username = serializers.CharField(source="user.username", read_only=True, default="")
+    email = serializers.CharField(source="user.email", read_only=True, default="")
+    topic_areas = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Supervisor
+        fields = [
+            "id",
+            "supervisor_id",
+            "user_full_name",
+            "username",
+            "email",
+            "academic_title",
+            "phone_number",
+            "research_interest",
+            "academic_rank_multiplier",
+            "is_active",
+            "topic_areas",
+        ]
+
+    def get_user_full_name(self, obj):
+        if obj.user:
+            return obj.user.get_full_name() or obj.user.username
+        return ""
+
+    def get_topic_areas(self, obj):
+        try:
+            return [
+                {"id": link.topic_area.id, "code": link.topic_area.code, "name": link.topic_area.name}
+                for link in obj.topic_area_links.select_related("topic_area").all()
+            ]
+        except Exception:
+            return []
+
+
 class DepartmentSerializer(serializers.ModelSerializer):
     supervisor_count = serializers.IntegerField(source="supervisors.count", read_only=True)
+    supervisors = DepartmentSupervisorSerializer(many=True, read_only=True)
 
     class Meta:
         model = Department
-        fields = ["id", "code", "name", "description", "supervisor_count"]
+        fields = ["id", "code", "name", "description", "supervisor_count", "supervisors"]
 
 
 class ProjectTopicAreaSerializer(serializers.ModelSerializer):

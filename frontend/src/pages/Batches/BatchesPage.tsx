@@ -35,6 +35,7 @@ interface Department {
   name: string;
   description: string;
   supervisor_count: number;
+  supervisors?: SupervisorItem[];
 }
 
 interface SupervisorItem {
@@ -49,6 +50,8 @@ interface SupervisorItem {
   research_interest: string;
   user_full_name?: string;
   username?: string;
+  email?: string;
+  topic_areas?: Array<{ id: number; code: string; name: string }>;
 }
 
 export const BatchesPage: React.FC = () => {
@@ -147,6 +150,24 @@ export const BatchesPage: React.FC = () => {
   const [deptName, setDeptName] = useState('');
   const [deptDesc, setDeptDesc] = useState('');
 
+  // Edit Department Modal
+  const [editingDept, setEditingDept] = useState<Department | null>(null);
+  const [editDeptCode, setEditDeptCode] = useState('');
+  const [editDeptName, setEditDeptName] = useState('');
+  const [editDeptDesc, setEditDeptDesc] = useState('');
+
+  // View Supervisors of Department Modal
+  const [selectedDeptForSupervisors, setSelectedDeptForSupervisors] = useState<Department | null>(null);
+  const [deptSupervisorSearch, setDeptSupervisorSearch] = useState('');
+  const [deptSupervisorTitleFilter, setDeptSupervisorTitleFilter] = useState<'ALL' | 'GS_PGS' | 'TS' | 'THS'>('ALL');
+  const [deptSearch, setDeptSearch] = useState('');
+
+  // Quick Assign Supervisor to Dept Modal
+  const [showAssignSupervisorModal, setShowAssignSupervisorModal] = useState(false);
+  const [targetDeptForAssign, setTargetDeptForAssign] = useState<Department | null>(null);
+  const [selectedAssignSupervisorId, setSelectedAssignSupervisorId] = useState<number | ''>('');
+  const [assigningLoading, setAssigningLoading] = useState(false);
+
   // Edit Supervisor Modal
   const [editingSupervisor, setEditingSupervisor] = useState<SupervisorItem | null>(null);
   const [supTitle, setSupTitle] = useState('');
@@ -219,8 +240,10 @@ export const BatchesPage: React.FC = () => {
         if (u.supervisor_profile) {
           supList.push({
             ...u.supervisor_profile,
-            user_full_name: u.full_name || u.username,
-            username: u.username
+            user_full_name: u.full_name || u.supervisor_profile.user_full_name || u.username,
+            username: u.username,
+            email: u.email || u.supervisor_profile.email || '',
+            topic_areas: u.supervisor_profile.topic_areas || []
           });
         }
       });
@@ -554,6 +577,139 @@ export const BatchesPage: React.FC = () => {
       fetchDepartments();
     } catch (err: any) {
       showToast('❌ Lỗi tạo bộ môn: ' + (err.response?.data?.detail || err.message), 'error');
+    }
+  };
+
+  const getSupervisorsForDept = (dept: Department): SupervisorItem[] => {
+    if (dept.supervisors && Array.isArray(dept.supervisors) && dept.supervisors.length > 0) {
+      return dept.supervisors;
+    }
+    return supervisors.filter((s) => {
+      if (s.department_obj && s.department_obj === dept.id) return true;
+      if (s.department_code && s.department_code.trim().toUpperCase() === dept.code.trim().toUpperCase()) return true;
+      if (s.department_name && dept.name && s.department_name.trim().toLowerCase() === dept.name.trim().toLowerCase()) return true;
+      return false;
+    });
+  };
+
+  const formatDeptName = (code: string, originalName: string) => {
+    const c = (code || '').toUpperCase().trim();
+    if (c === 'CNPM') return 'Bộ môn Công nghệ Phần mềm';
+    if (c === 'HTTT') return 'Bộ môn Hệ thống Thông tin';
+    if (c === 'KHMT') return 'Bộ môn Khoa học Máy tính & Mạng máy tính';
+    if (c === 'MMT') return 'Bộ môn Mạng Máy tính & ATTT';
+    if (c === 'ATTT') return 'Bộ môn An toàn Thông tin';
+    return originalName || `Bộ môn ${code}`;
+  };
+
+  const getDeptColorTheme = (code: string) => {
+    const c = (code || '').toUpperCase().trim();
+    if (c === 'CNPM') return { badgeClass: 'dept-badge-cnpm', accentBorder: '#0284c7', icon: '💻' };
+    if (c === 'HTTT') return { badgeClass: 'dept-badge-httt', accentBorder: '#059669', icon: '🗄️' };
+    if (c === 'KHMT') return { badgeClass: 'dept-badge-khmt', accentBorder: '#7c3aed', icon: '🧠' };
+    if (c === 'MMT') return { badgeClass: 'dept-badge-mmt', accentBorder: '#d97706', icon: '🌐' };
+    return { badgeClass: 'dept-badge-default', accentBorder: '#4f46e5', icon: '🏢' };
+  };
+
+  const exportDeptSupervisorsToCSV = (dept: Department, list: SupervisorItem[]) => {
+    const headers = ['STT', 'Mã Giảng Viên', 'Họ Và Tên', 'Học Vị / Chức Danh', 'Bộ Môn', 'Email', 'Điện Thoại', 'Hệ Số Capacity', 'Hướng Nghiên Cứu'];
+    const rows = list.map((s, idx) => [
+      idx + 1,
+      s.supervisor_id || '',
+      `"${(s.user_full_name || s.username || '').replace(/"/g, '""')}"`,
+      s.academic_title || '',
+      `"${formatDeptName(dept.code, dept.name).replace(/"/g, '""')}"`,
+      (s as any).email || '',
+      s.phone_number || '',
+      s.academic_rank_multiplier || '1.0',
+      `"${(s.research_interest || '').replace(/"/g, '""')}"`,
+    ]);
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Danh_sach_GV_${dept.code}_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleOpenEditDept = (dept: Department, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setEditingDept(dept);
+    setEditDeptCode(dept.code);
+    setEditDeptName(dept.name);
+    setEditDeptDesc(dept.description || '');
+  };
+
+  const handleSaveEditDept = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDept || !editDeptCode || !editDeptName) return;
+    try {
+      await apiClient.put(`/admin/departments/${editingDept.id}/`, {
+        code: editDeptCode,
+        name: editDeptName,
+        description: editDeptDesc,
+      });
+      showToast(`✓ Đã cập nhật bộ môn "${editDeptCode}" thành công!`, 'success');
+      setEditingDept(null);
+      fetchDepartments();
+      fetchSupervisors();
+    } catch (err: any) {
+      showToast('❌ Lỗi cập nhật bộ môn: ' + (err.response?.data?.detail || err.message), 'error');
+    }
+  };
+
+  const handleDeleteDept = async (dept: Department, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const count = dept.supervisor_count || getSupervisorsForDept(dept).length;
+    if (count > 0) {
+      if (!confirm(`Bộ môn "${dept.name}" (${dept.code}) đang có ${count} giảng viên trực thuộc. Nếu xóa, các giảng viên này sẽ ở trạng thái chưa thuộc bộ môn. Bạn vẫn muốn tiếp tục xóa?`)) {
+        return;
+      }
+    } else {
+      if (!confirm(`Bạn có chắc chắn muốn xóa bộ môn "${dept.name}" (${dept.code})?`)) {
+        return;
+      }
+    }
+    try {
+      await apiClient.delete(`/admin/departments/${dept.id}/`);
+      showToast(`✓ Đã xóa bộ môn ${dept.code} thành công!`, 'success');
+      fetchDepartments();
+      if (selectedDeptForSupervisors?.id === dept.id) {
+        setSelectedDeptForSupervisors(null);
+      }
+    } catch (err: any) {
+      showToast('❌ Lỗi xóa bộ môn: ' + (err.response?.data?.detail || err.message), 'error');
+    }
+  };
+
+  const handleOpenAssignSupervisor = (dept: Department, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setTargetDeptForAssign(dept);
+    setSelectedAssignSupervisorId('');
+    setShowAssignSupervisorModal(true);
+  };
+
+  const handleSaveAssignSupervisor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!targetDeptForAssign || !selectedAssignSupervisorId) return;
+    try {
+      setAssigningLoading(true);
+      await apiClient.patch(`/admin/supervisors/${selectedAssignSupervisorId}/profile/`, {
+        department_id: targetDeptForAssign.id,
+      });
+      showToast(`✓ Đã gán giảng viên vào ${formatDeptName(targetDeptForAssign.code, targetDeptForAssign.name)} thành công!`, 'success');
+      setShowAssignSupervisorModal(false);
+      setSelectedAssignSupervisorId('');
+      await fetchSupervisors();
+      await fetchDepartments();
+    } catch (err: any) {
+      showToast('❌ Lỗi gán giảng viên: ' + (err.response?.data?.detail || err.message), 'error');
+    } finally {
+      setAssigningLoading(false);
     }
   };
 
@@ -1406,36 +1562,262 @@ export const BatchesPage: React.FC = () => {
         )}
 
         {/* TAB 2: DEPARTMENTS */}
-        {activeTab === 'departments' && (
-          <div className="utc-dept-section">
-            <div className="utc-batches-header-bar">
-              <div className="utc-batches-header-info">
-                <h3>Thiết Lập Quan Hệ Khoa – Bộ Môn – Giảng Viên (Bước 6)</h3>
-                <p>Quản lý các bộ môn chuyên môn trực thuộc Khoa CNTT phục vụ phân chia đề tài & hội đồng</p>
-              </div>
-              <button onClick={() => setShowDeptModal(true)} className="utc-btn-primary">
-                <span>➕</span> Thêm Bộ Môn Mới
-              </button>
-            </div>
+        {activeTab === 'departments' && (() => {
+          const filteredDepartments = departments.filter((d) => {
+            if (!deptSearch.trim()) return true;
+            const q = deptSearch.toLowerCase().trim();
+            const formatted = formatDeptName(d.code, d.name).toLowerCase();
+            const matchesDept = (d.name || '').toLowerCase().includes(q) || (d.code || '').toLowerCase().includes(q) || (d.description || '').toLowerCase().includes(q) || formatted.includes(q);
+            if (matchesDept) return true;
+            const sups = getSupervisorsForDept(d);
+            return sups.some((s) => (s.user_full_name || s.username || '').toLowerCase().includes(q) || (s.supervisor_id || '').toLowerCase().includes(q));
+          });
 
-            <div className="utc-dept-grid">
-              {departments.length === 0 ? (
-                <div className="utc-empty-box">Chưa có bộ môn nào. Hãy thêm bộ môn mới.</div>
-              ) : (
-                departments.map((dept) => (
-                  <div key={dept.id} className="utc-dept-card">
-                    <div className="utc-dept-head">
-                      <span className="utc-dept-code">{dept.code}</span>
-                      <span className="utc-dept-count">👨‍🏫 {dept.supervisor_count || 0} Giảng viên</span>
-                    </div>
-                    <h4>{dept.name}</h4>
-                    <p>{dept.description || 'Chuyên ngành kỹ thuật thuộc Khoa CNTT UTC.'}</p>
+          const totalAssignedSupervisors = departments.reduce((sum, d) => sum + (d.supervisor_count || getSupervisorsForDept(d).length), 0);
+          const pgsTotal = supervisors.filter(s => (s.academic_title || '').toUpperCase().includes('PGS') || (s.academic_title || '').toUpperCase().includes('GS')).length;
+          const tsTotal = supervisors.filter(s => (s.academic_title || '').toUpperCase().includes('TS') && !(s.academic_title || '').toUpperCase().includes('PGS')).length;
+          const thsTotal = supervisors.filter(s => (s.academic_title || '').toUpperCase().includes('THS')).length;
+          const sortedDepts = [...departments].sort((a, b) => (b.supervisor_count || getSupervisorsForDept(b).length) - (a.supervisor_count || getSupervisorsForDept(a).length));
+          const largestDept = sortedDepts[0];
+
+          return (
+            <div className="utc-dept-section">
+              {/* Header bar */}
+              <div className="utc-batches-header-bar">
+                <div className="utc-batches-header-info">
+                  <h3>Thiết Lập Quan Hệ Khoa – Bộ Môn – Giảng Viên (Bước 6)</h3>
+                  <p>Quản lý các bộ môn chuyên môn trực thuộc Khoa CNTT phục vụ phân chia đề tài & hội đồng</p>
+                </div>
+                <div className="utc-dept-actions">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      fetchDepartments();
+                      fetchSupervisors();
+                      showToast('✓ Đã cập nhật và đồng bộ dữ liệu bộ môn!', 'info');
+                    }}
+                    className="utc-btn-cancel"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                    title="Tải lại danh sách bộ môn & giảng viên"
+                  >
+                    <span>🔄</span> Làm Mới
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowDeptModal(true)}
+                    className="utc-btn-primary"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <span>➕</span> Thêm Bộ Môn Mới
+                  </button>
+                </div>
+              </div>
+
+              {/* Overview Banner KPIs */}
+              <div className="utc-dept-overview-banner">
+                <div className="utc-dept-kpi-card">
+                  <div className="utc-dept-kpi-icon kpi-blue">🏢</div>
+                  <div className="utc-dept-kpi-info">
+                    <span className="utc-dept-kpi-label">Tổng Số Bộ Môn</span>
+                    <span className="utc-dept-kpi-val">{departments.length}</span>
+                    <span className="utc-dept-kpi-sub">Trực thuộc Khoa CNTT</span>
                   </div>
-                ))
-              )}
+                </div>
+
+                <div className="utc-dept-kpi-card">
+                  <div className="utc-dept-kpi-icon kpi-emerald">👨‍🏫</div>
+                  <div className="utc-dept-kpi-info">
+                    <span className="utc-dept-kpi-label">Giảng Viên Đã Gán</span>
+                    <span className="utc-dept-kpi-val">{totalAssignedSupervisors}</span>
+                    <span className="utc-dept-kpi-sub">Trên tổng số {supervisors.length} GV toàn khoa</span>
+                  </div>
+                </div>
+
+                <div className="utc-dept-kpi-card">
+                  <div className="utc-dept-kpi-icon kpi-purple">🎓</div>
+                  <div className="utc-dept-kpi-info">
+                    <span className="utc-dept-kpi-label">Cơ Cấu Học Vị GV</span>
+                    <span className="utc-dept-kpi-val" style={{ fontSize: '1.15rem' }}>
+                      {pgsTotal} PGS • {tsTotal} TS
+                    </span>
+                    <span className="utc-dept-kpi-sub">
+                      và {thsTotal} ThS đang giảng dạy
+                    </span>
+                  </div>
+                </div>
+
+                <div className="utc-dept-kpi-card">
+                  <div className="utc-dept-kpi-icon kpi-amber">⚡</div>
+                  <div className="utc-dept-kpi-info">
+                    <span className="utc-dept-kpi-label">Bộ Môn Lớn Nhất</span>
+                    <span className="utc-dept-kpi-val" style={{ fontSize: '1.25rem' }}>
+                      {largestDept ? `${largestDept.code} (${largestDept.supervisor_count || getSupervisorsForDept(largestDept).length} GV)` : '---'}
+                    </span>
+                    <span className="utc-dept-kpi-sub">Quy mô nhân sự lớn nhất</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Toolbar */}
+              <div className="utc-dept-toolbar">
+                <div className="utc-dept-search-box">
+                  <span className="utc-dept-search-icon">🔍</span>
+                  <input
+                    type="text"
+                    placeholder="Tìm kiếm bộ môn theo tên, mã viết tắt, mô tả hoặc giảng viên..."
+                    value={deptSearch}
+                    onChange={(e) => setDeptSearch(e.target.value)}
+                  />
+                </div>
+                <div style={{ fontSize: '0.84rem', color: '#64748b', fontWeight: 600 }}>
+                  Hiển thị {filteredDepartments.length} / {departments.length} Bộ Môn
+                </div>
+              </div>
+
+              {/* Department Cards Grid */}
+              <div className="utc-dept-grid">
+                {filteredDepartments.length === 0 ? (
+                  <div className="utc-empty-box" style={{ gridColumn: '1 / -1' }}>
+                    {deptSearch.trim()
+                      ? `Không tìm thấy bộ môn nào khớp với từ khóa "${deptSearch}".`
+                      : 'Chưa có bộ môn nào. Hãy bấm "Thêm Bộ Môn Mới" ở trên để khởi tạo.'}
+                  </div>
+                ) : (
+                  filteredDepartments.map((dept) => {
+                    const deptSupervisors = getSupervisorsForDept(dept);
+                    const supCount = dept.supervisor_count || deptSupervisors.length;
+                    const theme = getDeptColorTheme(dept.code);
+                    const formattedName = formatDeptName(dept.code, dept.name);
+
+                    // Count academic ranks
+                    const pgsCount = deptSupervisors.filter(s => (s.academic_title || '').toUpperCase().includes('PGS') || (s.academic_title || '').toUpperCase().includes('GS')).length;
+                    const tsCount = deptSupervisors.filter(s => (s.academic_title || '').toUpperCase().includes('TS') && !(s.academic_title || '').toUpperCase().includes('PGS')).length;
+                    const thsCount = deptSupervisors.filter(s => (s.academic_title || '').toUpperCase().includes('THS')).length;
+
+                    return (
+                      <div key={dept.id} className="utc-dept-card">
+                        {/* Top Accent Stripe */}
+                        <div
+                          className="utc-dept-accent-stripe"
+                          style={{ background: theme.accentBorder }}
+                        />
+
+                        <div className="utc-dept-card-body">
+                          {/* Header: Code & Lecturer count */}
+                          <div className="utc-dept-head">
+                            <span className={`utc-dept-code ${theme.badgeClass}`}>
+                              <span>{theme.icon}</span>
+                              <span>{dept.code}</span>
+                            </span>
+                            <span className={`utc-dept-count ${supCount > 0 ? 'pill-has-lecturers' : 'pill-no-lecturers'}`}>
+                              <span>👨‍🏫</span>
+                              <span>{supCount} Giảng viên</span>
+                            </span>
+                          </div>
+
+                          {/* Title & Subtitle */}
+                          <h4 className="utc-dept-title-text" title={formattedName}>
+                            {formattedName}
+                          </h4>
+                          <div className="utc-dept-subtitle">
+                            <span>🏛️</span> Khoa CNTT - UTC
+                          </div>
+
+                          {/* Description */}
+                          <p className="utc-dept-desc-text" title={dept.description || 'Chuyên ngành kỹ thuật thuộc Khoa CNTT UTC.'}>
+                            {dept.description || 'Chuyên ngành kỹ thuật và hướng nghiên cứu chuyên sâu thuộc Khoa CNTT UTC.'}
+                          </p>
+
+                          {/* Preview row: Lecturer avatars + Ranks */}
+                          <div className="utc-dept-preview-row">
+                            <div className="utc-dept-avatar-stack">
+                              {deptSupervisors.slice(0, 4).map((s, idx) => {
+                                const title = s.academic_title || 'GV';
+                                const name = s.user_full_name || s.username || '';
+                                const initial = name.split(' ').pop()?.[0] || 'G';
+                                const colors = ['#0284c7', '#7c3aed', '#059669', '#d97706'];
+                                return (
+                                  <div
+                                    key={s.id || idx}
+                                    className="utc-dept-avatar-chip"
+                                    style={{ background: colors[idx % colors.length] }}
+                                    title={`${title} ${name}`}
+                                  >
+                                    {initial}
+                                  </div>
+                                );
+                              })}
+                              {deptSupervisors.length > 4 && (
+                                <div className="utc-dept-avatar-more">
+                                  +{deptSupervisors.length - 4}
+                                </div>
+                              )}
+                              {deptSupervisors.length === 0 && (
+                                <span style={{ fontSize: '0.74rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                                  Chưa có GV
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="utc-dept-rank-chips">
+                              {pgsCount > 0 && <span className="utc-dept-rank-chip" style={{ background: '#fef3c7', color: '#92400e' }}>PGS: {pgsCount}</span>}
+                              {tsCount > 0 && <span className="utc-dept-rank-chip" style={{ background: '#e0f2fe', color: '#0369a1' }}>TS: {tsCount}</span>}
+                              {thsCount > 0 && <span className="utc-dept-rank-chip" style={{ background: '#ecfdf5', color: '#047857' }}>ThS: {thsCount}</span>}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Card Footer Actions */}
+                        <div className="utc-dept-card-footer">
+                          <button
+                            type="button"
+                            className="utc-btn-view-supervisors"
+                            onClick={() => {
+                              setSelectedDeptForSupervisors(dept);
+                              setDeptSupervisorSearch('');
+                              setDeptSupervisorTitleFilter('ALL');
+                            }}
+                          >
+                            <span>👥</span>
+                            <span>Xem Danh Sách Giảng Viên</span>
+                            <span>→</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            className="utc-dept-icon-btn"
+                            onClick={(e) => handleOpenAssignSupervisor(dept, e)}
+                            title="Gán thêm giảng viên vào bộ môn này"
+                          >
+                            ➕
+                          </button>
+
+                          <button
+                            type="button"
+                            className="utc-dept-icon-btn"
+                            onClick={(e) => handleOpenEditDept(dept, e)}
+                            title="Chỉnh sửa thông tin bộ môn"
+                          >
+                            ✏️
+                          </button>
+
+                          <button
+                            type="button"
+                            className="utc-dept-icon-btn danger"
+                            onClick={(e) => handleDeleteDept(dept, e)}
+                            title="Xóa bộ môn"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* TAB 3: SUPERVISORS */}
         {activeTab === 'supervisors' && (
@@ -2160,6 +2542,352 @@ export const BatchesPage: React.FC = () => {
                 <div className="utc-modal-foot">
                   <button type="button" onClick={() => setShowDeptModal(false)} className="utc-btn-cancel">Hủy</button>
                   <button type="submit" className="utc-btn-primary">Lưu Bộ Môn</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: EDIT DEPARTMENT */}
+        {editingDept && (
+          <div className="utc-modal-backdrop" onClick={() => setEditingDept(null)}>
+            <div className="utc-modal-card" onClick={(e) => e.stopPropagation()}>
+              <div className="utc-modal-head">
+                <h4>✏️ Chỉnh Sửa Bộ Môn: {formatDeptName(editingDept.code, editingDept.name)}</h4>
+                <button onClick={() => setEditingDept(null)} className="utc-btn-close">✕</button>
+              </div>
+              <form onSubmit={handleSaveEditDept}>
+                <div className="utc-form-group">
+                  <label>Mã Bộ Môn:</label>
+                  <input
+                    type="text"
+                    required
+                    value={editDeptCode}
+                    onChange={(e) => setEditDeptCode(e.target.value)}
+                    className="utc-input"
+                  />
+                </div>
+                <div className="utc-form-group">
+                  <label>Tên Bộ Môn:</label>
+                  <input
+                    type="text"
+                    required
+                    value={editDeptName}
+                    onChange={(e) => setEditDeptName(e.target.value)}
+                    className="utc-input"
+                  />
+                </div>
+                <div className="utc-form-group">
+                  <label>Mô tả chuyên môn:</label>
+                  <textarea
+                    rows={3}
+                    value={editDeptDesc}
+                    onChange={(e) => setEditDeptDesc(e.target.value)}
+                    className="utc-input"
+                  />
+                </div>
+                <div className="utc-modal-foot">
+                  <button type="button" onClick={() => setEditingDept(null)} className="utc-btn-cancel">Hủy</button>
+                  <button type="submit" className="utc-btn-primary">Lưu Thay Đổi</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: VIEW LECTURERS OF DEPARTMENT */}
+        {selectedDeptForSupervisors && (() => {
+          const activeDeptSupervisors = getSupervisorsForDept(selectedDeptForSupervisors);
+          const filteredDeptSupervisors = activeDeptSupervisors.filter((s) => {
+            if (deptSupervisorTitleFilter === 'GS_PGS') {
+              const t = (s.academic_title || '').toUpperCase();
+              if (!t.includes('PGS') && !t.includes('GS')) return false;
+            } else if (deptSupervisorTitleFilter === 'TS') {
+              const t = (s.academic_title || '').toUpperCase();
+              if (!t.includes('TS') || t.includes('PGS')) return false;
+            } else if (deptSupervisorTitleFilter === 'THS') {
+              const t = (s.academic_title || '').toUpperCase();
+              if (!t.includes('THS')) return false;
+            }
+
+            if (!deptSupervisorSearch.trim()) return true;
+            const q = deptSupervisorSearch.toLowerCase().trim();
+            return (
+              (s.user_full_name || s.username || '').toLowerCase().includes(q) ||
+              (s.supervisor_id || '').toLowerCase().includes(q) ||
+              (s.academic_title || '').toLowerCase().includes(q) ||
+              ((s as any).email || '').toLowerCase().includes(q) ||
+              (s.phone_number || '').toLowerCase().includes(q) ||
+              (s.research_interest || '').toLowerCase().includes(q)
+            );
+          });
+
+          return (
+            <div className="utc-dept-modal-backdrop" onClick={() => setSelectedDeptForSupervisors(null)}>
+              <div className="utc-dept-modal-container" onClick={(e) => e.stopPropagation()}>
+                {/* Header */}
+                <div className="utc-dept-modal-header">
+                  <div className="utc-dept-modal-title-group">
+                    <div className="utc-dept-modal-badge-row">
+                      <span className="utc-dept-modal-code-badge">
+                        {selectedDeptForSupervisors.code}
+                      </span>
+                      <span style={{ fontSize: '0.8rem', opacity: 0.9 }}>
+                        Khoa Công nghệ Thông tin - UTC
+                      </span>
+                    </div>
+                    <h3 className="utc-dept-modal-title">
+                      Danh Sách Giảng Viên — {formatDeptName(selectedDeptForSupervisors.code, selectedDeptForSupervisors.name)}
+                    </h3>
+                    <p className="utc-dept-modal-subtitle">
+                      Tổng số {activeDeptSupervisors.length} giảng viên đang công tác và tham gia hướng dẫn đồ án tốt nghiệp
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDeptForSupervisors(null)}
+                    className="utc-dept-modal-close-btn"
+                    title="Đóng"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Sub Toolbar: Search + Title Filters + Actions */}
+                <div className="utc-dept-modal-toolbar">
+                  <div className="utc-dept-search-box" style={{ maxWidth: '340px' }}>
+                    <span className="utc-dept-search-icon">🔍</span>
+                    <input
+                      type="text"
+                      placeholder="Tìm tên GV, mã GV, email, SĐT, hướng NC..."
+                      value={deptSupervisorSearch}
+                      onChange={(e) => setDeptSupervisorSearch(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="utc-dept-modal-filter-pills">
+                    <button
+                      type="button"
+                      className={`utc-dept-filter-pill ${deptSupervisorTitleFilter === 'ALL' ? 'active' : ''}`}
+                      onClick={() => setDeptSupervisorTitleFilter('ALL')}
+                    >
+                      Tất cả ({activeDeptSupervisors.length})
+                    </button>
+                    <button
+                      type="button"
+                      className={`utc-dept-filter-pill ${deptSupervisorTitleFilter === 'GS_PGS' ? 'active' : ''}`}
+                      onClick={() => setDeptSupervisorTitleFilter('GS_PGS')}
+                    >
+                      GS / PGS ({activeDeptSupervisors.filter(s => (s.academic_title || '').toUpperCase().includes('PGS') || (s.academic_title || '').toUpperCase().includes('GS')).length})
+                    </button>
+                    <button
+                      type="button"
+                      className={`utc-dept-filter-pill ${deptSupervisorTitleFilter === 'TS' ? 'active' : ''}`}
+                      onClick={() => setDeptSupervisorTitleFilter('TS')}
+                    >
+                      Tiến sĩ ({activeDeptSupervisors.filter(s => (s.academic_title || '').toUpperCase().includes('TS') && !(s.academic_title || '').toUpperCase().includes('PGS')).length})
+                    </button>
+                    <button
+                      type="button"
+                      className={`utc-dept-filter-pill ${deptSupervisorTitleFilter === 'THS' ? 'active' : ''}`}
+                      onClick={() => setDeptSupervisorTitleFilter('THS')}
+                    >
+                      Thạc sĩ ({activeDeptSupervisors.filter(s => (s.academic_title || '').toUpperCase().includes('THS')).length})
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => exportDeptSupervisorsToCSV(selectedDeptForSupervisors, filteredDeptSupervisors)}
+                      className="utc-btn-cancel"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', padding: '0.45rem 0.8rem' }}
+                      title="Xuất file CSV danh sách giảng viên"
+                    >
+                      <span>📥</span> Xuất Excel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAssignSupervisor(selectedDeptForSupervisors)}
+                      className="utc-btn-primary"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', padding: '0.45rem 0.8rem' }}
+                    >
+                      <span>➕</span> Gán Giảng Viên
+                    </button>
+                  </div>
+                </div>
+
+                {/* Body: List of Supervisors */}
+                <div className="utc-dept-modal-body">
+                  {filteredDeptSupervisors.length === 0 ? (
+                    <div className="utc-dept-empty-box">
+                      <div className="utc-dept-empty-icon">🧑‍🏫</div>
+                      <div className="utc-dept-empty-title">
+                        {activeDeptSupervisors.length === 0
+                          ? `Bộ môn "${formatDeptName(selectedDeptForSupervisors.code, selectedDeptForSupervisors.name)}" hiện chưa có giảng viên nào.`
+                          : 'Không tìm thấy giảng viên nào khớp với bộ lọc tìm kiếm.'}
+                      </div>
+                      <p className="utc-dept-empty-desc">
+                        {activeDeptSupervisors.length === 0
+                          ? 'Bạn có thể gán các giảng viên từ danh sách toàn khoa vào bộ môn này để phân chia đề tài và hội đồng.'
+                          : 'Vui lòng thử tìm kiếm với từ khóa khác hoặc bấm "Tất cả" trên bộ lọc học vị.'}
+                      </p>
+                      {activeDeptSupervisors.length === 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAssignSupervisor(selectedDeptForSupervisors)}
+                          className="utc-btn-primary"
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', margin: '0 auto' }}
+                        >
+                          <span>➕</span> Gán Giảng Viên Vào Bộ Môn Ngay
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <table className="utc-dept-sup-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: '50px' }}>STT</th>
+                          <th>Giảng Viên</th>
+                          <th style={{ width: '130px' }}>Học Vị</th>
+                          <th>Thông Tin Liên Hệ</th>
+                          <th style={{ width: '130px' }}>Hệ Số Capacity</th>
+                          <th>Hướng Nghiên Cứu</th>
+                          <th style={{ width: '100px', textAlign: 'center' }}>Thao Tác</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredDeptSupervisors.map((s, idx) => {
+                          const titleUpper = (s.academic_title || '').toUpperCase();
+                          let tagClass = 'tag-ths';
+                          if (titleUpper.includes('PGS') || titleUpper.includes('GS')) tagClass = 'tag-pgs';
+                          else if (titleUpper.includes('TS')) tagClass = 'tag-ts';
+
+                          const colors = ['#0284c7', '#7c3aed', '#059669', '#d97706', '#ec4899'];
+                          const initial = (s.user_full_name || s.username || '').split(' ').pop()?.[0] || 'G';
+
+                          return (
+                            <tr key={s.id || idx}>
+                              <td style={{ color: '#64748b', fontWeight: 600 }}>{idx + 1}</td>
+                              <td>
+                                <div className="utc-sup-name-cell">
+                                  <div
+                                    className="utc-sup-avatar-circle"
+                                    style={{ background: colors[idx % colors.length] }}
+                                  >
+                                    {initial}
+                                  </div>
+                                  <div className="utc-sup-name-info">
+                                    <span className="utc-sup-fullname">{s.user_full_name || s.username}</span>
+                                    <span className="utc-sup-code">Mã GV: {s.supervisor_id || 'N/A'}</span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td>
+                                <span className={`utc-academic-tag ${tagClass}`}>
+                                  {s.academic_title || 'ThS'}
+                                </span>
+                              </td>
+                              <td>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.8rem' }}>
+                                  {(s as any).email && (
+                                    <span style={{ color: '#0284c7' }}>
+                                      ✉️ {(s as any).email}
+                                    </span>
+                                  )}
+                                  <span style={{ color: '#64748b' }}>
+                                    📞 {s.phone_number || 'Chưa cập nhật'}
+                                  </span>
+                                </div>
+                              </td>
+                              <td>
+                                <span style={{ fontWeight: 700, color: '#0f172a', background: '#f1f5f9', padding: '3px 8px', borderRadius: '6px' }}>
+                                  {s.academic_rank_multiplier ? `${s.academic_rank_multiplier}x` : '1.0x'}
+                                </span>
+                              </td>
+                              <td>
+                                <div style={{ maxWidth: '240px', fontSize: '0.8rem', color: '#475569' }}>
+                                  {s.research_interest ? (
+                                    <span title={s.research_interest}>
+                                      {s.research_interest.length > 50 ? `${s.research_interest.slice(0, 50)}...` : s.research_interest}
+                                    </span>
+                                  ) : (
+                                    <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Chưa cập nhật</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                <button
+                                  type="button"
+                                  className="utc-dept-icon-btn"
+                                  onClick={() => handleOpenEditSupervisor(s)}
+                                  title="Chỉnh sửa học vị, hệ số và chuyên ngành của GV"
+                                >
+                                  ✏️
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                {/* Modal Footer */}
+                <div className="utc-dept-modal-footer">
+                  <div style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                    Hiển thị <strong>{filteredDeptSupervisors.length}</strong> / {activeDeptSupervisors.length} giảng viên của bộ môn
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDeptForSupervisors(null)}
+                    className="utc-btn-cancel"
+                  >
+                    Đóng
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* MODAL: ASSIGN SUPERVISOR TO DEPARTMENT */}
+        {showAssignSupervisorModal && targetDeptForAssign && (
+          <div className="utc-modal-backdrop" onClick={() => setShowAssignSupervisorModal(false)}>
+            <div className="utc-modal-card" onClick={(e) => e.stopPropagation()}>
+              <div className="utc-modal-head">
+                <h4>➕ Gán Giảng Viên Vào {formatDeptName(targetDeptForAssign.code, targetDeptForAssign.name)}</h4>
+                <button onClick={() => setShowAssignSupervisorModal(false)} className="utc-btn-close">✕</button>
+              </div>
+              <form onSubmit={handleSaveAssignSupervisor}>
+                <div className="utc-form-group">
+                  <label>Chọn Giảng Viên:</label>
+                  <select
+                    required
+                    value={selectedAssignSupervisorId}
+                    onChange={(e) => setSelectedAssignSupervisorId(e.target.value ? Number(e.target.value) : '')}
+                    className="utc-input"
+                  >
+                    <option value="">-- Chọn giảng viên từ danh sách toàn khoa --</option>
+                    {supervisors.map((s) => {
+                      const curDeptName = s.department_name || departments.find(d => d.id === s.department_obj)?.name || 'Chưa gán bộ môn';
+                      return (
+                        <option key={s.id} value={s.id}>
+                          {s.academic_title || 'ThS'} {s.user_full_name || s.username} ({s.supervisor_id}) — [Hiện tại: {curDeptName}]
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+                <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '0.5rem 0 1rem 0' }}>
+                  * Lưu ý: Giảng viên được chọn sẽ được phân công trực thuộc Bộ môn <strong>{formatDeptName(targetDeptForAssign.code, targetDeptForAssign.name)} ({targetDeptForAssign.code})</strong>.
+                </p>
+                <div className="utc-modal-foot">
+                  <button type="button" onClick={() => setShowAssignSupervisorModal(false)} className="utc-btn-cancel">Hủy</button>
+                  <button type="submit" className="utc-btn-primary" disabled={assigningLoading || !selectedAssignSupervisorId}>
+                    {assigningLoading ? 'Đang lưu...' : 'Xác Nhận Gán'}
+                  </button>
                 </div>
               </form>
             </div>
