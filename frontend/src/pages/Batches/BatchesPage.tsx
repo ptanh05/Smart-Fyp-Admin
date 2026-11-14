@@ -1036,7 +1036,12 @@ export const BatchesPage: React.FC = () => {
                               e.stopPropagation();
                               setSelectedBatchId(batch.id);
                               localStorage.setItem('utc_selected_batch_id', String(batch.id));
-                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                              const mainEl = document.querySelector('.admin-main-content');
+                              if (mainEl) {
+                                mainEl.scrollTo({ top: 0, behavior: 'smooth' });
+                              } else {
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                              }
                             }}
                             aria-pressed={isSelected}
                           >
