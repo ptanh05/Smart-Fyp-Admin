@@ -51,10 +51,40 @@
   justify-content: flex-end;
 }
 
+.utc-batch-config-modal {
+  width: min(1180px, calc(100vw - 2rem));
+  max-width: 1180px;
+  max-height: calc(100vh - 2rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.utc-batch-config-body {
+  padding: 1.25rem;
+  overflow: auto;
+}
+
+.utc-batch-config-body .utc-classes-section {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+}
+
 @media (max-width: 900px) {
   .utc-classes-header .utc-batches-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .utc-batch-config-modal {
+    width: calc(100vw - 1rem);
+    max-height: calc(100vh - 1rem);
+  }
+
+  .utc-batch-config-body {
+    padding: 0.75rem;
   }
 }
 
