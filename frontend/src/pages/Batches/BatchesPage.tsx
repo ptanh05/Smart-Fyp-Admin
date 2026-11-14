@@ -54,6 +54,27 @@ interface SupervisorItem {
   topic_areas?: Array<{ id: number; code: string; name: string }>;
 }
 
+const getBatchStageInfo = (stage: string) => {
+  switch (stage) {
+    case 'PHASE_1_SETUP':
+      return { step: 1, label: 'GĐ 1: Khởi tạo đợt', color: '#b45309', bg: '#fef3c7', border: '#fde68a' };
+    case 'PHASE_2_ALLOCATING':
+      return { step: 2, label: 'GĐ 2: Phân công GVHD', color: '#0369a1', bg: '#e0f2fe', border: '#bae6fd' };
+    case 'PHASE_3_TOPIC':
+      return { step: 3, label: 'GĐ 3: Đề tài & Đề cương', color: '#4338ca', bg: '#e0e7ff', border: '#c7d2fe' };
+    case 'PHASE_4_WEEKLY':
+      return { step: 4, label: 'GĐ 4: Báo cáo tuần', color: '#6d28d9', bg: '#ede9fe', border: '#ddd6fe' };
+    case 'PHASE_5_REVIEW':
+      return { step: 5, label: 'GĐ 5: Phản biện đồ án', color: '#be185d', bg: '#fce7f3', border: '#fbcfe8' };
+    case 'PHASE_6_DEFENSE':
+      return { step: 6, label: 'GĐ 6: Bảo vệ hội đồng', color: '#047857', bg: '#d1fae5', border: '#a7f3d0' };
+    case 'COMPLETED':
+      return { step: 6, label: 'Đã hoàn thành', color: '#475569', bg: '#f1f5f9', border: '#cbd5e1' };
+    default:
+      return { step: 1, label: stage || 'Đang thực hiện', color: '#0369a1', bg: '#e0f2fe', border: '#bae6fd' };
+  }
+};
+
 export const BatchesPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'batches' | 'archived' | 'departments' | 'supervisors'>('batches');
   const [batches, setBatches] = useState<AcademicBatch[]>([]);
@@ -926,106 +947,151 @@ export const BatchesPage: React.FC = () => {
               </div>
             ) : (
               <div className="utc-batches-grid">
-                {activeBatches.map((batch) => (
-                  <div
-                    key={batch.id}
-                    onClick={() => {
-                      setSelectedBatchId(batch.id);
-                      localStorage.setItem('utc_selected_batch_id', String(batch.id));
-                    }}
-                    className={`utc-batch-card ${selectedBatchId === batch.id ? 'selected' : ''}`}
-                  >
-                    <div className="utc-batch-card-head">
-                      <div>
-                        <span className="utc-batch-code-tag">{batch.batch_code}</span>
-                        <span className={`utc-prog-tag prog-${batch.program_type.toLowerCase()}`}>
-                          {batch.program_type === 'ENGINEER' ? '⚙️ Kỹ Sư' : batch.program_type === 'BACHELOR' ? '🎓 Cử Nhân' : '🔄 Cả Hai'}
+                {activeBatches.map((batch) => {
+                  const stageInfo = getBatchStageInfo(batch.current_stage);
+                  const isSelected = selectedBatchId === batch.id;
+                  return (
+                    <div
+                      key={batch.id}
+                      onClick={() => {
+                        setSelectedBatchId(batch.id);
+                        localStorage.setItem('utc_selected_batch_id', String(batch.id));
+                      }}
+                      className={`utc-batch-card ${isSelected ? 'selected' : ''}`}
+                    >
+                      {/* Header: Code, Program Type, Status Pill */}
+                      <div className="utc-batch-card-head">
+                        <div className="utc-batch-tags-row">
+                          <span className="utc-batch-code-tag">{batch.batch_code}</span>
+                          <span className={`utc-prog-tag prog-${batch.program_type.toLowerCase()}`}>
+                            {batch.program_type === 'ENGINEER' ? '⚙️ Kỹ Sư' : batch.program_type === 'BACHELOR' ? '🎓 Cử Nhân' : '🔄 Cả Hai'}
+                          </span>
+                        </div>
+                        <span className={`utc-status-pill ${batch.current_stage === 'PHASE_1_SETUP' ? 'pill-amber' : 'pill-green'}`}>
+                          <span className="utc-status-dot"></span>
+                          {batch.current_stage === 'PHASE_1_SETUP' ? 'Đang thiết lập' : 'Đang mở'}
                         </span>
                       </div>
-                      <span className={`utc-status-pill ${batch.current_stage === 'PHASE_1_SETUP' ? '' : 'pill-green'}`}>
-                        {batch.current_stage === 'PHASE_1_SETUP' ? '🟡 Đang thiết lập' : '🟢 Đang mở'}
-                      </span>
-                    </div>
 
-                    <h4 className="utc-batch-name">{batch.batch_name}</h4>
-                    <div className="utc-batch-stage-text">
-                      <strong>Vòng đời:</strong> {batch.current_stage}
-                    </div>
+                      {/* Title */}
+                      <div className="utc-batch-title-row">
+                        <h4 className="utc-batch-card-title" title={batch.batch_name}>
+                          {batch.batch_name}
+                        </h4>
+                        {isSelected && (
+                          <span className="utc-batch-selected-indicator" title="Đang chọn theo dõi">
+                            ✓ Đang chọn
+                          </span>
+                        )}
+                      </div>
 
-                    <div className="utc-batch-stats">
-                      <div className="utc-stat-item">
-                        <span className="utc-stat-label">Sinh viên</span>
-                        <span className="utc-stat-value">{batch.student_count || 0}</span>
+                      {/* Stage Progress Stepper (6 UTC Stages) */}
+                      <div className="utc-batch-stage-box">
+                        <div className="utc-stage-meta">
+                          <span className="utc-stage-label">Vòng đời:</span>
+                          <span
+                            className="utc-stage-badge"
+                            style={{ color: stageInfo.color, backgroundColor: stageInfo.bg, borderColor: stageInfo.border }}
+                          >
+                            {stageInfo.label}
+                          </span>
+                        </div>
+                        <div className="utc-stage-stepper" title={`Tiến độ đợt: Giai đoạn ${stageInfo.step}/6`}>
+                          {[1, 2, 3, 4, 5, 6].map((s) => (
+                            <div
+                              key={s}
+                              className={`utc-stage-step-bar ${s < stageInfo.step ? 'done' : s === stageInfo.step ? 'active' : ''}`}
+                              title={`Giai đoạn ${s}`}
+                            />
+                          ))}
+                        </div>
                       </div>
-                      <div className="utc-stat-item">
-                        <span className="utc-stat-label">Lớp học phần</span>
-                        <span className="utc-stat-value">{batch.classes?.length || 0}</span>
-                      </div>
-                      <div className="utc-stat-item">
-                        <span className="utc-stat-label">Đề tài đồ án</span>
-                        <span className="utc-stat-value">{batch.project_count || 0}</span>
-                      </div>
-                    </div>
 
-                    <div className="utc-batch-footer">
-                      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                        <button
-                          type="button"
-                          className="utc-btn-track-batch"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedBatchId(batch.id);
-                            localStorage.setItem('utc_selected_batch_id', String(batch.id));
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                          }}
-                          aria-pressed={selectedBatchId === batch.id}
-                        >
-                          {selectedBatchId === batch.id ? '✓ Đang theo dõi' : '👁 Theo dõi tiến trình'}
-                        </button>
-                        <button
-                          type="button"
-                          className="utc-btn-primary"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedBatchId(batch.id);
-                            setBatchDetailTab('students');
-                            setShowBatchConfigModal(true);
-                            localStorage.setItem('utc_selected_batch_id', String(batch.id));
-                          }}
-                        >
-                          ⚙️ Cấu hình đợt
-                        </button>
+                      {/* Key Metrics Grid: Sinh viên, Lớp học phần, Đề tài đồ án */}
+                      <div className="utc-batch-metrics-grid">
+                        <div className="utc-metric-item">
+                          <span className="utc-metric-icon">👥</span>
+                          <span className="utc-metric-value">{batch.student_count || 0}</span>
+                          <span className="utc-metric-label">Sinh viên</span>
+                        </div>
+                        <div className="utc-metric-item">
+                          <span className="utc-metric-icon">📚</span>
+                          <span className="utc-metric-value">{batch.classes?.length || 0}</span>
+                          <span className="utc-metric-label">Lớp học phần</span>
+                        </div>
+                        <div className="utc-metric-item">
+                          <span className="utc-metric-icon">📋</span>
+                          <span className="utc-metric-value">{batch.project_count || 0}</span>
+                          <span className="utc-metric-label">Đề tài đồ án</span>
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                        {batch.current_stage === 'PHASE_1_SETUP' && (
+
+                      {/* Footer Actions */}
+                      <div className="utc-batch-card-footer">
+                        <div className="utc-batch-actions-primary">
+                          <button
+                            type="button"
+                            className={`utc-btn-track-batch ${isSelected ? 'is-active' : ''}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedBatchId(batch.id);
+                              localStorage.setItem('utc_selected_batch_id', String(batch.id));
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                            aria-pressed={isSelected}
+                          >
+                            <span>{isSelected ? '✓' : '👁'}</span>
+                            <span>{isSelected ? 'Đang theo dõi' : 'Theo dõi tiến trình'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="utc-btn-config-batch"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedBatchId(batch.id);
+                              setBatchDetailTab('students');
+                              setShowBatchConfigModal(true);
+                              localStorage.setItem('utc_selected_batch_id', String(batch.id));
+                            }}
+                          >
+                            <span>⚙️</span>
+                            <span>Cấu hình đợt</span>
+                          </button>
+                        </div>
+
+                        <div className="utc-batch-actions-secondary">
+                          {batch.current_stage === 'PHASE_1_SETUP' && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenBatch(batch.id);
+                              }}
+                              className="utc-btn-open-batch"
+                              disabled={(batch.student_count || 0) === 0}
+                              title={(batch.student_count || 0) === 0
+                                ? 'Phải thêm hoặc import sinh viên trước khi mở đợt'
+                                : 'Mở đợt cho sinh viên đăng ký nguyện vọng'}
+                            >
+                              <span>{(batch.student_count || 0) === 0 ? '🔒' : '🔓'}</span>
+                              <span>{(batch.student_count || 0) === 0 ? 'Chưa có SV' : 'Mở đợt (OPEN)'}</span>
+                            </button>
+                          )}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleOpenBatch(batch.id);
+                              handleCloseBatch(batch.id);
                             }}
-                            className="utc-btn-open-batch"
-                            disabled={(batch.student_count || 0) === 0}
-                            title={(batch.student_count || 0) === 0
-                              ? 'Phải thêm hoặc import sinh viên trước khi mở đợt'
-                              : 'Mở đợt cho sinh viên đăng ký nguyện vọng'}
+                            className="utc-btn-close-batch"
+                            title="Kết thúc đợt đồ án này và chuyển vào kho lưu trữ"
                           >
-                            {(batch.student_count || 0) === 0 ? '🔒 Chưa có sinh viên' : '🔓 Mở đợt (OPEN)'}
+                            <span>🔒</span>
+                            <span>Kết thúc đợt</span>
                           </button>
-                        )}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleCloseBatch(batch.id);
-                          }}
-                          className="utc-btn-close-batch"
-                          title="Kết thúc đợt đồ án này và chuyển vào kho lưu trữ"
-                        >
-                          Kết thúc đợt
-                        </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
@@ -1352,73 +1418,85 @@ export const BatchesPage: React.FC = () => {
               </div>
             ) : (
               <div className="utc-batches-grid">
-                {archivedBatches.map((batch) => (
-                  <div
-                    key={batch.id}
-                    onClick={() => {
-                      setSelectedBatchId(batch.id);
-                      localStorage.setItem('utc_selected_batch_id', String(batch.id));
-                    }}
-                    className={`utc-batch-card ${selectedBatchId === batch.id ? 'selected' : ''}`}
-                    style={{
-                      borderLeft: selectedBatchId === batch.id ? '4px solid #003366' : '1px solid #cbd5e1',
-                      background: selectedBatchId === batch.id ? '#f8fafc' : '#ffffff',
-                    }}
-                  >
-                    <div className="utc-batch-card-head">
-                      <div>
-                        <span className="utc-batch-code-tag">{batch.batch_code}</span>
-                        <span className={`utc-prog-tag prog-${batch.program_type.toLowerCase()}`}>
-                          {batch.program_type === 'ENGINEER' ? '⚙️ Kỹ Sư' : batch.program_type === 'BACHELOR' ? '🎓 Cử Nhân' : '🔄 Cả Hai'}
+                {archivedBatches.map((batch) => {
+                  const isSelected = selectedBatchId === batch.id;
+                  return (
+                    <div
+                      key={batch.id}
+                      onClick={() => {
+                        setSelectedBatchId(batch.id);
+                        localStorage.setItem('utc_selected_batch_id', String(batch.id));
+                      }}
+                      className={`utc-batch-card is-archived ${isSelected ? 'selected' : ''}`}
+                    >
+                      <div className="utc-batch-card-head">
+                        <div className="utc-batch-tags-row">
+                          <span className="utc-batch-code-tag">{batch.batch_code}</span>
+                          <span className={`utc-prog-tag prog-${batch.program_type.toLowerCase()}`}>
+                            {batch.program_type === 'ENGINEER' ? '⚙️ Kỹ Sư' : batch.program_type === 'BACHELOR' ? '🎓 Cử Nhân' : '🔄 Cả Hai'}
+                          </span>
+                        </div>
+                        <span className="utc-status-pill pill-gray">
+                          <span className="utc-status-dot dot-gray"></span>
+                          Đã kết thúc
                         </span>
                       </div>
-                      <span className="utc-status-pill pill-gray" style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1' }}>
-                        🔒 Đã kết thúc
-                      </span>
-                    </div>
 
-                    <h4 className="utc-batch-name">{batch.batch_name}</h4>
-                    <div className="utc-batch-stage-text">
-                      <strong>Trạng thái lưu trữ:</strong> <span style={{ color: '#64748b', fontWeight: 600 }}>Hoàn tất (COMPLETED)</span>
-                    </div>
+                      <div className="utc-batch-title-row">
+                        <h4 className="utc-batch-card-title">{batch.batch_name}</h4>
+                        {isSelected && (
+                          <span className="utc-batch-selected-indicator">
+                            ✓ Đang chọn
+                          </span>
+                        )}
+                      </div>
 
-                    <div className="utc-batch-stats">
-                      <div className="utc-stat-item">
-                        <span className="utc-stat-label">Sinh viên</span>
-                        <span className="utc-stat-value">{batch.student_count || 0}</span>
+                      <div className="utc-batch-stage-box">
+                        <div className="utc-stage-meta">
+                          <span className="utc-stage-label">Trạng thái:</span>
+                          <span className="utc-stage-badge badge-archived">
+                            Hoàn tất bảo vệ (COMPLETED)
+                          </span>
+                        </div>
+                        <div className="utc-stage-stepper" title="Đợt đã hoàn tất tất cả 6 giai đoạn">
+                          {[1, 2, 3, 4, 5, 6].map((s) => (
+                            <div key={s} className="utc-stage-step-bar done" />
+                          ))}
+                        </div>
                       </div>
-                      <div className="utc-stat-item">
-                        <span className="utc-stat-label">Lớp học phần</span>
-                        <span className="utc-stat-value">{batch.classes?.length || 0}</span>
-                      </div>
-                      <div className="utc-stat-item">
-                        <span className="utc-stat-label">Đề tài đồ án</span>
-                        <span className="utc-stat-value">{batch.project_count || 0}</span>
-                      </div>
-                    </div>
 
-                    <div className="utc-batch-footer" style={{ borderTop: '1px solid #e2e8f0', paddingTop: '0.85rem', marginTop: '0.85rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Nhấp để xem hồ sơ lưu trữ</span>
-                      <button
-                        type="button"
-                        onClick={(e) => handleReopenBatch(batch.id, e)}
-                        style={{
-                          background: '#eff6ff',
-                          border: '1px solid #bfdbfe',
-                          padding: '0.35rem 0.65rem',
-                          borderRadius: '6px',
-                          fontSize: '0.78rem',
-                          fontWeight: 600,
-                          color: '#1d4ed8',
-                          cursor: 'pointer',
-                        }}
-                        title="Mở lại đợt đồ án vào danh sách hoạt động"
-                      >
-                        🔄 Mở lại đợt
-                      </button>
+                      <div className="utc-batch-metrics-grid">
+                        <div className="utc-metric-item">
+                          <span className="utc-metric-icon">👥</span>
+                          <span className="utc-metric-value">{batch.student_count || 0}</span>
+                          <span className="utc-metric-label">Sinh viên</span>
+                        </div>
+                        <div className="utc-metric-item">
+                          <span className="utc-metric-icon">📚</span>
+                          <span className="utc-metric-value">{batch.classes?.length || 0}</span>
+                          <span className="utc-metric-label">Lớp học phần</span>
+                        </div>
+                        <div className="utc-metric-item">
+                          <span className="utc-metric-icon">📋</span>
+                          <span className="utc-metric-value">{batch.project_count || 0}</span>
+                          <span className="utc-metric-label">Đề tài đồ án</span>
+                        </div>
+                      </div>
+
+                      <div className="utc-batch-card-footer archive-footer">
+                        <span className="utc-archive-hint">📄 Bấm xem hồ sơ lưu trữ</span>
+                        <button
+                          type="button"
+                          onClick={(e) => handleReopenBatch(batch.id, e)}
+                          className="utc-btn-reopen-batch"
+                          title="Mở lại đợt đồ án vào danh sách hoạt động"
+                        >
+                          🔄 Mở lại đợt
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
