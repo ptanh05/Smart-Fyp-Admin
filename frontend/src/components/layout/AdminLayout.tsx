@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../../auth/AdminAuthContext';
 import './AdminLayout.css';
@@ -137,6 +137,16 @@ const NAV_ITEMS: NavItem[] = [
 export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { logout, userType, currentUser } = useAdminAuth();
   const navigate = useNavigate();
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  const toggleGroup = (groupKey: string) => {
+    setCollapsedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(groupKey)) next.delete(groupKey);
+      else next.add(groupKey);
+      return next;
+    });
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -167,10 +177,19 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
           {NAV_GROUPS.map((group) => {
             const items = visibleNavItems.filter((item) => item.group === group.key);
             if (items.length === 0) return null;
+            const isCollapsed = collapsedGroups.has(group.key);
             return (
-              <section className="admin-nav-group" key={group.key}>
-                <div className="admin-nav-group-title">{group.label}</div>
-                <div className="admin-nav-group-items">
+              <section className={`admin-nav-group ${isCollapsed ? 'collapsed' : ''}`} key={group.key}>
+                <button
+                  type="button"
+                  className="admin-nav-group-title"
+                  onClick={() => toggleGroup(group.key)}
+                  aria-expanded={!isCollapsed}
+                >
+                  <span>{group.label}</span>
+                  <span className="admin-nav-group-chevron">{isCollapsed ? '▸' : '▾'}</span>
+                </button>
+                {!isCollapsed && <div className="admin-nav-group-items">
                   {items.map((item) => (
                     <NavLink
                       key={item.to}
@@ -181,7 +200,7 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
                       <span>{item.label}</span>
                     </NavLink>
                   ))}
-                </div>
+                </div>}
               </section>
             );
           })}

@@ -52,12 +52,33 @@
 }
 
 .admin-nav-group-title {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 0.25rem 0.55rem 0.55rem;
+  border: 0;
+  background: transparent;
   color: #64748b;
   font-size: 0.68rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  cursor: pointer;
+  text-align: left;
+}
+
+.admin-nav-group-title:hover {
+  color: #cbd5e1;
+}
+
+.admin-nav-group-chevron {
+  font-size: 0.9rem;
+  transition: transform 0.2s ease;
+}
+
+.admin-nav-group.collapsed .admin-nav-group-title {
+  padding-bottom: 0.25rem;
 }
 
 .admin-nav-group-items {
