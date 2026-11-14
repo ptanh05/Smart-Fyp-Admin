@@ -69,6 +69,9 @@ export const BatchesPage: React.FC = () => {
   const [quotas, setQuotas] = useState<any[]>([]);
   const [quotasLoading, setQuotasLoading] = useState(false);
   const [quotaSearch, setQuotaSearch] = useState('');
+  const [showSupervisorPicker, setShowSupervisorPicker] = useState(false);
+  const [selectedSupervisorIds, setSelectedSupervisorIds] = useState<number[]>([]);
+  const [savingSupervisors, setSavingSupervisors] = useState(false);
 
   // Toast Notification State
   const [toast, setToast] = useState<{ show: boolean; type: 'success' | 'error' | 'info'; message: string } | null>(null);
@@ -279,6 +282,33 @@ export const BatchesPage: React.FC = () => {
       fetchQuotas(selectedBatchId!);
     } catch (err: any) {
       showToast('❌ Lỗi cập nhật quota: ' + (err.response?.data?.detail || err.message), 'error');
+    }
+  };
+
+  const openSupervisorPicker = () => {
+    setSelectedSupervisorIds(quotas.map((quota) => Number(quota.supervisor)));
+    setShowSupervisorPicker(true);
+  };
+
+  const handleSaveBatchSupervisors = async () => {
+    if (!selectedBatchId) return;
+    if (selectedSupervisorIds.length === 0) {
+      showToast('Vui lòng chọn ít nhất một giảng viên tham gia đợt.', 'error');
+      return;
+    }
+    try {
+      setSavingSupervisors(true);
+      const res = await apiClient.post('/admin/quotas/', {
+        batch_id: selectedBatchId,
+        supervisor_ids: selectedSupervisorIds,
+      });
+      setQuotas(Array.isArray(res.data) ? res.data : []);
+      setShowSupervisorPicker(false);
+      showToast(`✓ Đã cập nhật ${selectedSupervisorIds.length} giảng viên tham gia đợt.`, 'success');
+    } catch (err: any) {
+      showToast('❌ Không thể cập nhật giảng viên: ' + (err.response?.data?.detail || err.message), 'error');
+    } finally {
+      setSavingSupervisors(false);
     }
   };
 
@@ -592,15 +622,28 @@ export const BatchesPage: React.FC = () => {
 
   const handleOpenBatch = async (batchId: number, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    const batch = batches.find((item) => item.id === batchId);
+    if (!batch || (batch.student_count || 0) === 0) {
+      showToast('❌ Không thể mở đợt khi chưa có sinh viên. Hãy thêm hoặc import sinh viên trước.', 'error');
+      return;
+    }
+    let batchQuotas = batchId === selectedBatchId ? quotas : [];
+    if (batchId !== selectedBatchId) {
+      try {
+        const quotaRes = await apiClient.get(`/admin/quotas/?batch_id=${batchId}`);
+        batchQuotas = Array.isArray(quotaRes.data) ? quotaRes.data : [];
+      } catch {
+        batchQuotas = [];
+      }
+    }
+    if (batchQuotas.length === 0) {
+      setSelectedBatchId(batchId);
+      setBatchDetailTab('supervisors');
+      showToast('❌ Hãy chọn ít nhất một giảng viên tham gia đợt trước khi mở.', 'error');
+      return;
+    }
     if (!confirm('Mở đợt cho sinh viên đăng ký nguyện vọng ngay bây giờ?')) return;
     try {
-      setBatches((prev) =>
-        prev.map((b) =>
-          b.id === batchId
-            ? { ...b, is_closed: false, is_active: true, current_stage: 'PHASE_2_ALLOCATING' }
-            : b
-        )
-      );
       const res = await apiClient.post(`/admin/batches/${batchId}/open/`);
       showToast(res.data?.message || '✓ Đã MỞ đợt. Sinh viên có thể đăng ký nguyện vọng!', 'success');
       fetchBatches();
@@ -741,8 +784,8 @@ export const BatchesPage: React.FC = () => {
                           {batch.program_type === 'ENGINEER' ? '⚙️ Kỹ Sư' : batch.program_type === 'BACHELOR' ? '🎓 Cử Nhân' : '🔄 Cả Hai'}
                         </span>
                       </div>
-                      <span className="utc-status-pill pill-green">
-                        🟢 Đang mở
+                      <span className={`utc-status-pill ${batch.current_stage === 'PHASE_1_SETUP' ? '' : 'pill-green'}`}>
+                        {batch.current_stage === 'PHASE_1_SETUP' ? '🟡 Đang thiết lập' : '🟢 Đang mở'}
                       </span>
                     </div>
 
@@ -788,9 +831,12 @@ export const BatchesPage: React.FC = () => {
                               handleOpenBatch(batch.id);
                             }}
                             className="utc-btn-open-batch"
-                            title="Mở đợt cho sinh viên đăng ký nguyện vọng"
+                            disabled={(batch.student_count || 0) === 0}
+                            title={(batch.student_count || 0) === 0
+                              ? 'Phải thêm hoặc import sinh viên trước khi mở đợt'
+                              : 'Mở đợt cho sinh viên đăng ký nguyện vọng'}
                           >
-                            🔓 Mở đợt (OPEN)
+                            {(batch.student_count || 0) === 0 ? '🔒 Chưa có sinh viên' : '🔓 Mở đợt (OPEN)'}
                           </button>
                         )}
                         <button
@@ -893,6 +939,9 @@ export const BatchesPage: React.FC = () => {
                       <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
                         Hiển thị <strong>{filteredQuotas.length}</strong> / {quotas.length} giảng viên
                       </span>
+                      <button type="button" className="utc-btn-primary" onClick={openSupervisorPicker}>
+                        <span>👨‍🏫➕</span> Chọn Giảng Viên Vào Đợt
+                      </button>
                     </div>
 
                     <div
@@ -917,7 +966,7 @@ export const BatchesPage: React.FC = () => {
                         <div style={{ fontSize: '1.6rem', marginBottom: '0.3rem' }}>👨‍🏫</div>
                         <div style={{ fontWeight: 600, color: '#1e293b' }}>Chưa có giảng viên nào trong đợt này.</div>
                         <p style={{ color: '#64748b', fontSize: '0.85rem', margin: '0.3rem 0 0' }}>
-                          Truy cập tab <strong>Học Vị &amp; Hướng Nghiên Cứu GV</strong> hoặc gọi API quota để nạp giảng viên.
+                          Nhấn <strong>Chọn Giảng Viên Vào Đợt</strong> để thêm giảng viên và cấu hình quota.
                         </p>
                       </div>
                     ) : (
@@ -1426,6 +1475,79 @@ export const BatchesPage: React.FC = () => {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: SELECT SUPERVISORS FOR THE CURRENT BATCH */}
+        {showSupervisorPicker && selectedBatchId && (
+          <div className="utc-modal-backdrop">
+            <div className="utc-modal-card" style={{ maxWidth: '760px' }}>
+              <div className="utc-modal-head">
+                <div>
+                  <h4>👨‍🏫 Chọn Giảng Viên Vào Đợt ĐATN</h4>
+                  <p style={{ margin: '0.25rem 0 0', color: '#64748b', fontSize: '0.85rem' }}>
+                    {currBatch?.batch_code} — {currBatch?.batch_name}
+                  </p>
+                </div>
+                <button onClick={() => setShowSupervisorPicker(false)} className="utc-btn-close">✕</button>
+              </div>
+              <div style={{ padding: '1rem 1.25rem', maxHeight: '55vh', overflowY: 'auto' }}>
+                {supervisors.length === 0 ? (
+                  <div className="utc-empty-box">Chưa có giảng viên đang hoạt động để lựa chọn.</div>
+                ) : (
+                  <div style={{ display: 'grid', gap: '0.6rem' }}>
+                    {supervisors.map((supervisor) => {
+                      const checked = selectedSupervisorIds.includes(supervisor.id);
+                      return (
+                        <label
+                          key={supervisor.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                            padding: '0.75rem',
+                            border: `1px solid ${checked ? '#38bdf8' : '#e2e8f0'}`,
+                            borderRadius: '10px',
+                            background: checked ? '#f0f9ff' : '#fff',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => setSelectedSupervisorIds((current) =>
+                              checked
+                                ? current.filter((id) => id !== supervisor.id)
+                                : [...current, supervisor.id]
+                            )}
+                          />
+                          <div style={{ flex: 1 }}>
+                            <strong>{supervisor.academic_title || ''} {supervisor.user_full_name || supervisor.username}</strong>
+                            <div style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '0.15rem' }}>
+                              {supervisor.supervisor_id} · {supervisor.department_name || 'Khoa CNTT'}
+                            </div>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className="utc-modal-actions">
+                <span style={{ marginRight: 'auto', color: '#475569', fontWeight: 600 }}>
+                  Đã chọn: {selectedSupervisorIds.length} giảng viên
+                </span>
+                <button type="button" onClick={() => setShowSupervisorPicker(false)} className="utc-btn-cancel">Hủy</button>
+                <button
+                  type="button"
+                  onClick={handleSaveBatchSupervisors}
+                  className="utc-btn-primary"
+                  disabled={savingSupervisors || selectedSupervisorIds.length === 0}
+                >
+                  {savingSupervisors ? 'Đang lưu...' : 'Lưu Giảng Viên Vào Đợt'}
+                </button>
+              </div>
             </div>
           </div>
         )}

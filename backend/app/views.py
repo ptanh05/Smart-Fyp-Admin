@@ -1081,6 +1081,20 @@ class OpenBatchAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        student_count = batch.students.count()
+        if student_count == 0:
+            return Response(
+                {"detail": "Không thể mở đợt khi chưa có sinh viên. Hãy thêm thủ công hoặc import sinh viên vào đợt trước."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        supervisor_count = batch.supervisor_quotas.count()
+        if supervisor_count == 0:
+            return Response(
+                {"detail": "Không thể mở đợt khi chưa chọn giảng viên tham gia. Hãy chọn ít nhất một giảng viên cho đợt trước."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         batch.is_active = True
         batch.is_closed = False
         if batch.current_stage == "PHASE_1_SETUP":
@@ -1259,32 +1273,68 @@ class SupervisorQuotaListUpdateAPIView(APIView):
 
     def get(self, request):
         batch_id = request.query_params.get("batch_id")
-        if batch_id:
-            batch = AcademicBatch.objects.filter(id=batch_id).first()
-            if batch and not SupervisorQuota.objects.filter(batch=batch).exists():
-                active_supervisors = Supervisor.objects.filter(user__is_active=True).select_related('user')
-                for sup in active_supervisors:
-                    mult = sup.academic_rank_multiplier or 1.0
-                    base_quota = 5
-                    max_q = int(round(base_quota * mult))
-                    SupervisorQuota.objects.get_or_create(
-                        supervisor=sup,
-                        batch=batch,
-                        defaults={
-                            "department": sup.department_name or "",
-                            "base_quota": base_quota,
-                            "rank_multiplier": mult,
-                            "max_total_quota": max_q,
-                            "general_cntt_quota": max_q,
-                            "viet_anh_quota": 2 if sup.is_eligible_for_engineer() else 0,
-                            "current_assigned": 0
-                        }
-                    )
         quotas = SupervisorQuota.objects.all().select_related("supervisor__user")
         if batch_id:
             quotas = quotas.filter(batch_id=batch_id)
         serializer = SupervisorQuotaSerializer(quotas, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        batch_id = request.data.get("batch_id")
+        supervisor_ids = request.data.get("supervisor_ids")
+        if not batch_id or not isinstance(supervisor_ids, list):
+            return Response(
+                {"detail": "batch_id và supervisor_ids (danh sách) là bắt buộc."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        batch = get_object_or_404(AcademicBatch, pk=batch_id)
+        requested_ids = {int(value) for value in supervisor_ids}
+        supervisors = list(
+            Supervisor.objects.filter(id__in=requested_ids, user__is_active=True).select_related("user")
+        )
+        found_ids = {supervisor.id for supervisor in supervisors}
+        missing_ids = sorted(requested_ids - found_ids)
+        if missing_ids:
+            return Response(
+                {"detail": f"Giảng viên không tồn tại hoặc đã bị khóa: {missing_ids}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        existing = SupervisorQuota.objects.filter(batch=batch)
+        removable = existing.exclude(supervisor_id__in=requested_ids)
+        if removable.filter(current_assigned__gt=0).exists():
+            return Response(
+                {"detail": "Không thể bỏ giảng viên đã được phân công sinh viên trong đợt."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        removable.delete()
+
+        for supervisor in supervisors:
+            multiplier = supervisor.academic_rank_multiplier or 1.0
+            base_quota = 5
+            max_quota = int(round(base_quota * multiplier))
+            SupervisorQuota.objects.get_or_create(
+                supervisor=supervisor,
+                batch=batch,
+                defaults={
+                    "department": supervisor.department_name or "",
+                    "base_quota": base_quota,
+                    "rank_multiplier": multiplier,
+                    "max_total_quota": max_quota,
+                    "general_cntt_quota": max_quota,
+                    "viet_anh_quota": 2 if supervisor.is_eligible_for_engineer() else 0,
+                    "current_assigned": 0,
+                },
+            )
+
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="admin_user_update",
+            description=f"Selected {len(supervisors)} supervisors for batch {batch.batch_code}.",
+        )
+        quotas = SupervisorQuota.objects.filter(batch=batch).select_related("supervisor__user")
+        return Response(SupervisorQuotaSerializer(quotas, many=True).data, status=status.HTTP_200_OK)
 
     def put(self, request):
         quotas_data = request.data
