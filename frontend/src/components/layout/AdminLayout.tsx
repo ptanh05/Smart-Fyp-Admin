@@ -25,6 +25,8 @@ const NAV_GROUPS = [
   { key: 'system', label: 'Hệ thống & Bảo mật' },
 ] as const;
 
+const COLLAPSED_GROUPS_STORAGE_KEY = 'smart_fyp_admin_collapsed_nav_groups';
+
 const NAV_ITEMS: NavItem[] = [
   {
     to: '/dashboard',
@@ -137,13 +139,22 @@ const NAV_ITEMS: NavItem[] = [
 export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { logout, userType, currentUser } = useAdminAuth();
   const navigate = useNavigate();
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem(COLLAPSED_GROUPS_STORAGE_KEY);
+      const values = saved ? JSON.parse(saved) : [];
+      return new Set(Array.isArray(values) ? values : []);
+    } catch {
+      return new Set();
+    }
+  });
 
   const toggleGroup = (groupKey: string) => {
     setCollapsedGroups((current) => {
       const next = new Set(current);
       if (next.has(groupKey)) next.delete(groupKey);
       else next.add(groupKey);
+      localStorage.setItem(COLLAPSED_GROUPS_STORAGE_KEY, JSON.stringify(Array.from(next)));
       return next;
     });
   };
