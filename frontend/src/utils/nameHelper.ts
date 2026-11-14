@@ -82,7 +82,12 @@ export const COMMON_GIVEN_OR_MIDDLE_NAMES = new Set([
   'phong', 'phương', 'phuong', 'quân', 'quan', 'quang', 'sơn', 'son',
   'thắng', 'thang', 'thanh', 'thảo', 'thao', 'thu', 'trang', 'trung',
   'tuấn', 'tuan', 'tùng', 'tung', 'anh', 'khải', 'khai', 'phúc', 'phuc',
-  'ngân', 'ngan', 'hà', 'ha', 'bách', 'bach', 'tiến', 'tien', 'đạt', 'dat'
+  'ngân', 'ngan', 'hà', 'ha', 'bách', 'bach', 'tiến', 'tien', 'đạt', 'dat',
+  'vy', 'nhi', 'nhung', 'bảo', 'bao', 'đăng', 'dang', 'luyên', 'luyen',
+  'sao', 'thông', 'thong', 'thủy', 'thuy', 'duy', 'kiên', 'kien',
+  'hậu', 'hau', 'hiếu', 'hieu', 'lâm', 'lam', 'mai', 'lan', 'hoa',
+  'hồng', 'hong', 'nga', 'huyền', 'huyen', 'loan', 'hạnh', 'hanh',
+  'hưng', 'hung', 'hoan', 'huấn', 'huan'
 ]);
 
 // Regex nhận diện học hàm, học vị ở đầu chuỗi (PGS.TS., GS.TS., ThS., TS., PGS., GS., Dr., Prof...)
@@ -207,8 +212,8 @@ export function formatFullName(
     return normalizeVietnameseFullName(`${ln} ${fn}`);
   }
 
-  // Nếu first_name có từ 2 từ trở lên và last_name là 1 từ:
-  if (fnWords.length > 1 && lnWords.length === 1) {
+  // Nếu first_name có từ 2 từ trở lên và last_name là 1 từ không phải họ:
+  if (fnWords.length > 1 && lnWords.length === 1 && !isVietnameseSurname(lnWords[0])) {
     return normalizeVietnameseFullName(`${fn} ${ln}`);
   }
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/layout/AdminLayout';
 import { apiClient } from '../../api/client';
+import { formatFullName } from '../../utils/nameHelper';
 import './AllocationsPage.css';
 
 interface SupervisorQuota {
@@ -381,7 +382,7 @@ export const AllocationsPage: React.FC = () => {
                               </div>
                             ) : (
                               <div>
-                                <div className="font-semibold">{proj.student_name}</div>
+                                <div className="font-semibold">{formatFullName(proj.student_name)}</div>
                                 <div className="text-xs text-muted">{proj.student_class}</div>
                               </div>
                             )}
@@ -393,9 +394,9 @@ export const AllocationsPage: React.FC = () => {
                           </td>
                           <td>
                             {isOfferedTopic ? (
-                              <span className="font-semibold text-slate-800">{proj.supervisor_name}</span>
+                              <span className="font-semibold text-slate-800">{formatFullName(proj.supervisor_name)}</span>
                             ) : proj.supervisor ? (
-                              <span className="font-semibold text-slate-800">{proj.supervisor_name}</span>
+                              <span className="font-semibold text-slate-800">{formatFullName(proj.supervisor_name)}</span>
                             ) : (
                               <div>
                                 <span className="utc-tag-edu edu-cn" style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a' }}>
@@ -403,7 +404,7 @@ export const AllocationsPage: React.FC = () => {
                                 </span>
                                 {proj.preference_1_name && (
                                   <div className="text-xs text-blue-600 font-medium mt-0.5">
-                                    ⭐ NV1: {proj.preference_1_name}
+                                    ⭐ NV1: {formatFullName(proj.preference_1_name)}
                                   </div>
                                 )}
                               </div>
@@ -459,7 +460,7 @@ export const AllocationsPage: React.FC = () => {
                     {quotas.map((q) => (
                       <tr key={q.id}>
                         <td>
-                          <div className="font-semibold">{q.supervisor_name}</div>
+                          <div className="font-semibold">{formatFullName(q.supervisor_name)}</div>
                           <div className="text-xs text-muted">{q.department || 'Khoa CNTT'}</div>
                         </td>
                         <td>
@@ -489,13 +490,13 @@ export const AllocationsPage: React.FC = () => {
               </div>
               <form onSubmit={handleSaveOverride}>
                 <div className="utc-override-info">
-                  <p>Sinh viên: <strong>{overrideStudent.student_name}</strong> (MSSV: {overrideStudent.student_reg_no})</p>
+                  <p>Sinh viên: <strong>{formatFullName(overrideStudent.student_name)}</strong> (MSSV: {overrideStudent.student_reg_no})</p>
                   <p>Chương trình: <strong>{overrideStudent.education_program === 'ENGINEER' ? 'Kỹ sư (Yêu cầu GVHD tối thiểu TS)' : 'Cử nhân'}</strong></p>
-                  <p>GVHD hiện tại: <strong>{overrideStudent.supervisor_name || 'Chưa phân công'}</strong></p>
+                  <p>GVHD hiện tại: <strong>{formatFullName(overrideStudent.supervisor_name) || 'Chưa phân công'}</strong></p>
                   {overrideStudent.preference_1_name && (
                     <p style={{ fontSize: '0.82rem', color: '#1d4ed8', marginTop: '0.25rem' }}>
-                      💡 Nguyện vọng của SV: <strong>NV1: {overrideStudent.preference_1_name}</strong>
-                      {overrideStudent.preference_2_name ? ` | NV2: ${overrideStudent.preference_2_name}` : ''}
+                      💡 Nguyện vọng của SV: <strong>NV1: {formatFullName(overrideStudent.preference_1_name)}</strong>
+                      {overrideStudent.preference_2_name ? ` | NV2: ${formatFullName(overrideStudent.preference_2_name)}` : ''}
                     </p>
                   )}
                 </div>
@@ -511,7 +512,7 @@ export const AllocationsPage: React.FC = () => {
                     <option value="">-- Chọn giảng viên --</option>
                     {quotas.map((q) => (
                       <option key={q.supervisor} value={q.supervisor}>
-                        {q.supervisor_name} ({q.academic_title || 'ThS'}) - Còn trống: {Math.max(0, q.max_total_quota - q.current_assigned)} chỗ
+                        {formatFullName(q.supervisor_name)} ({q.academic_title || 'ThS'}) - Còn trống: {Math.max(0, q.max_total_quota - q.current_assigned)} chỗ
                       </option>
                     ))}
                   </select>

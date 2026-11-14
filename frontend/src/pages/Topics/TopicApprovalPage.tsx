@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/layout/AdminLayout';
 import { apiClient } from '../../api/client';
+import { formatFullName } from '../../utils/nameHelper';
 import './TopicApprovalPage.css';
 
 interface ProjectTopic {
@@ -378,7 +379,7 @@ export const TopicApprovalPage: React.FC = () => {
                             </div>
                           ) : (
                             <div>
-                              <div className="font-semibold text-slate-900">{p.student_name}</div>
+                              <div className="font-semibold text-slate-900">{formatFullName(p.student_name)}</div>
                               <div className="text-xs text-muted">{p.student_class || 'Khoa CNTT'}</div>
                             </div>
                           )}
@@ -397,7 +398,7 @@ export const TopicApprovalPage: React.FC = () => {
 
                         {/* Supervisor */}
                         <td>
-                          <div className="font-semibold text-slate-900">{p.supervisor_name || 'Chưa phân công'}</div>
+                          <div className="font-semibold text-slate-900">{formatFullName(p.supervisor_name) || 'Chưa phân công'}</div>
                           {isOffered && <div className="text-xs text-muted">Cán bộ đề xuất</div>}
                         </td>
 
@@ -523,7 +524,7 @@ export const TopicApprovalPage: React.FC = () => {
                         <span className="utc-tag-offered">💡 Đề tài gợi ý mở (Chưa có nhóm nhận)</span>
                       ) : (
                         <span className="font-medium text-slate-800">
-                          🎓 Sinh viên: {selectedProject.student_name} ({selectedProject.student_reg_no})
+                          🎓 Sinh viên: {formatFullName(selectedProject.student_name)} ({selectedProject.student_reg_no})
                         </span>
                       )}
                     </span>

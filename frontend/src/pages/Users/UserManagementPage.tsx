@@ -1000,7 +1000,7 @@ export const UserManagementPage: React.FC = () => {
                           <td>
                             {std?.supervisor_name ? (
                               <span className="badge-spv-assigned" title={std.topic_title || 'Đã phân công'}>
-                                <span>👨‍🏫</span> {std.supervisor_name}
+                                <span>👨‍🏫</span> {formatFullName(std.supervisor_name)}
                               </span>
                             ) : (
                               <span className="badge-spv-unassigned">

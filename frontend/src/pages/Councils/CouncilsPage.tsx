@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/layout/AdminLayout';
 import { apiClient } from '../../api/client';
+import { formatFullName } from '../../utils/nameHelper';
 import './CouncilsPage.css';
 
 interface CouncilMember {
@@ -486,7 +487,7 @@ export const CouncilsPage: React.FC = () => {
                       </td>
                       <td className="font-bold">{proj.student_reg_no}</td>
                       <td>
-                        <div className="font-semibold">{proj.student_name}</div>
+                        <div className="font-semibold">{formatFullName(proj.student_name)}</div>
                         <div className="text-xs text-muted">{proj.topic_title_vi}</div>
                       </td>
                       <td>
@@ -501,9 +502,9 @@ export const CouncilsPage: React.FC = () => {
                       <td>
                         <span className="font-bold text-blue-700">{proj.schedule_slot_info?.room || '—'}</span>
                       </td>
-                      <td>{proj.supervisor_name}</td>
+                      <td>{formatFullName(proj.supervisor_name)}</td>
                       <td>
-                        <span className="font-semibold text-purple-700">{proj.reviewer_name || 'Chưa gán GVPB'}</span>
+                        <span className="font-semibold text-purple-700">{formatFullName(proj.reviewer_name) || 'Chưa gán GVPB'}</span>
                       </td>
                       <td>
                         <button onClick={() => handleOpenOverride(proj)} className="utc-btn-override" title="Đổi HĐ hoặc Phản biện">
@@ -707,8 +708,8 @@ export const CouncilsPage: React.FC = () => {
               </div>
               <form onSubmit={handleSaveOverride}>
                 <div className="utc-form-group">
-                  <p>Sinh viên: <strong>{overrideProj.student_name}</strong> ({overrideProj.student_reg_no})</p>
-                  <p>GVHD: <strong>{overrideProj.supervisor_name}</strong> (Ràng buộc: Không được trùng với GVPB)</p>
+                  <p>Sinh viên: <strong>{formatFullName(overrideProj.student_name)}</strong> ({overrideProj.student_reg_no})</p>
+                  <p>GVHD: <strong>{formatFullName(overrideProj.supervisor_name)}</strong> (Ràng buộc: Không được trùng với GVPB)</p>
                 </div>
 
                 <div className="utc-form-group">

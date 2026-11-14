@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AdminLayout } from '../../components/layout/AdminLayout';
 import { apiClient } from '../../api/client';
+import { formatFullName } from '../../utils/nameHelper';
 import './OutlineManagementPage.css';
 
 interface OutlineGroup {
@@ -701,7 +702,7 @@ export const OutlineManagementPage: React.FC = () => {
                           />
                         </td>
                         <td style={{ fontWeight: 700, color: '#0284c7' }}>{r.student_reg_no}</td>
-                        <td style={{ fontWeight: 600, color: '#0f172a' }}>{r.student_name}</td>
+                        <td style={{ fontWeight: 600, color: '#0f172a' }}>{formatFullName(r.student_name)}</td>
                         <td>
                           <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.topic_title}</div>
                           {r.student_class && (
@@ -1022,13 +1023,13 @@ export const OutlineManagementPage: React.FC = () => {
             <form onSubmit={handleSaveDetailedReview} className="utc-modal-form">
               <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '1rem' }}>
                 <p style={{ margin: '0 0 0.4rem 0', fontSize: '0.88rem' }}>
-                  <strong>Sinh viên:</strong> {selectedReview.student_name} ({selectedReview.student_reg_no})
+                  <strong>Sinh viên:</strong> {formatFullName(selectedReview.student_name)} ({selectedReview.student_reg_no})
                 </p>
                 <p style={{ margin: '0 0 0.4rem 0', fontSize: '0.88rem' }}>
                   <strong>Đề tài:</strong> {selectedReview.topic_title}
                 </p>
                 <p style={{ margin: 0, fontSize: '0.88rem' }}>
-                  <strong>GV Hướng dẫn:</strong> {selectedReview.supervisor_name || 'Chưa phân công'}
+                  <strong>GV Hướng dẫn:</strong> {formatFullName(selectedReview.supervisor_name) || 'Chưa phân công'}
                 </p>
               </div>
 

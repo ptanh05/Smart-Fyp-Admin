@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/layout/AdminLayout';
 import { apiClient } from '../../api/client';
+import { formatFullName } from '../../utils/nameHelper';
 import './AcademicStaffPage.css';
 
 interface ProjectEligibility {
@@ -452,7 +453,7 @@ export const AcademicStaffPage: React.FC = () => {
                             <td style={{ color: '#64748b', textAlign: 'center' }}>{idx + 1}</td>
                             <td style={{ fontWeight: 700, color: '#003366' }}>{p.student_reg_no}</td>
                             <td>
-                              <div style={{ fontWeight: 600 }}>{p.student_name}</div>
+                              <div style={{ fontWeight: 600 }}>{formatFullName(p.student_name)}</div>
                               <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{p.topic_title_vi || 'Chưa đăng ký đề tài'}</div>
                             </td>
                             <td>{p.student_class || 'CNTT'}</td>
@@ -662,13 +663,13 @@ export const AcademicStaffPage: React.FC = () => {
                         <tr key={g.project_id}>
                           <td style={{ textAlign: 'center', color: '#64748b' }}>{idx + 1}</td>
                           <td style={{ fontWeight: 700, color: '#003366' }}>{g.registration_no}</td>
-                          <td style={{ fontWeight: 600 }}>{g.student_name}</td>
+                          <td style={{ fontWeight: 600 }}>{formatFullName(g.student_name)}</td>
                           <td>
                             <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>{g.class_code || g.class_name}</span>
                           </td>
                           <td style={{ maxWidth: '280px', fontSize: '0.82rem' }}>{g.topic_title_vi}</td>
-                          <td style={{ fontSize: '0.82rem' }}>{g.supervisor_name || '—'}</td>
-                          <td style={{ fontSize: '0.82rem' }}>{g.reviewer_name || '—'}</td>
+                          <td style={{ fontSize: '0.82rem' }}>{formatFullName(g.supervisor_name) || '—'}</td>
+                          <td style={{ fontSize: '0.82rem' }}>{formatFullName(g.reviewer_name) || '—'}</td>
                           <td style={{ fontSize: '0.82rem' }}>{g.council_name || '—'}</td>
                           <td style={{ textAlign: 'center', fontWeight: 600 }}>{g.supervisor_score !== null ? g.supervisor_score : '—'}</td>
                           <td style={{ textAlign: 'center', fontWeight: 600 }}>{g.reviewer_score !== null ? g.reviewer_score : '—'}</td>
@@ -765,7 +766,7 @@ export const AcademicStaffPage: React.FC = () => {
               <form onSubmit={handleForceApproveSubmit}>
                 <div className="utc-modal-body">
                   <div style={{ background: '#eff6ff', padding: '0.85rem', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.86rem' }}>
-                    <strong>Sinh viên:</strong> {forceProject.student_name} ({forceProject.student_reg_no})<br />
+                    <strong>Sinh viên:</strong> {formatFullName(forceProject.student_name)} ({forceProject.student_reg_no})<br />
                     <strong>Tín chỉ nợ hiện tại:</strong> <span style={{ color: '#dc2626', fontWeight: 700 }}>{forceProject.debt_credits} TC</span> (&ge; 10 TC quy định)<br />
                     <strong>Đề tài:</strong> {forceProject.topic_title_vi || 'Chưa đăng ký'}
                   </div>
@@ -863,10 +864,10 @@ export const AcademicStaffPage: React.FC = () => {
                         <tr key={g.project_id}>
                           <td style={{ textAlign: 'center' }}>{i + 1}</td>
                           <td style={{ fontWeight: 'bold' }}>{g.registration_no}</td>
-                          <td>{g.student_name}</td>
+                          <td>{formatFullName(g.student_name)}</td>
                           <td>{g.class_code}</td>
                           <td style={{ fontSize: '0.78rem' }}>{g.topic_title_vi}</td>
-                          <td>{g.supervisor_name}</td>
+                          <td>{formatFullName(g.supervisor_name)}</td>
                           <td style={{ textAlign: 'center' }}>{g.supervisor_score ?? '—'}</td>
                           <td style={{ textAlign: 'center' }}>{g.reviewer_score ?? '—'}</td>
                           <td style={{ textAlign: 'center' }}>{g.council_avg_score ?? '—'}</td>

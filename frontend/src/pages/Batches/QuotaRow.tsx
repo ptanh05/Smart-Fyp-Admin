@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { formatFullName } from '../../utils/nameHelper';
 
 interface QuotaItem {
   id: number;
@@ -47,7 +48,7 @@ export const QuotaRow: React.FC<Props> = ({ quota, onSave }) => {
   return (
     <tr>
       <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{quota.supervisor_id_code}</td>
-      <td style={{ fontWeight: 600 }}>{quota.supervisor_name || '—'}</td>
+      <td style={{ fontWeight: 600 }}>{formatFullName(quota.supervisor_name) || '—'}</td>
       <td>
         <span className="utc-badge-edu">{quota.academic_title || '—'}</span>
       </td>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/layout/AdminLayout';
 import { apiClient } from '../../api/client';
+import { formatFullName } from '../../utils/nameHelper';
 import './DefenseManagementPage.css';
 
 interface ProjectAdmin {
@@ -373,12 +374,12 @@ export const DefenseManagementPage: React.FC = () => {
                         <tr key={proj.id} style={{ backgroundColor: isDeferred ? '#fffbeb' : undefined }}>
                           <td className="font-bold">{proj.student_reg_no}</td>
                           <td>
-                            <div className="font-semibold">{proj.student_name}</div>
+                            <div className="font-semibold">{formatFullName(proj.student_name)}</div>
                             <div className="text-xs text-muted">{proj.student_class}</div>
                           </td>
                           <td>{proj.council_name || '—'}</td>
-                          <td>{proj.supervisor_name}</td>
-                          <td>{proj.reviewer_name || '—'}</td>
+                          <td>{formatFullName(proj.supervisor_name)}</td>
+                          <td>{formatFullName(proj.reviewer_name) || '—'}</td>
                           <td className="text-center font-bold">{proj.supervisor_score !== null ? proj.supervisor_score : '—'}</td>
                           <td className="text-center font-bold">{proj.reviewer_score !== null ? proj.reviewer_score : '—'}</td>
                           <td className="text-center font-bold text-blue-700">
@@ -450,7 +451,7 @@ export const DefenseManagementPage: React.FC = () => {
                     deferralCandidates.map((proj) => (
                       <tr key={proj.id}>
                         <td className="font-bold">{proj.student_reg_no}</td>
-                        <td>{proj.student_name}</td>
+                        <td>{formatFullName(proj.student_name)}</td>
                         <td>
                           <span className={`utc-pill ${proj.supervisor_defense_confirmed ? 'pill-green' : 'pill-amber'}`}>
                             {proj.supervisor_defense_confirmed ? 'Đủ khả năng BV' : 'Chưa xác nhận'}

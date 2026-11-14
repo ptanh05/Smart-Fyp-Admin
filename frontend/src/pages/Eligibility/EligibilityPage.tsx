@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/layout/AdminLayout';
 import { apiClient } from '../../api/client';
+import { formatFullName } from '../../utils/nameHelper';
 import './EligibilityPage.css';
 
 interface ProjectEligibility {
@@ -291,7 +292,7 @@ export const EligibilityPage: React.FC = () => {
                     <tr key={p.id}>
                       <td className="font-bold">{p.student_reg_no}</td>
                       <td>
-                        <div className="font-semibold">{p.student_name}</div>
+                        <div className="font-semibold">{formatFullName(p.student_name)}</div>
                         <div className="text-xs text-muted">{p.student_class}</div>
                       </td>
                       <td>
@@ -427,7 +428,7 @@ export const EligibilityPage: React.FC = () => {
               </div>
               <form onSubmit={handleForceApproveSubmit}>
                 <div className="utc-form-group">
-                  <p>Sinh viên: <strong>{forceProject.student_name}</strong> ({forceProject.student_reg_no})</p>
+                  <p>Sinh viên: <strong>{formatFullName(forceProject.student_name)}</strong> ({forceProject.student_reg_no})</p>
                   <p>Lý do không đạt ban đầu: <span className="text-red font-bold">{forceProject.ineligibility_reason}</span></p>
                 </div>
 

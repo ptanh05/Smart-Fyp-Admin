@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/layout/AdminLayout';
 import { apiClient } from '../../api/client';
+import { formatFullName } from '../../utils/nameHelper';
 import './ProgressMonitoringPage.css';
 
 interface ProjectProgress {
@@ -174,7 +175,7 @@ export const ProgressMonitoringPage: React.FC = () => {
                     <tr key={p.id}>
                       <td className="font-bold">{p.student_reg_no}</td>
                       <td>
-                        <div className="font-semibold">{p.student_name}</div>
+                        <div className="font-semibold">{formatFullName(p.student_name)}</div>
                         <div className="text-xs text-muted">{p.student_class}</div>
                       </td>
                       <td>
@@ -183,7 +184,7 @@ export const ProgressMonitoringPage: React.FC = () => {
                         </span>
                       </td>
                       <td>
-                        <span className="font-medium text-slate-800">{p.supervisor_name}</span>
+                        <span className="font-medium text-slate-800">{formatFullName(p.supervisor_name)}</span>
                       </td>
                       <td style={{ maxWidth: '300px' }}>
                         <div className="font-semibold text-slate-900">{p.topic_title_vi}</div>
