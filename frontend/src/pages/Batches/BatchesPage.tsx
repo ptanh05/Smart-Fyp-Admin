@@ -1985,6 +1985,25 @@ export const BatchesPage: React.FC = () => {
                 <button onClick={() => setShowSupervisorPicker(false)} className="utc-btn-close">✕</button>
               </div>
               <div style={{ padding: '1rem 1.25rem', maxHeight: '55vh', overflowY: 'auto' }}>
+                {supervisors.length > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '0.85rem' }}>
+                    <span style={{ color: '#64748b', fontSize: '0.85rem', fontWeight: 600 }}>
+                      {selectedSupervisorIds.length}/{supervisors.length} giảng viên đã chọn
+                    </span>
+                    <button
+                      type="button"
+                      className="utc-btn-outline"
+                      onClick={() => {
+                        const allSelected = selectedSupervisorIds.length === supervisors.length;
+                        setSelectedSupervisorIds(allSelected ? [] : supervisors.map((supervisor) => supervisor.id));
+                      }}
+                    >
+                      {selectedSupervisorIds.length === supervisors.length
+                        ? '☐ Bỏ chọn tất cả'
+                        : '☑ Chọn tất cả giảng viên'}
+                    </button>
+                  </div>
+                )}
                 {supervisors.length === 0 ? (
                   <div className="utc-empty-box">Chưa có giảng viên đang hoạt động để lựa chọn.</div>
                 ) : (
