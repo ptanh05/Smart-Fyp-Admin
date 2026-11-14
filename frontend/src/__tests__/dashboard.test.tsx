@@ -127,4 +127,27 @@ describe('Admin Dashboard & Header Controls', () => {
     expect(screen.getByText('Giảng Viên & Hội Đồng')).toBeInTheDocument();
     expect(screen.getByText('Đợt ĐATN & Đề Tài')).toBeInTheDocument();
   });
+
+  it('renders responsive sidebar toggle button and toggles mobile drawer', async () => {
+    render(
+      <BrowserRouter>
+        <AdminDashboard />
+      </BrowserRouter>
+    );
+
+    const toggleBtn = screen.getByRole('button', { name: /Mở menu quản trị/i });
+    expect(toggleBtn).toBeInTheDocument();
+    expect(toggleBtn).toHaveClass('admin-sidebar-toggle-btn');
+
+    // Click toggle to open mobile drawer
+    fireEvent.click(toggleBtn);
+
+    const backdrop = screen.getByLabelText('Đóng menu');
+    expect(backdrop).toBeInTheDocument();
+    expect(backdrop).toHaveClass('admin-sidebar-backdrop');
+
+    // Click backdrop to close
+    fireEvent.click(backdrop);
+    expect(screen.queryByLabelText('Đóng menu')).not.toBeInTheDocument();
+  });
 });

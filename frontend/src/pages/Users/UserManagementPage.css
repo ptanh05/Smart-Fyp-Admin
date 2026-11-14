@@ -133,7 +133,27 @@
   gap: 0.35rem;
   margin-bottom: 1.25rem;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border: 1px solid #e2e8f0;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.role-tabs-container::-webkit-scrollbar {
+  height: 5px;
+}
+
+.role-tabs-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.role-tabs-container::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.role-tabs-container::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 .role-tab-item {
@@ -262,12 +282,36 @@
   background: #fff;
   border-radius: 10px;
   border: 1px solid #e2e8f0;
-  overflow: hidden;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+  max-width: 100%;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.user-table-container::-webkit-scrollbar {
+  height: 8px;
+}
+
+.user-table-container::-webkit-scrollbar-track {
+  background: #f8fafc;
+  border-radius: 4px;
+}
+
+.user-table-container::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.user-table-container::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 .user-table {
   width: 100%;
+  min-width: 1050px;
   border-collapse: collapse;
   text-align: left;
 }
@@ -483,4 +527,56 @@
 }
 .stat-box.error .num {
   color: #dc2626;
+}
+
+/* =========================================================================
+   RESPONSIVE DESIGN (TABLETS & MOBILE)
+   ========================================================================= */
+
+@media (max-width: 1024px) {
+  .user-mgmt-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+  }
+
+  .user-mgmt-actions {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .import-stats-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .user-mgmt-title h2 {
+    font-size: 1.25rem;
+  }
+
+  .user-mgmt-actions button {
+    padding: 0.5rem 0.85rem;
+    font-size: 0.82rem;
+  }
+
+  .major-pills-row {
+    gap: 0.5rem;
+  }
+
+  .major-pill {
+    padding: 0.35rem 0.75rem;
+    font-size: 0.8rem;
+  }
+
+  .filters-grid {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.5rem;
+  }
+
+  .filter-input,
+  .filter-select {
+    padding: 0.45rem 0.65rem;
+    font-size: 0.82rem;
+  }
 }

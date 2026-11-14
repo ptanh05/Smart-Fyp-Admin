@@ -139,6 +139,7 @@ const NAV_ITEMS: NavItem[] = [
 export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { logout, userType, currentUser } = useAdminAuth();
   const navigate = useNavigate();
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
     try {
       const saved = localStorage.getItem(COLLAPSED_GROUPS_STORAGE_KEY);
@@ -173,15 +174,36 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
 
   return (
     <div className="admin-layout-wrapper">
-      <aside className="admin-sidebar">
+      {/* Mobile / Tablet Drawer Backdrop */}
+      {isMobileNavOpen && (
+        <div
+          className="admin-sidebar-backdrop"
+          onClick={() => setIsMobileNavOpen(false)}
+          aria-label="Đóng menu"
+        />
+      )}
+
+      {/* Sidebar Navigation */}
+      <aside className={`admin-sidebar ${isMobileNavOpen ? 'mobile-open' : ''}`}>
         <div className="admin-sidebar-logo">
-          <span className="admin-seal">🎓</span>
-          <div>
-            <div className="admin-title-main">SMART FYP UTC</div>
-            <div className="admin-title-sub">
-              {effectiveRole === 'academic_staff' ? 'GIAO VỤ KHOA PORTAL' : 'ADMIN PORTAL'}
+          <div className="admin-sidebar-logo-content">
+            <span className="admin-seal">🎓</span>
+            <div>
+              <div className="admin-title-main">SMART FYP UTC</div>
+              <div className="admin-title-sub">
+                {effectiveRole === 'academic_staff' ? 'GIÁO VỤ KHOA PORTAL' : 'ADMIN PORTAL'}
+              </div>
             </div>
           </div>
+          <button
+            type="button"
+            className="admin-sidebar-close-btn"
+            onClick={() => setIsMobileNavOpen(false)}
+            aria-label="Đóng menu điều hướng"
+            title="Đóng menu"
+          >
+            ✕
+          </button>
         </div>
 
         <nav className="admin-nav">
@@ -205,6 +227,7 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
                     <NavLink
                       key={item.to}
                       to={item.to}
+                      onClick={() => setIsMobileNavOpen(false)}
                       className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
                     >
                       <span className="admin-nav-icon">{item.icon}</span>
@@ -218,9 +241,21 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
         </nav>
       </aside>
 
+      {/* Main Page Area */}
       <main className="admin-main-content">
         <header className="admin-header">
-          <div className="admin-header-title">Hệ Thống Quản Trị Dữ Liệu Đồ Án Tốt Nghiệp UTC</div>
+          <div className="admin-header-left">
+            <button
+              type="button"
+              className="admin-sidebar-toggle-btn"
+              onClick={() => setIsMobileNavOpen(prev => !prev)}
+              aria-label="Mở menu quản trị"
+              title="Menu điều hướng"
+            >
+              <span className="admin-hamburger-icon">☰</span>
+            </button>
+            <div className="admin-header-title">Hệ Thống Quản Trị Dữ Liệu Đồ Án Tốt Nghiệp UTC</div>
+          </div>
           <div className="admin-header-user">
             <span
               className="admin-user-badge"
@@ -230,7 +265,9 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
                 ? '💼 Giáo vụ Khoa CNTT'
                 : `🛡️ ${displayName}`}{' '}
               {displayUsername && (
-                <span style={{ opacity: 0.85, fontSize: '0.9em', marginLeft: 4 }}>({displayUsername})</span>
+                <span className="admin-user-subname" style={{ opacity: 0.85, fontSize: '0.9em', marginLeft: 4 }}>
+                  ({displayUsername})
+                </span>
               )}
             </span>
             <button className="admin-logout-btn" onClick={handleLogout}>
