@@ -108,6 +108,7 @@ class OutlineReviewSerializer(serializers.ModelSerializer):
     outline_file_url = serializers.SerializerMethodField()
     verdict_display = serializers.CharField(source="get_verdict_display", read_only=True)
     project_status = serializers.CharField(source="project.status", read_only=True)
+    topic_review_status = serializers.CharField(source="project.topic_review_status", read_only=True, default="DRAFT")
 
     class Meta:
         model = OutlineReview
@@ -115,7 +116,7 @@ class OutlineReviewSerializer(serializers.ModelSerializer):
             "id", "project", "student_name", "student_reg_no", "student_class",
             "supervisor_name", "topic_title", "review_group", "group_name",
             "reviewer", "reviewer_name", "outline_file", "outline_file_url",
-            "verdict", "verdict_display", "project_status", "comments", "submitted_at", "reviewed_at",
+            "verdict", "verdict_display", "project_status", "topic_review_status", "comments", "submitted_at", "reviewed_at",
         ]
 
     def get_student_name(self, obj):

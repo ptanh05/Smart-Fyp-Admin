@@ -31,6 +31,7 @@ interface OutlineReviewItem {
   verdict: 'PENDING' | 'APPROVED' | 'REVISION_REQUIRED' | 'REJECTED';
   verdict_display?: string;
   project_status?: string;
+  topic_review_status?: string;
   comments: string;
   submitted_at?: string;
   reviewed_at?: string;
@@ -196,8 +197,20 @@ export const OutlineManagementPage: React.FC = () => {
   const displayedReviews = useMemo(() => {
     let result = [...reviews];
 
-    // Filter by Verdict
-    if (verdictFilter !== 'ALL') {
+    // Filter by Verdict / Two-Level Status
+    if (verdictFilter === 'GV_CONFIRMED') {
+      result = result.filter(
+        (r) => r.project_status !== 'OUTLINE_APPROVED' && (r.topic_review_status === 'GV_CONFIRMED' || r.verdict === 'APPROVED')
+      );
+    } else if (verdictFilter === 'WAITING_SUPERVISOR') {
+      result = result.filter(
+        (r) => r.project_status !== 'OUTLINE_APPROVED' && r.topic_review_status !== 'GV_CONFIRMED' && r.verdict !== 'APPROVED' && r.verdict !== 'REVISION_REQUIRED'
+      );
+    } else if (verdictFilter === 'APPROVED') {
+      result = result.filter((r) => r.project_status === 'OUTLINE_APPROVED');
+    } else if (verdictFilter === 'REVISION_REQUIRED') {
+      result = result.filter((r) => r.verdict === 'REVISION_REQUIRED');
+    } else if (verdictFilter !== 'ALL') {
       result = result.filter((r) => r.verdict === verdictFilter);
     }
 
@@ -224,11 +237,20 @@ export const OutlineManagementPage: React.FC = () => {
   // Statistics
   const stats = useMemo(() => {
     const total = reviews.length;
-    const pending = reviews.filter((r) => r.project_status !== 'OUTLINE_APPROVED').length;
+    // Chờ GVHD xem xét & duyệt
+    const waitingSupervisor = reviews.filter(
+      (r) => r.project_status !== 'OUTLINE_APPROVED' && r.topic_review_status !== 'GV_CONFIRMED' && r.verdict !== 'APPROVED' && r.verdict !== 'REVISION_REQUIRED'
+    ).length;
+    // GVHD đã chốt duyệt -> Sẵn sàng chờ Khoa phê duyệt chính thức
+    const gvConfirmed = reviews.filter(
+      (r) => r.project_status !== 'OUTLINE_APPROVED' && (r.topic_review_status === 'GV_CONFIRMED' || r.verdict === 'APPROVED')
+    ).length;
+    // Khoa đã phê duyệt (Đã mở Giai đoạn 4)
     const approved = reviews.filter((r) => r.project_status === 'OUTLINE_APPROVED').length;
+    // Yêu cầu chỉnh sửa
     const revision = reviews.filter((r) => r.verdict === 'REVISION_REQUIRED').length;
     const unassigned = reviews.filter((r) => !r.review_group).length;
-    return { total, pending, approved, revision, unassigned };
+    return { total, waitingSupervisor, gvConfirmed, approved, revision, unassigned };
   }, [reviews]);
 
   // Checkbox toggle single
@@ -348,16 +370,29 @@ export const OutlineManagementPage: React.FC = () => {
 
   // Quick Approve Single Outline
   const handleQuickApprove = async (review: OutlineReviewItem) => {
+    const isGvDone = review.topic_review_status === 'GV_CONFIRMED' || review.verdict === 'APPROVED';
+    const confirmMsg = isGvDone
+      ? `Xác nhận: Khoa phê duyệt đề cương của sinh viên ${review.student_name} (${review.student_reg_no})?\n\nSau khi Khoa duyệt, đề tài sẽ đạt chuẩn và mở khóa Giai đoạn 4 (Báo cáo tuần & Thực hiện đồ án) cho sinh viên.`
+      : `⚠️ Chú ý: Giảng viên hướng dẫn (${review.supervisor_name || 'chưa phân công'}) chưa chốt duyệt đề cương này.\n\nBạn có chắc chắn Khoa muốn duyệt ngay bây giờ để mở khóa Giai đoạn 4 cho sinh viên không?`;
+
+    if (!window.confirm(confirmMsg)) return;
+
     try {
       setActionLoading(true);
       await apiClient.patch(`/admin/outline-reviews/${review.id}/`, {
         verdict: 'APPROVED',
-        comments: review.comments || 'Đề cương đạt chuẩn kỹ sư CNTT. Mục tiêu và cấu trúc hợp lý.',
+        comments: review.comments || 'Khoa đã thẩm định & phê duyệt đề cương. Cho phép sinh viên bắt đầu thực hiện đồ án.',
       });
       setReviews((prev) =>
         prev.map((r) =>
           r.id === review.id
-            ? { ...r, verdict: 'APPROVED', comments: review.comments || 'Đề cương đạt chuẩn kỹ sư CNTT.' }
+            ? {
+                ...r,
+                verdict: 'APPROVED',
+                project_status: 'OUTLINE_APPROVED',
+                topic_review_status: 'APPROVED',
+                comments: review.comments || 'Khoa đã thẩm định & phê duyệt đề cương.',
+              }
             : r
         )
       );
@@ -411,7 +446,15 @@ export const OutlineManagementPage: React.FC = () => {
       });
       setReviews((prev) =>
         prev.map((r) =>
-          r.id === selectedReview.id ? { ...r, verdict: modalVerdict, comments: modalComments } : r
+          r.id === selectedReview.id
+            ? {
+                ...r,
+                verdict: modalVerdict,
+                comments: modalComments,
+                project_status: modalVerdict === 'APPROVED' ? 'OUTLINE_APPROVED' : modalVerdict === 'REVISION_REQUIRED' ? 'OUTLINE_REVISION' : r.project_status,
+                topic_review_status: modalVerdict === 'APPROVED' ? 'APPROVED' : modalVerdict === 'REVISION_REQUIRED' ? 'REVISION_REQUIRED' : r.topic_review_status,
+              }
+            : r
         )
       );
       setShowReviewModal(false);
@@ -453,8 +496,8 @@ export const OutlineManagementPage: React.FC = () => {
   const handleBulkApprove = async () => {
     const isSelected = selectedProjectIds.length > 0;
     const msg = isSelected
-      ? `Xác nhận Duyệt ĐẠT cho ${selectedProjectIds.length} đề cương đã chọn?`
-      : 'Xác nhận Duyệt nhanh: Đánh dấu TẤT CẢ các đề cương trong đợt này là ĐẠT YÊU CẦU?';
+      ? `Xác nhận Khoa phê duyệt ĐẠT cho ${selectedProjectIds.length} đề cương đã chọn?\n\n(Hệ thống sẽ phê duyệt chính thức và mở khóa Giai đoạn 4 cho các sinh viên này)`
+      : 'Xác nhận Khoa phê duyệt nhanh: Đánh dấu ĐẠT YÊU CẦU cho TOÀN BỘ đề cương trong đợt này?\n\n(Toàn bộ sinh viên sẽ được chuyển sang Giai đoạn 4: Báo cáo tuần & Thực hiện đồ án)';
 
     if (!window.confirm(msg)) return;
 
@@ -533,16 +576,20 @@ export const OutlineManagementPage: React.FC = () => {
             <span className="utc-stat-label">Tổng số Đề cương</span>
             <strong className="utc-stat-value" style={{ color: '#0284c7' }}>{stats.total}</strong>
           </div>
+          <div className="utc-stat-card" style={{ borderLeftColor: '#059669' }}>
+            <span className="utc-stat-label">🟢 GVHD đã chốt duyệt</span>
+            <strong className="utc-stat-value" style={{ color: '#059669' }}>{stats.gvConfirmed}</strong>
+          </div>
           <div className="utc-stat-card" style={{ borderLeftColor: '#f59e0b' }}>
-            <span className="utc-stat-label">Chờ thẩm định</span>
-            <strong className="utc-stat-value" style={{ color: '#f59e0b' }}>{stats.pending}</strong>
+            <span className="utc-stat-label">⏳ Chờ GVHD duyệt</span>
+            <strong className="utc-stat-value" style={{ color: '#f59e0b' }}>{stats.waitingSupervisor}</strong>
           </div>
           <div className="utc-stat-card" style={{ borderLeftColor: '#16a34a' }}>
-            <span className="utc-stat-label">Đã duyệt (Đạt)</span>
+            <span className="utc-stat-label">🎉 Khoa đã duyệt (Mở GĐ4)</span>
             <strong className="utc-stat-value" style={{ color: '#16a34a' }}>{stats.approved}</strong>
           </div>
           <div className="utc-stat-card" style={{ borderLeftColor: '#dc2626' }}>
-            <span className="utc-stat-label">Yêu cầu chỉnh sửa</span>
+            <span className="utc-stat-label">⚠️ Yêu cầu chỉnh sửa</span>
             <strong className="utc-stat-value" style={{ color: '#dc2626' }}>{stats.revision}</strong>
           </div>
           <div className="utc-stat-card" style={{ borderLeftColor: '#64748b' }}>
@@ -580,16 +627,24 @@ export const OutlineManagementPage: React.FC = () => {
                   Tất cả ({reviews.length})
                 </button>
                 <button
-                  className={`utc-pill ${verdictFilter === 'PENDING' ? 'active pending' : ''}`}
-                  onClick={() => setVerdictFilter('PENDING')}
+                  className={`utc-pill ${verdictFilter === 'GV_CONFIRMED' ? 'active' : ''}`}
+                  style={verdictFilter === 'GV_CONFIRMED' ? { background: '#059669', color: '#fff', borderColor: '#059669' } : {}}
+                  onClick={() => setVerdictFilter('GV_CONFIRMED')}
                 >
-                  ⏳ Chờ duyệt ({stats.pending})
+                  🟢 GVHD đã chốt ({stats.gvConfirmed})
+                </button>
+                <button
+                  className={`utc-pill ${verdictFilter === 'WAITING_SUPERVISOR' ? 'active' : ''}`}
+                  style={verdictFilter === 'WAITING_SUPERVISOR' ? { background: '#f59e0b', color: '#fff', borderColor: '#f59e0b' } : {}}
+                  onClick={() => setVerdictFilter('WAITING_SUPERVISOR')}
+                >
+                  ⏳ Chờ GVHD duyệt ({stats.waitingSupervisor})
                 </button>
                 <button
                   className={`utc-pill ${verdictFilter === 'APPROVED' ? 'active approved' : ''}`}
                   onClick={() => setVerdictFilter('APPROVED')}
                 >
-                  ✅ Đạt yêu cầu ({stats.approved})
+                  🎉 Khoa đã duyệt ({stats.approved})
                 </button>
                 <button
                   className={`utc-pill ${verdictFilter === 'REVISION_REQUIRED' ? 'active revision' : ''}`}
@@ -709,6 +764,13 @@ export const OutlineManagementPage: React.FC = () => {
                             <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Lớp: {r.student_class}</span>
                           )}
                         </td>
+                        {/* Cột GV Hướng dẫn */}
+                        <td>
+                          <span style={{ fontWeight: 600, color: '#334155', fontSize: '0.85rem' }}>
+                            {formatFullName(r.supervisor_name) || <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Chưa phân GVHD</span>}
+                          </span>
+                        </td>
+                        {/* Cột Nhóm Thẩm định */}
                         <td>
                           {r.group_name ? (
                             <span style={{ fontSize: '0.85rem', color: '#1d4ed8', fontWeight: 600, background: '#eff6ff', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
@@ -727,6 +789,7 @@ export const OutlineManagementPage: React.FC = () => {
                             </button>
                           )}
                         </td>
+                        {/* Cột Tệp đề cương */}
                         <td>
                           <a
                             href={r.outline_file_url || '#'}
@@ -744,18 +807,25 @@ export const OutlineManagementPage: React.FC = () => {
                             📄 Xem Đề cương
                           </a>
                         </td>
+                        {/* Cột Trạng thái & Cấp duyệt */}
                         <td>
-                          <span className={`utc-badge ${
-                            r.project_status === 'OUTLINE_APPROVED' ? 'approved' :
-                            r.verdict === 'APPROVED' ? 'pending' :
-                            r.verdict === 'REVISION_REQUIRED' ? 'revision' :
-                            r.verdict === 'REJECTED' ? 'rejected' : 'pending'
-                          }`}>
-                            {r.project_status === 'OUTLINE_APPROVED' ? 'Khoa đã duyệt đạt' :
-                             r.verdict === 'APPROVED' ? 'GVHD đã duyệt - chờ Khoa' :
-                             r.verdict === 'REVISION_REQUIRED' ? 'Yêu cầu sửa' :
-                             r.verdict === 'REJECTED' ? 'Không đạt' : 'Chờ xét duyệt'}
-                          </span>
+                          {r.project_status === 'OUTLINE_APPROVED' ? (
+                            <span className="utc-badge approved" style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              🎉 Khoa đã duyệt (Mở GĐ4)
+                            </span>
+                          ) : (r.topic_review_status === 'GV_CONFIRMED' || r.verdict === 'APPROVED') ? (
+                            <span className="utc-badge pending" style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              🟢 GVHD đã chốt ➔ Chờ Khoa
+                            </span>
+                          ) : r.verdict === 'REVISION_REQUIRED' ? (
+                            <span className="utc-badge revision" style={{ background: '#fef2f2', color: '#b91c1c', border: '1px solid #fca5a5', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              ⚠️ Yêu cầu sửa
+                            </span>
+                          ) : (
+                            <span className="utc-badge pending" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              ⏳ Chờ GVHD duyệt
+                            </span>
+                          )}
                         </td>
                         <td>
                           <div style={{ fontSize: '0.82rem', color: '#475569', maxHeight: '60px', overflowY: 'auto' }}>
@@ -764,12 +834,13 @@ export const OutlineManagementPage: React.FC = () => {
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'center' }}>
-                            {r.verdict !== 'APPROVED' && (
+                            {r.project_status !== 'OUTLINE_APPROVED' && (
                               <button
                                 onClick={() => handleQuickApprove(r)}
                                 disabled={actionLoading}
                                 className="utc-action-btn approve"
-                                title="Duyệt Đạt yêu cầu ngay"
+                                style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', padding: '0.35rem 0.65rem', fontWeight: 600, cursor: 'pointer' }}
+                                title="Khoa phê duyệt chính thức & mở GĐ 4"
                               >
                                 Duyệt
                               </button>

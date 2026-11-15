@@ -1927,10 +1927,13 @@ class OutlineReviewDetailAPIView(APIView):
             project = review.project
             if review.verdict == "APPROVED":
                 project.status = "OUTLINE_APPROVED"
+                project.topic_review_status = "APPROVED"
             elif review.verdict == "REVISION_REQUIRED":
                 project.status = "OUTLINE_REVISION"
+                project.topic_review_status = "REVISION_REQUIRED"
             elif review.verdict == "REJECTED":
                 project.status = "FAILED"
+                project.topic_review_status = "REJECTED"
             elif review.verdict == "PENDING":
                 project.status = "OUTLINE_PENDING"
             project.save()
@@ -1992,9 +1995,10 @@ class OutlineReviewAssignAPIView(APIView):
                 r.verdict = "APPROVED"
                 r.reviewed_at = now
                 if not r.comments:
-                    r.comments = "Đề cương đạt chuẩn yêu cầu bảo vệ ĐATN."
+                    r.comments = "Khoa phê duyệt đề cương chi tiết đạt yêu cầu."
                 r.save()
                 r.project.status = "OUTLINE_APPROVED"
+                r.project.topic_review_status = "APPROVED"
                 r.project.save()
                 updated += 1
 
