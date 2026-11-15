@@ -192,6 +192,497 @@
   font-size: 0.85rem;
 }
 
+/* =========================================================================
+   ENHANCED GENERATE & ALLOCATION RESULT CARD (UTC EXECUTIVE STYLE)
+   ========================================================================= */
+
+.utc-generate-result-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-left: 5px solid #0284c7;
+  border-radius: 14px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+}
+
+.utc-generate-result-card.is-success {
+  border-left-color: #10b981;
+  background: linear-gradient(to bottom, #f0fdf4 0%, #ffffff 70px);
+}
+
+.utc-generate-result-card.is-error {
+  border-left-color: #ef4444;
+  background: #fff1f2;
+}
+
+.utc-gen-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.utc-gen-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.utc-gen-icon-badge {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid #bbf7d0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.35rem;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.04);
+  flex-shrink: 0;
+}
+
+.utc-generate-result-card.is-error .utc-gen-icon-badge {
+  border-color: #fecdd3;
+  background: #ffffff;
+}
+
+.utc-gen-title {
+  margin: 0;
+  font-size: 1.12rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.utc-generate-result-card.is-error .utc-gen-title {
+  color: #b91c1c;
+}
+
+.utc-gen-message {
+  margin: 0.25rem 0 0 0;
+  font-size: 0.875rem;
+  color: #475569;
+}
+
+.utc-gen-close-btn {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.utc-gen-close-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+  transform: scale(1.05);
+}
+
+/* KPI Bar */
+.utc-gen-kpi-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  margin-bottom: 1.25rem;
+}
+
+.utc-gen-kpi-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  padding: 0.35rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.84rem;
+  color: #334155;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.utc-gen-kpi-pill.highlight {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1e40af;
+}
+
+.utc-kpi-icon {
+  font-size: 1rem;
+}
+
+.utc-kpi-label {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.utc-kpi-val {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.utc-gen-kpi-pill.highlight .utc-kpi-label,
+.utc-gen-kpi-pill.highlight .utc-kpi-val {
+  color: #1e40af;
+}
+
+/* Councils Container */
+.utc-generated-councils-container {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1.15rem;
+  margin-top: 0.5rem;
+}
+
+.utc-generated-councils-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.utc-gen-sec-title {
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.utc-gen-sec-count {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #0284c7;
+  background: #e0f2fe;
+  padding: 0.25rem 0.65rem;
+  border-radius: 20px;
+  border: 1px solid #bae6fd;
+}
+
+/* Councils Grid */
+.utc-generated-councils-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 1rem;
+  max-height: 480px;
+  overflow-y: auto;
+  padding-right: 0.4rem;
+}
+
+.utc-generated-councils-grid::-webkit-scrollbar {
+  width: 6px;
+}
+
+.utc-generated-councils-grid::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.utc-generated-councils-grid::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.utc-generated-councils-grid::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Individual Council Structure Card */
+.utc-council-structure-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.utc-council-structure-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1px);
+}
+
+.utc-council-structure-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.utc-council-structure-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.92rem;
+  color: #0f172a;
+}
+
+.utc-council-structure-title strong {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.utc-c-tag {
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  border: 1px solid #dbeafe;
+}
+
+.utc-council-room-badge {
+  background: #f0fdf4;
+  color: #166534;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid #bbf7d0;
+}
+
+/* Members Roster */
+.utc-council-members-roster {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.utc-council-member-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.6rem;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 0.83rem;
+  transition: background 0.15s ease;
+}
+
+.utc-council-member-row:hover {
+  background: #f1f5f9;
+}
+
+.utc-council-member-row.role-chair {
+  background: #fffbeb;
+  border-color: #fef3c7;
+}
+
+.utc-council-member-row.role-secretary {
+  background: #f0fdf4;
+  border-color: #dcfce7;
+}
+
+.utc-role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.18rem 0.5rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.badge-chair {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+.badge-secretary {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.badge-member,
+.badge-external_member {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
+.utc-member-fullname {
+  font-weight: 600;
+  color: #1e293b;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: 0.5rem;
+}
+
+/* Conflicts Box Alert */
+.utc-conflicts-notice-box {
+  margin-top: 1rem;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+  padding: 0.85rem 1.15rem;
+}
+
+.utc-conflicts-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #b45309;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.utc-conflicts-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: #92400e;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.utc-conflicts-list li {
+  margin-bottom: 0.25rem;
+}
+
+.utc-conflicts-list li:last-child {
+  margin-bottom: 0;
+}
+
+/* Dark mode support */
+[data-theme="dark"] .utc-generate-result-card {
+  background: #1e293b;
+  border-color: #334155;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+[data-theme="dark"] .utc-generate-result-card.is-success {
+  background: linear-gradient(to bottom, #064e3b22 0%, #1e293b 70px);
+}
+
+[data-theme="dark"] .utc-gen-icon-badge {
+  background: #0f172a;
+  border-color: #334155;
+}
+
+[data-theme="dark"] .utc-gen-title {
+  color: #f8fafc;
+}
+
+[data-theme="dark"] .utc-gen-message {
+  color: #94a3b8;
+}
+
+[data-theme="dark"] .utc-gen-close-btn {
+  background: #334155;
+  border-color: #475569;
+  color: #cbd5e1;
+}
+
+[data-theme="dark"] .utc-gen-close-btn:hover {
+  background: #475569;
+  color: #ffffff;
+}
+
+[data-theme="dark"] .utc-gen-kpi-bar {
+  background: #0f172a;
+  border-color: #334155;
+}
+
+[data-theme="dark"] .utc-gen-kpi-pill {
+  background: #1e293b;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
+[data-theme="dark"] .utc-kpi-val {
+  color: #f8fafc;
+}
+
+[data-theme="dark"] .utc-generated-councils-container {
+  background: #0f172a;
+  border-color: #334155;
+}
+
+[data-theme="dark"] .utc-generated-councils-header {
+  border-color: #1e293b;
+}
+
+[data-theme="dark"] .utc-gen-sec-title {
+  color: #f8fafc;
+}
+
+[data-theme="dark"] .utc-council-structure-card {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+[data-theme="dark"] .utc-council-structure-card:hover {
+  border-color: #475569;
+}
+
+[data-theme="dark"] .utc-council-structure-top {
+  border-color: #334155;
+}
+
+[data-theme="dark"] .utc-council-structure-title strong {
+  color: #f8fafc;
+}
+
+[data-theme="dark"] .utc-council-member-row {
+  background: #0f172a;
+  border-color: #1e293b;
+}
+
+[data-theme="dark"] .utc-council-member-row.role-chair {
+  background: #451a0322;
+  border-color: #78350f44;
+}
+
+[data-theme="dark"] .utc-council-member-row.role-secretary {
+  background: #064e3b22;
+  border-color: #065f4644;
+}
+
+[data-theme="dark"] .utc-member-fullname {
+  color: #f1f5f9;
+}
+
+[data-theme="dark"] .utc-conflicts-notice-box {
+  background: #451a0322;
+  border-color: #78350f66;
+}
+
+[data-theme="dark"] .utc-conflicts-header {
+  color: #fde68a;
+}
+
+[data-theme="dark"] .utc-conflicts-list {
+  color: #fde047;
+}
+
 .utc-schedule-section {
   background: #ffffff;
   border: 1px solid #e2e8f0;

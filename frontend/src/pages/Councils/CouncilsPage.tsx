@@ -339,43 +339,128 @@ export const CouncilsPage: React.FC = () => {
           <>
             {/* ⚡ Kết quả Sinh Hội đồng Tự động */}
             {generateResult && (
-              <div className="utc-assign-feedback">
-                {generateResult.success ? (
+              <div className={`utc-generate-result-card ${generateResult.success ? 'is-success' : 'is-error'}`}>
+                <div className="utc-gen-card-header">
+                  <div className="utc-gen-header-left">
+                    <div className="utc-gen-icon-badge">
+                      {generateResult.success ? '⚡' : '❌'}
+                    </div>
+                    <div>
+                      <h4 className="utc-gen-title">
+                        {generateResult.success
+                          ? 'Kết Quả Khởi Tạo Hội Đồng Tự Động (Chuẩn 1CT - 2TK - 2UV)'
+                          : 'Không Thể Sinh Hội Đồng Tự Động'}
+                      </h4>
+                      <p className="utc-gen-message">
+                        {generateResult.success ? generateResult.message : generateResult.error}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="utc-gen-close-btn"
+                    onClick={() => setGenerateResult(null)}
+                    title="Đóng thông báo"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {generateResult.success && (
                   <>
-                    <h4>⚡ Kết Quả Sinh Hội Đồng Tự Động:</h4>
-                    <p>{generateResult.message}</p>
-                    <p>
-                      Số Hội đồng: <strong>{generateResult.councils?.length || 0}</strong> |
-                      Đề tài đã gán: <strong>{generateResult.assigned_projects || 0}</strong> |
-                      GVPB đã gán: <strong>{generateResult.assigned_reviewers || 0}</strong>
-                    </p>
+                    {/* Summary KPI Pills */}
+                    <div className="utc-gen-kpi-bar">
+                      <div className="utc-gen-kpi-pill">
+                        <span className="utc-kpi-icon">🏛️</span>
+                        <span className="utc-kpi-label">Hội đồng:</span>
+                        <strong className="utc-kpi-val">{generateResult.councils?.length || 0}</strong>
+                      </div>
+                      <div className="utc-gen-kpi-pill">
+                        <span className="utc-kpi-icon">📚</span>
+                        <span className="utc-kpi-label">Đề tài đã gán:</span>
+                        <strong className="utc-kpi-val">{generateResult.assigned_projects || 0}</strong>
+                      </div>
+                      <div className="utc-gen-kpi-pill">
+                        <span className="utc-kpi-icon">👨‍🏫</span>
+                        <span className="utc-kpi-label">GVPB đã gán:</span>
+                        <strong className="utc-kpi-val">{generateResult.assigned_reviewers || 0}</strong>
+                      </div>
+                      <div className="utc-gen-kpi-pill highlight">
+                        <span className="utc-kpi-icon">⚖️</span>
+                        <span className="utc-kpi-label">Cơ cấu chuẩn:</span>
+                        <strong className="utc-kpi-val">1 Chủ tịch · 2 Thư ký · 2 Ủy viên</strong>
+                      </div>
+                    </div>
+
+                    {/* Detailed Council Cards Roster */}
                     {generateResult.councils && generateResult.councils.length > 0 && (
-                      <div className="utc-conflicts-box" style={{ maxHeight: '180px', overflowY: 'auto' }}>
-                        <strong>Cơ cấu Hội đồng (1CT - 2TK - 2UV):</strong>
-                        <ul>
-                          {generateResult.councils.map((c: any) => (
-                            <li key={c.id}>
-                              <strong>{c.council_name}</strong> ({c.defense_room}):{' '}
-                              {c.members.map((m: any) => `${m.academic_title} ${m.name} [${m.role}]`).join(' · ')}
-                            </li>
-                          ))}
-                        </ul>
+                      <div className="utc-generated-councils-container">
+                        <div className="utc-generated-councils-header">
+                          <div className="utc-gen-sec-title">
+                            <span>🏛️</span> Cơ Cấu Thành Viên Hội Đồng Chuẩn UTC:
+                          </div>
+                          <span className="utc-gen-sec-count">
+                            {generateResult.councils.length} Hội đồng được thành lập
+                          </span>
+                        </div>
+                        <div className="utc-generated-councils-grid">
+                          {generateResult.councils.map((c: any) => {
+                            const rolePriority: Record<string, number> = { CHAIR: 1, SECRETARY: 2, MEMBER: 3, EXTERNAL_MEMBER: 4 };
+                            const sortedMembers = [...(c.members || [])].sort(
+                              (a: any, b: any) => (rolePriority[a.role] || 5) - (rolePriority[b.role] || 5)
+                            );
+
+                            return (
+                              <div key={c.id || c.council_name} className="utc-council-structure-card">
+                                <div className="utc-council-structure-top">
+                                  <div className="utc-council-structure-title">
+                                    <span className="utc-c-tag">HĐ #{c.council_number || ''}</span>
+                                    <strong>{c.council_name}</strong>
+                                  </div>
+                                  <span className="utc-council-room-badge">
+                                    🚪 {c.defense_room ? `Phòng ${c.defense_room}` : 'Chưa xếp phòng'}
+                                  </span>
+                                </div>
+                                <div className="utc-council-members-roster">
+                                  {sortedMembers.map((m: any, mIdx: number) => {
+                                    const isChair = m.role === 'CHAIR';
+                                    const isSec = m.role === 'SECRETARY';
+                                    const roleClass = isChair ? 'role-chair' : isSec ? 'role-secretary' : 'role-member';
+                                    const roleLabel = isChair ? '👑 Chủ tịch' : isSec ? '📝 Thư ký' : '👥 Ủy viên';
+
+                                    return (
+                                      <div key={mIdx} className={`utc-council-member-row ${roleClass}`}>
+                                        <span className={`utc-role-badge badge-${m.role?.toLowerCase() || 'member'}`}>
+                                          {roleLabel}
+                                        </span>
+                                        <span className="utc-member-fullname">
+                                          {m.academic_title ? `${m.academic_title} ` : ''}{m.name}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
                   </>
-                ) : (
-                  <>
-                    <h4 style={{ color: '#b91c1c' }}>❌ Không thể sinh Hội đồng tự động:</h4>
-                    <p>{generateResult.error}</p>
-                  </>
                 )}
+
+                {/* Conflicts detected */}
                 {generateResult.conflicts && generateResult.conflicts.length > 0 && (
-                  <div className="utc-conflicts-box">
-                    <strong>Xung đột lợi ích phát hiện ({generateResult.conflicts.length}):</strong>
-                    <ul>
+                  <div className="utc-conflicts-notice-box">
+                    <div className="utc-conflicts-header">
+                      <span>⚠️</span>
+                      <strong>Xung đột lợi ích phát hiện ({generateResult.conflicts.length}):</strong>
+                    </div>
+                    <ul className="utc-conflicts-list">
                       {generateResult.conflicts.slice(0, 10).map((c: any, idx: number) => (
                         <li key={idx}>
-                          {c.student_name ? `${c.student_name} (${c.registration_no}): ` : ''}{c.reason}
+                          {c.student_name ? <strong>{c.student_name} ({c.registration_no}): </strong> : ''}
+                          <span>{c.reason}</span>
                         </li>
                       ))}
                     </ul>
@@ -386,18 +471,51 @@ export const CouncilsPage: React.FC = () => {
 
             {/* Auto-Assign Feedback */}
             {assignResult && (
-              <div className="utc-assign-feedback">
-                <h4>🎉 Kết Quả Phân Bổ Hội Đồng & Phản Biện:</h4>
-                <p>
-                  Đã gán thành công: <strong>{assignResult.assigned_count}</strong> đề tài | Trùng xung đột: <strong>{assignResult.unassigned_count}</strong>
-                </p>
+              <div className="utc-generate-result-card is-success">
+                <div className="utc-gen-card-header">
+                  <div className="utc-gen-header-left">
+                    <div className="utc-gen-icon-badge">🎉</div>
+                    <div>
+                      <h4 className="utc-gen-title">Kết Quả Phân Bổ Hội Đồng & Giảng Viên Phản Biện</h4>
+                      <p className="utc-gen-message">
+                        Hệ thống đã thực hiện gán đề tài vào Hội đồng và phân công GVPB theo tiêu chuẩn tải và hướng nghiên cứu.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="utc-gen-close-btn"
+                    onClick={() => setAssignResult(null)}
+                    title="Đóng thông báo"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="utc-gen-kpi-bar">
+                  <div className="utc-gen-kpi-pill">
+                    <span className="utc-kpi-icon">✅</span>
+                    <span className="utc-kpi-label">Đã gán thành công:</span>
+                    <strong className="utc-kpi-val">{assignResult.assigned_count} đề tài</strong>
+                  </div>
+                  <div className="utc-gen-kpi-pill">
+                    <span className="utc-kpi-icon">⚠️</span>
+                    <span className="utc-kpi-label">Trùng xung đột / Chưa gán:</span>
+                    <strong className="utc-kpi-val">{assignResult.unassigned_count}</strong>
+                  </div>
+                </div>
+
                 {assignResult.conflicts && assignResult.conflicts.length > 0 && (
-                  <div className="utc-conflicts-box">
-                    <strong>Xung đột lợi ích phát hiện:</strong>
-                    <ul>
+                  <div className="utc-conflicts-notice-box">
+                    <div className="utc-conflicts-header">
+                      <span>⚠️</span>
+                      <strong>Xung đột lợi ích phát hiện ({assignResult.conflicts.length}):</strong>
+                    </div>
+                    <ul className="utc-conflicts-list">
                       {assignResult.conflicts.map((c: any, idx: number) => (
                         <li key={idx}>
-                          {c.student_name} ({c.registration_no}): {c.reason}
+                          {c.student_name ? <strong>{c.student_name} ({c.registration_no}): </strong> : ''}
+                          <span>{c.reason}</span>
                         </li>
                       ))}
                     </ul>
