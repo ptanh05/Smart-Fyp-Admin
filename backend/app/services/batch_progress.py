@@ -98,6 +98,52 @@ def _pct(done, total):
     return round(min(100, (done / total) * 100), 1)
 
 
+def _project_admin_stage(project):
+    """Map a project's real progress to the Admin Portal's 6-stage workflow.
+
+    The user portal separates weekly reports and task board, while Admin groups
+    both under stage 4 (project execution). This keeps all portals aligned
+    without changing the frozen database schema.
+    """
+    try:
+        final_grade = project.final_grade_summary
+    except Exception:
+        final_grade = None
+
+    if (
+        project.status in {"PASSED", "FAILED", "COMPLETED", "CLOSED", "ARCHIVED"} or
+        (final_grade and getattr(final_grade, "is_finalized", False))
+    ):
+        return 6
+
+    if (
+        project.is_eligible_for_defense or
+        project.supervisor_score is not None or
+        project.reviewer_score is not None or
+        project.status in {"DEFENSE_READY", "DEFENDING"}
+    ):
+        return 5
+
+    if (
+        project.status in {"OUTLINE_APPROVED", "IN_PROGRESS"} or
+        project.tasks.exists() or
+        project.weekly_reports.exists()
+    ):
+        return 4
+
+    if (
+        project.signed_outline_file or
+        project.status in {"OUTLINE_PENDING", "OUTLINE_REVISION", "TOPIC_APPROVED", "TOPIC_CONFIRMED", "PENDING_REVIEW"} or
+        project.topic_review_status in {"APPROVED", "GV_CONFIRMED"}
+    ):
+        return 3
+
+    if project.status in {"ALLOCATED", "TOPIC_DRAFT"} or project.supervisor_id:
+        return 2
+
+    return 1
+
+
 def compute_batch_progress(batch):
     """
     Trả về cấu trúc tiến trình chi tiết của một Đợt đồ án.
@@ -131,7 +177,7 @@ def compute_batch_progress(batch):
     )
 
     batch_id = batch.id
-    current_number = DB_STAGE_TO_NUMBER.get(batch.current_stage, 1)
+    stored_current_number = DB_STAGE_TO_NUMBER.get(batch.current_stage, 1)
     is_open = bool(batch.is_active and not batch.is_closed and batch.current_stage != "COMPLETED")
 
     # ------------------------------------------------------------------
@@ -145,7 +191,12 @@ def compute_batch_progress(batch):
     )
 
     total_preferences = StudentPreference.objects.filter(batch_id=batch_id).count()
-    total_projects = GraduationProject.objects.filter(batch_id=batch_id).count()
+    projects = GraduationProject.objects.filter(batch_id=batch_id).select_related(
+        "final_grade_summary"
+    ).prefetch_related("tasks", "weekly_reports")
+    total_projects = projects.count()
+    highest_project_stage = max((_project_admin_stage(project) for project in projects), default=1)
+    current_number = max(stored_current_number, highest_project_stage)
     assigned_projects = GraduationProject.objects.filter(
         batch_id=batch_id, supervisor__isnull=False
     ).count()
