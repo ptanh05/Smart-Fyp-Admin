@@ -262,59 +262,77 @@ export const CouncilsPage: React.FC = () => {
             className={`utc-subnav-btn ${activeTab === 'councils' ? 'active' : ''}`}
             onClick={() => setActiveTab('councils')}
           >
-            🏛️ Hội Đồng Bảo Vệ & Phản Biện (1CT-2TK-2UV)
+            <span className="utc-tab-icon">🏛️</span>
+            <span>Hội Đồng Bảo Vệ & Phản Biện (1CT-2TK-2UV)</span>
           </button>
           <button
             className={`utc-subnav-btn ${activeTab === 'schedule' ? 'active' : ''}`}
             onClick={() => setActiveTab('schedule')}
           >
-            ⏱️ Lịch Bảo Vệ Chi Tiết Từng Sinh Viên (Slot)
+            <span className="utc-tab-icon">⏱️</span>
+            <span>Lịch Bảo Vệ Chi Tiết Từng Sinh Viên (Slot)</span>
           </button>
         </div>
 
         {/* Header Bar */}
         <div className="utc-councils-header-bar">
-          <div className="utc-batch-select-group">
-            <label>🎯 Chọn Đợt ĐATN:</label>
-            <select
-              value={selectedBatchId || ''}
-              onChange={(e) => setSelectedBatchId(Number(e.target.value))}
-              className="utc-batch-dropdown"
-            >
-              {batches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.batch_code} - {b.batch_name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <div className="utc-councils-filter-row">
+            <div className="utc-batch-select-group">
+              <label htmlFor="batch-select">
+                <span className="utc-filter-icon">🎯</span>
+                <span>Chọn Đợt ĐATN:</span>
+              </label>
+              <select
+                id="batch-select"
+                value={selectedBatchId || ''}
+                onChange={(e) => setSelectedBatchId(Number(e.target.value))}
+                className="utc-batch-dropdown"
+              >
+                {batches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.batch_code} - {b.batch_name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          <div className="utc-batch-select-group">
-            <label>📦 Số ĐT/Hội đồng:</label>
-            <select
-              value={projectsPerCouncil}
-              onChange={(e) => setProjectsPerCouncil(Number(e.target.value))}
-              className="utc-batch-dropdown"
-            >
-              {[3, 4, 5, 6, 8, 10, 12].map((n) => (
-                <option key={n} value={n}>
-                  {n} đề tài
-                </option>
-              ))}
-            </select>
+            <div className="utc-batch-select-group">
+              <label htmlFor="projects-per-council">
+                <span className="utc-filter-icon">📦</span>
+                <span>Số ĐT / Hội đồng:</span>
+              </label>
+              <select
+                id="projects-per-council"
+                value={projectsPerCouncil}
+                onChange={(e) => setProjectsPerCouncil(Number(e.target.value))}
+                className="utc-batch-dropdown"
+              >
+                {[3, 4, 5, 6, 8, 10, 12].map((n) => (
+                  <option key={n} value={n}>
+                    {n} đề tài
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="utc-council-actions">
             <button
               onClick={handleAutoGenerateCouncils}
               disabled={generating}
-              className="utc-btn-primary"
+              className="utc-btn-generate"
               title="Tự động lập Hội đồng chuẩn 1CT-2TK-2UV, gán đề tài & GVPB (loại trừ GVHD)"
             >
-              <span>⚡</span> {generating ? 'Đang sinh Hội đồng...' : 'Sinh Hội Đồng Tự Động'}
+              <span className="utc-btn-icon">⚡</span>
+              <span>{generating ? 'Đang sinh Hội đồng...' : 'Sinh Hội Đồng Tự Động'}</span>
             </button>
-            <button onClick={() => setShowCreateModal(true)} className="utc-btn-primary">
-              <span>➕</span> Tạo Hội Đồng Chuẩn (1CT-2TK-2UV)
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="utc-btn-create"
+              title="Tạo thủ công Hội đồng chuẩn 5 thành viên (1 Chủ tịch, 2 Thư ký, 2 Ủy viên)"
+            >
+              <span className="utc-btn-icon">➕</span>
+              <span>Tạo Hội Đồng Chuẩn (1CT-2TK-2UV)</span>
             </button>
             <button
               onClick={handleAutoAssignReviewers}
@@ -322,14 +340,16 @@ export const CouncilsPage: React.FC = () => {
               className="utc-btn-emerald"
               title="Phân bổ đề tài vào HĐ & gán phản biện không trùng GVHD"
             >
-              <span>⚖️</span> {assigning ? 'Đang phân bổ...' : 'Tự Động Phân HĐ & Phản Biện'}
+              <span className="utc-btn-icon">⚖️</span>
+              <span>{assigning ? 'Đang phân bổ...' : 'Tự Động Phân HĐ & Phản Biện'}</span>
             </button>
             <button
               onClick={() => setShowScheduleModal(true)}
               className="utc-btn-violet"
               title="Khoa nhập tham số ca/giờ/thời lượng để tự động xếp lịch"
             >
-              <span>⏱️</span> Tự Động Xếp Lịch Bảo Vệ
+              <span className="utc-btn-icon">⏱️</span>
+              <span>Tự Động Xếp Lịch Bảo Vệ</span>
             </button>
           </div>
         </div>
@@ -528,7 +548,32 @@ export const CouncilsPage: React.FC = () => {
             {loading ? (
               <div className="utc-loading-text">Đang tải danh sách Hội đồng...</div>
             ) : councils.length === 0 ? (
-              <div className="utc-empty-text">Chưa thành lập Hội đồng nào cho đợt này. Hãy nhấn "Tạo Hội Đồng Chuẩn".</div>
+              <div className="utc-councils-empty-state">
+                <div className="utc-empty-icon-circle">🏛️</div>
+                <h4 className="utc-empty-title">Chưa Thành Lập Hội Đồng Nào Cho Đợt Này</h4>
+                <p className="utc-empty-desc">
+                  Đợt tốt nghiệp hiện tại chưa có Hội đồng bảo vệ nào. Bạn có thể bấm{' '}
+                  <strong>"Sinh Hội Đồng Tự Động"</strong> để hệ thống tự phân vai chuẩn 1CT - 2TK - 2UV và gán đề tài,
+                  hoặc bấm <strong>"Tạo Hội Đồng Chuẩn"</strong> để thêm thủ công.
+                </p>
+                <div className="utc-empty-actions">
+                  <button
+                    onClick={handleAutoGenerateCouncils}
+                    disabled={generating}
+                    className="utc-btn-generate"
+                  >
+                    <span className="utc-btn-icon">⚡</span>
+                    <span>{generating ? 'Đang sinh Hội đồng...' : 'Sinh Hội Đồng Tự Động Ngay'}</span>
+                  </button>
+                  <button
+                    onClick={() => setShowCreateModal(true)}
+                    className="utc-btn-create"
+                  >
+                    <span className="utc-btn-icon">➕</span>
+                    <span>Tạo Thủ Công (1CT-2TK-2UV)</span>
+                  </button>
+                </div>
+              </div>
             ) : (
               <div className="utc-councils-grid">
                 {councils.map((council) => {
