@@ -182,3 +182,46 @@ class AdvancedUserManagementTests(APITestCase):
         self.assertEqual(res.data["created"], 2)
         self.assertEqual(len(res.data["created_accounts"]), 2)
         self.assertEqual(res.data["created_accounts"][0]["plain_password"], "201200777")
+
+    def test_excel_import_rejects_student_already_in_another_batch(self):
+        user = CustomUser.objects.create_user(
+            username="201200777",
+            email="201200777@sv.utc.edu.vn",
+            user_type="student",
+        )
+        student = Student.objects.create(
+            user=user,
+            registration_no="201200777",
+            academic_batch=self.batch,
+            course_class=self.class_dt,
+        )
+        other_batch = AcademicBatch.objects.create(
+            batch_code="K63_HK1_2027",
+            batch_name="Đợt khác",
+        )
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.title = "CNTT_1_K62"
+        ws.append(["STT", "Mã sinh viên", "Họ và tên", "Lớp"])
+        ws.append([1, "201200777", "Phạm Văn Hải", "CNTT 1 - K62"])
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        buf.name = "duplicate_batch.xlsx"
+
+        res = self.client.post(
+            reverse("admin-users-import-excel"),
+            {"file": buf, "batch_id": other_batch.id},
+            format="multipart",
+        )
+
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(res.data["success"])
+        self.assertEqual(res.data["conflict_type"], "STUDENT_ALREADY_IN_ANOTHER_BATCH")
+        self.assertEqual(res.data["conflict_count"], 1)
+        self.assertEqual(res.data["conflicts"][0]["registration_no"], "201200777")
+        student.refresh_from_db()
+        self.assertEqual(student.academic_batch, self.batch)
+        self.assertFalse(CourseClass.objects.filter(batch=other_batch).exists())

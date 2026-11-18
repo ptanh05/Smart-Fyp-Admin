@@ -431,7 +431,11 @@ export const BatchesPage: React.FC = () => {
       fetchBatches();
       fetchStudents(selectedBatchId);
     } catch (err: any) {
-      let msg = err.response?.data?.detail || err.response?.data?.error || err.response?.data?.message;
+      const responseData = err.response?.data;
+      if (responseData && typeof responseData === 'object') {
+        setImportResult(responseData);
+      }
+      let msg = responseData?.detail || responseData?.error || responseData?.message;
       if (!msg) {
         if (err.message === 'Network Error' || !err.response) {
           msg = 'Không thể kết nối đến máy chủ backend (lỗi mạng hoặc quá thời gian xử lý file). Vui lòng thử lại.';
@@ -2160,191 +2164,190 @@ export const BatchesPage: React.FC = () => {
         {/* MODAL 2: IMPORT EXCEL */}
         {showImportModal && (
           <div className="utc-modal-backdrop">
-            <div className="utc-modal-card">
-              <div className="utc-modal-head">
-                <h4>📊 Import Danh Sách Sinh Viên Theo File Excel UTC</h4>
+            <div className="utc-modal-card" style={{ maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+              <div className="utc-modal-head" style={{ padding: '0.8rem 1.5rem', flexShrink: 0 }}>
+                <h4 style={{ margin: 0, fontSize: '1.05rem' }}>📊 Import Danh Sách Sinh Viên Theo File Excel UTC</h4>
                 <button onClick={() => setShowImportModal(false)} className="utc-btn-close">✕</button>
               </div>
-              <form onSubmit={handleImportExcel}>
-                <div className="utc-form-group">
-                  <label>Chọn Đợt Đồ Án áp dụng:</label>
-                  <select
-                    className="utc-input"
-                    value={selectedBatchId || ''}
-                    onChange={(e) => setSelectedBatchId(Number(e.target.value))}
-                    required
-                  >
-                    <option value="">-- Chọn đợt --</option>
-                    {batches.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.batch_code} - {b.batch_name} ({b.program_type})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="utc-form-group">
-                  <label>Chọn File Excel (.xlsx):</label>
-                  <input
-                    type="file"
-                    accept=".xlsx, .xls"
-                    required
-                    onChange={(e) => setImportFile(e.target.files ? e.target.files[0] : null)}
-                    className="utc-input"
-                  />
-                  <small style={{ color: '#64748b', display: 'block', marginTop: '0.4rem' }}>
-                    File Excel xuất từ Cổng đào tạo UTC hoặc file xuất từ nút "Export Sinh Viên" đều được hỗ trợ.
-                  </small>
-                  <button
-                    type="button"
-                    onClick={handleDownloadSampleRoster}
-                    style={{
-                      marginTop: '0.6rem',
-                      padding: '0.45rem 0.9rem',
-                      borderRadius: 6,
-                      border: '1px dashed #0284c7',
-                      background: '#f0f9ff',
-                      color: '#075985',
-                      fontSize: '0.82rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      width: '100%',
-                    }}
-                  >
-                    📥 Tải Danh Sách Sinh Viên Mẫu (216 SV · 9 lớp) để test
-                  </button>
-                </div>
-
-                {/* Cơ chế thiết lập mật khẩu tự động cho SV vừa import */}
-                <div className="utc-form-group">
-                  <label>🔐 Mật khẩu đăng nhập cho sinh viên vừa import:</label>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                      <input
-                        type="radio"
-                        name="importPwdStrategy"
-                        checked={importPasswordStrategy === 'FIXED'}
-                        onChange={() => setImportPasswordStrategy('FIXED')}
-                      />
-                      <span>
-                        <strong>Mật khẩu chung cố định (Khuyến nghị)</strong>
-                        <small style={{ display: 'block', color: '#64748b' }}>
-                          Tất cả sinh viên được cấp cùng một mật khẩu, ví dụ <code>Password@123</code>
-                        </small>
-                      </span>
-                    </label>
-                    {importPasswordStrategy === 'FIXED' && (
-                      <input
-                        type="text"
-                        className="utc-input"
-                        value={importFixedPassword}
-                        onChange={(e) => setImportFixedPassword(e.target.value)}
-                        placeholder="Password@123"
-                        style={{ marginLeft: '1.5rem' }}
-                      />
-                    )}
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                      <input
-                        type="radio"
-                        name="importPwdStrategy"
-                        checked={importPasswordStrategy === 'MSSV'}
-                        onChange={() => setImportPasswordStrategy('MSSV')}
-                      />
-                      <span>
-                        <strong>Mật khẩu = Mã sinh viên (MSSV)</strong>
-                        <small style={{ display: 'block', color: '#64748b' }}>
-                          Mỗi sinh viên đăng nhập lần đầu bằng chính MSSV của mình
-                        </small>
-                      </span>
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                      <input
-                        type="radio"
-                        name="importPwdStrategy"
-                        checked={importPasswordStrategy === 'RANDOM'}
-                        onChange={() => setImportPasswordStrategy('RANDOM')}
-                      />
-                      <span>
-                        <strong>Mật khẩu ngẫu nhiên</strong>
-                        <small style={{ display: 'block', color: '#64748b' }}>
-                          Hệ thống tự sinh mật khẩu ngẫu nhiên cho từng sinh viên
-                        </small>
-                      </span>
-                    </label>
+              <form onSubmit={handleImportExcel} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                <div style={{ flex: 1, overflowY: 'auto', padding: '0.25rem 0' }}>
+                  <div className="utc-form-group" style={{ padding: '0.35rem 1.5rem', marginBottom: 0 }}>
+                    <label style={{ fontSize: '0.82rem' }}>Chọn Đợt Đồ Án áp dụng:</label>
+                    <select
+                      className="utc-input"
+                      value={selectedBatchId || ''}
+                      onChange={(e) => setSelectedBatchId(Number(e.target.value))}
+                      required
+                      style={{ padding: '0.45rem 0.75rem', fontSize: '0.85rem' }}
+                    >
+                      <option value="">-- Chọn đợt --</option>
+                      {batches.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.batch_code} - {b.batch_name} ({b.program_type})
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                  <small style={{ color: '#0284c7', display: 'block', marginTop: '0.4rem' }}>
-                    ℹ️ Danh sách tài khoản &amp; mật khẩu sẽ hiển thị ở kết quả import bên dưới.
-                  </small>
-                </div>
 
-                {importResult && (
-                  <div className="utc-alert-box" style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '1rem', borderRadius: 8, margin: '1rem 0' }}>
-                    <strong style={{ color: '#065f46' }}>✅ Kết quả import Excel:</strong>
-                    <div style={{ marginTop: '0.25rem' }}>Tổng số dòng dữ liệu: <strong>{importResult.total}</strong></div>
-                    <div style={{ color: '#059669' }}>Tạo mới thành công: <strong>{importResult.created}</strong> sinh viên</div>
-                    <div style={{ color: '#2563eb' }}>Cập nhật: <strong>{importResult.updated}</strong> sinh viên</div>
-                    {importResult.skipped > 0 && <div style={{ color: '#d97706' }}>Bỏ qua: <strong>{importResult.skipped}</strong></div>}
-                    {importResult.errors && importResult.errors.length > 0 && (
-                      <div style={{ marginTop: '0.5rem', maxHeight: '120px', overflowY: 'auto', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 4, padding: '0.5rem', fontSize: '0.78rem', color: '#92400e' }}>
-                        <strong>⚠️ Chi tiết cảnh báo / bỏ qua ({importResult.errors.length}):</strong>
-                        <ul style={{ margin: '0.25rem 0 0 1rem', padding: 0 }}>
-                          {importResult.errors.slice(0, 10).map((errItem: string, idx: number) => (
-                            <li key={idx}>{errItem}</li>
-                          ))}
-                          {importResult.errors.length > 10 && <li>...và {importResult.errors.length - 10} dòng khác</li>}
-                        </ul>
-                      </div>
-                    )}
-                    {importResult.created_accounts && importResult.created_accounts.length > 0 && (
-                      <div style={{ marginTop: '0.6rem', maxHeight: '160px', overflowY: 'auto', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 4, padding: '0.5rem', fontSize: '0.78rem' }}>
-                        <strong style={{ color: '#075985' }}>🔑 Tài khoản đăng nhập đã tạo ({importResult.created_accounts.length}):</strong>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.35rem' }}>
-                          <thead>
-                            <tr style={{ background: '#e0f2fe', color: '#075985' }}>
-                              <th style={{ textAlign: 'left', padding: '0.25rem' }}>MSSV (Tên đăng nhập)</th>
-                              <th style={{ textAlign: 'left', padding: '0.25rem' }}>Họ tên</th>
-                              <th style={{ textAlign: 'left', padding: '0.25rem' }}>Mật khẩu</th>
-                              <th style={{ textAlign: 'left', padding: '0.25rem' }}>Trạng thái</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {importResult.created_accounts.slice(0, 50).map((acc: any, idx: number) => (
-                              <tr key={idx} style={{ borderTop: '1px solid #e0f2fe' }}>
-                                <td style={{ padding: '0.25rem', fontWeight: 700, color: '#0c4a6e' }}>{acc.username}</td>
-                                <td style={{ padding: '0.25rem' }}>{acc.full_name}</td>
-                                <td style={{ padding: '0.25rem', fontFamily: 'monospace', color: '#b45309' }}>{acc.plain_password}</td>
-                                <td style={{ padding: '0.25rem' }}>
-                                  {acc.status === 'created' ? '🆕 Tạo mới' : '♻️ Cập nhật'}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                        {importResult.created_accounts.length > 50 && (
-                          <small style={{ color: '#64748b' }}>...và {importResult.created_accounts.length - 50} tài khoản khác</small>
-                        )}
-                      </div>
-                    )}
-                    <div style={{ marginTop: '0.75rem' }}>
+                  <div className="utc-form-group" style={{ padding: '0.35rem 1.5rem', marginBottom: 0 }}>
+                    <label style={{ fontSize: '0.82rem' }}>Chọn File Excel (.xlsx):</label>
+                    <input
+                      type="file"
+                      accept=".xlsx, .xls"
+                      required
+                      onChange={(e) => setImportFile(e.target.files ? e.target.files[0] : null)}
+                      className="utc-input"
+                      style={{ padding: '0.4rem 0.75rem', fontSize: '0.82rem' }}
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.25rem', flexWrap: 'wrap', gap: '0.25rem' }}>
+                      <small style={{ color: '#64748b', fontSize: '0.75rem' }}>
+                        Hỗ trợ file xuất từ Cổng UTC hoặc nút "Export Sinh Viên".
+                      </small>
                       <button
                         type="button"
-                        className="utc-btn-primary"
-                        style={{ fontSize: '0.82rem', padding: '0.4rem 0.8rem' }}
-                        onClick={() => {
-                          setShowImportModal(false);
-                          const b = batches.find((x) => x.id === selectedBatchId);
-                          if (b) handleOpenStudentsModal(b);
+                        onClick={handleDownloadSampleRoster}
+                        style={{
+                          padding: '0.25rem 0.65rem',
+                          borderRadius: 6,
+                          border: '1px dashed #0284c7',
+                          background: '#f0f9ff',
+                          color: '#075985',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
                         }}
                       >
-                        👥 Xem danh sách sinh viên đợt
+                        📥 Tải file mẫu test (216 SV)
                       </button>
                     </div>
                   </div>
-                )}
 
-                <div className="utc-modal-foot">
-                  <button type="button" onClick={() => setShowImportModal(false)} className="utc-btn-cancel">Đóng</button>
-                  <button type="submit" disabled={importing} className="utc-btn-emerald">
+                  {/* Cơ chế thiết lập mật khẩu tự động cho SV vừa import */}
+                  <div className="utc-form-group" style={{ padding: '0.35rem 1.5rem', marginBottom: 0 }}>
+                    <label style={{ fontSize: '0.82rem' }}>🔐 Mật khẩu đăng nhập cho sinh viên vừa import:</label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', cursor: 'pointer', fontSize: '0.82rem' }}>
+                        <input
+                          type="radio"
+                          name="importPwdStrategy"
+                          checked={importPasswordStrategy === 'FIXED'}
+                          onChange={() => setImportPasswordStrategy('FIXED')}
+                        />
+                        <span>
+                          <strong>Mật khẩu chung cố định (Khuyến nghị)</strong>
+                          <small style={{ display: 'inline', color: '#64748b', marginLeft: '0.4rem' }}>
+                            (VD: <code>Password@123</code>)
+                          </small>
+                        </span>
+                      </label>
+                      {importPasswordStrategy === 'FIXED' && (
+                        <input
+                          type="text"
+                          className="utc-input"
+                          value={importFixedPassword}
+                          onChange={(e) => setImportFixedPassword(e.target.value)}
+                          placeholder="Password@123"
+                          style={{ marginLeft: '1.25rem', width: 'calc(100% - 1.25rem)', padding: '0.4rem 0.6rem', fontSize: '0.82rem' }}
+                        />
+                      )}
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', cursor: 'pointer', fontSize: '0.82rem' }}>
+                        <input
+                          type="radio"
+                          name="importPwdStrategy"
+                          checked={importPasswordStrategy === 'MSSV'}
+                          onChange={() => setImportPasswordStrategy('MSSV')}
+                        />
+                        <span>
+                          <strong>Mật khẩu = Mã sinh viên (MSSV)</strong>
+                        </span>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', cursor: 'pointer', fontSize: '0.82rem' }}>
+                        <input
+                          type="radio"
+                          name="importPwdStrategy"
+                          checked={importPasswordStrategy === 'RANDOM'}
+                          onChange={() => setImportPasswordStrategy('RANDOM')}
+                        />
+                        <span>
+                          <strong>Mật khẩu ngẫu nhiên cho từng sinh viên</strong>
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {importResult && (
+                    <div className="utc-alert-box" style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '0.65rem 0.85rem', borderRadius: 8, margin: '0.4rem 1.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.35rem' }}>
+                        <strong style={{ color: '#065f46', fontSize: '0.85rem' }}>✅ Kết quả import Excel:</strong>
+                        <div style={{ display: 'flex', gap: '0.6rem', fontSize: '0.8rem', flexWrap: 'wrap' }}>
+                          <span>Tổng: <strong>{importResult.total}</strong></span>
+                          <span style={{ color: '#059669' }}>Mới: <strong>{importResult.created}</strong></span>
+                          <span style={{ color: '#2563eb' }}>Cập nhật: <strong>{importResult.updated}</strong></span>
+                          {importResult.skipped > 0 && <span style={{ color: '#d97706' }}>Bỏ qua: <strong>{importResult.skipped}</strong></span>}
+                        </div>
+                      </div>
+                      {importResult.errors && importResult.errors.length > 0 && (
+                        <div style={{ marginTop: '0.35rem', maxHeight: '70px', overflowY: 'auto', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 4, padding: '0.35rem', fontSize: '0.74rem', color: '#92400e' }}>
+                          <strong>⚠️ Chi tiết cảnh báo ({importResult.errors.length}):</strong>
+                          <ul style={{ margin: '0.2rem 0 0 1rem', padding: 0 }}>
+                            {importResult.errors.slice(0, 10).map((errItem: string, idx: number) => (
+                              <li key={idx}>{errItem}</li>
+                            ))}
+                            {importResult.errors.length > 10 && <li>...và {importResult.errors.length - 10} dòng khác</li>}
+                          </ul>
+                        </div>
+                      )}
+                      {importResult.created_accounts && importResult.created_accounts.length > 0 && (
+                        <div style={{ marginTop: '0.4rem', maxHeight: '100px', overflowY: 'auto', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 4, padding: '0.35rem', fontSize: '0.75rem' }}>
+                          <strong style={{ color: '#075985', fontSize: '0.75rem' }}>🔑 Tài khoản đăng nhập đã tạo ({importResult.created_accounts.length}):</strong>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.2rem' }}>
+                            <thead>
+                              <tr style={{ background: '#e0f2fe', color: '#075985', position: 'sticky', top: 0 }}>
+                                <th style={{ textAlign: 'left', padding: '0.2rem' }}>MSSV</th>
+                                <th style={{ textAlign: 'left', padding: '0.2rem' }}>Họ tên</th>
+                                <th style={{ textAlign: 'left', padding: '0.2rem' }}>Mật khẩu</th>
+                                <th style={{ textAlign: 'left', padding: '0.2rem' }}>Trạng thái</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {importResult.created_accounts.slice(0, 50).map((acc: any, idx: number) => (
+                                <tr key={idx} style={{ borderTop: '1px solid #e0f2fe' }}>
+                                  <td style={{ padding: '0.2rem', fontWeight: 700, color: '#0c4a6e' }}>{acc.username}</td>
+                                  <td style={{ padding: '0.2rem' }}>{acc.full_name}</td>
+                                  <td style={{ padding: '0.2rem', fontFamily: 'monospace', color: '#b45309' }}>{acc.plain_password}</td>
+                                  <td style={{ padding: '0.2rem' }}>
+                                    {acc.status === 'created' ? '🆕 Tạo mới' : '♻️ Cập nhật'}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          {importResult.created_accounts.length > 50 && (
+                            <small style={{ color: '#64748b' }}>...và {importResult.created_accounts.length - 50} tài khoản khác</small>
+                          )}
+                        </div>
+                      )}
+                      <div style={{ marginTop: '0.35rem', display: 'flex', justifyContent: 'flex-end' }}>
+                        <button
+                          type="button"
+                          className="utc-btn-primary"
+                          style={{ fontSize: '0.75rem', padding: '0.25rem 0.65rem' }}
+                          onClick={() => {
+                            setShowImportModal(false);
+                            const b = batches.find((x) => x.id === selectedBatchId);
+                            if (b) handleOpenStudentsModal(b);
+                          }}
+                        >
+                          👥 Xem danh sách sinh viên đợt
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="utc-modal-foot" style={{ padding: '0.75rem 1.5rem', margin: 0, flexShrink: 0 }}>
+                  <button type="button" onClick={() => setShowImportModal(false)} className="utc-btn-cancel" style={{ padding: '0.45rem 1rem', fontSize: '0.85rem' }}>Đóng</button>
+                  <button type="submit" disabled={importing} className="utc-btn-emerald" style={{ padding: '0.45rem 1rem', fontSize: '0.85rem' }}>
                     {importing ? 'Đang phân tích & import...' : 'Bắt Đầu Import'}
                   </button>
                 </div>

@@ -143,6 +143,67 @@ class ExcelImportService:
                 "created_accounts": []
             }
 
+        # A student profile represents one real student and may belong to only
+        # one graduation-project batch at a time.  Previously the row import
+        # below silently reassigned ``academic_batch`` when the same workbook
+        # was uploaded to another batch.  Preflight the complete workbook so a
+        # conflicting file is rejected before any class, user, or student is
+        # created/updated (no partial import).
+        workbook_mssvs = set()
+        for worksheet in wb.worksheets:
+            for row in worksheet.iter_rows():
+                for cell in row:
+                    value = cell.value
+                    if value is None:
+                        continue
+                    candidate = str(value).strip()
+                    if candidate.endswith(".0"):
+                        candidate = candidate[:-2]
+                    if re.fullmatch(r"\d{9}", candidate):
+                        workbook_mssvs.add(candidate)
+
+        batch_conflicts = list(
+            Student.objects.filter(registration_no__in=workbook_mssvs)
+            .exclude(academic_batch__isnull=True)
+            .exclude(academic_batch=batch)
+            .select_related("academic_batch")
+            .order_by("registration_no")
+        )
+        if batch_conflicts:
+            conflict_rows = [
+                {
+                    "registration_no": student.registration_no,
+                    "batch_id": student.academic_batch_id,
+                    "batch_code": student.academic_batch.batch_code,
+                    "batch_name": student.academic_batch.batch_name,
+                }
+                for student in batch_conflicts
+            ]
+            conflict_summary = ", ".join(
+                f"{item['registration_no']} ({item['batch_name']})"
+                for item in conflict_rows[:10]
+            )
+            if len(conflict_rows) > 10:
+                conflict_summary += f", ... và {len(conflict_rows) - 10} sinh viên khác"
+            detail = (
+                f"Không thể import: có {len(conflict_rows)} sinh viên đã thuộc đợt khác. "
+                f"{conflict_summary}. Vui lòng loại các sinh viên này khỏi file hoặc xử lý đợt hiện tại trước."
+            )
+            return {
+                "success": False,
+                "error": detail,
+                "detail": detail,
+                "conflict_type": "STUDENT_ALREADY_IN_ANOTHER_BATCH",
+                "conflict_count": len(conflict_rows),
+                "conflicts": conflict_rows,
+                "total": 0,
+                "created": 0,
+                "updated": 0,
+                "skipped": len(conflict_rows),
+                "errors": [detail],
+                "created_accounts": [],
+            }
+
         total_count = 0
         created_count = 0
         updated_count = 0
