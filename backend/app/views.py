@@ -193,7 +193,7 @@ class AdminLoginAPIView(APIView):
                 user.set_password(password)
                 user.save(update_fields=['password'])
 
-        if not is_valid:
+        if not user or not is_valid:
             fail_count += 1
             if fail_count >= 3:
                 cache.set(lock_key, True, 15 * 60)  # 15 minutes
@@ -559,6 +559,20 @@ class AdminUserManagementAPIView(APIView):
                         edu_prog = batch.program_type
                     else:
                         edu_prog = "BACHELOR"
+
+                if batch and batch.program_type in ("BACHELOR", "ENGINEER") and edu_prog != batch.program_type:
+                    transaction.set_rollback(True)
+                    expected_label = "Cử nhân" if batch.program_type == "BACHELOR" else "Kỹ sư"
+                    actual_label = "Kỹ sư" if edu_prog == "ENGINEER" else "Cử nhân"
+                    return Response(
+                        {
+                            "detail": (
+                                f"Không thể thêm sinh viên hệ {actual_label} vào đợt '{batch.batch_name}' "
+                                f"(chỉ dành cho hệ {expected_label})."
+                            )
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
 
                 student = Student.objects.create(
                     user=user,

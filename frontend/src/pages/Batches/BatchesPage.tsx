@@ -2275,7 +2275,16 @@ export const BatchesPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {importResult && (
+                  {importResult && importResult.success === false ? (
+                    <div className="utc-alert-box" style={{ background: '#fef2f2', border: '1px solid #fecaca', padding: '0.65rem 0.85rem', borderRadius: 8, margin: '0.4rem 1.5rem' }}>
+                      <strong style={{ color: '#b91c1c', fontSize: '0.85rem', display: 'block', marginBottom: '0.25rem' }}>
+                        ❌ Không thể import danh sách:
+                      </strong>
+                      <div style={{ color: '#991b1b', fontSize: '0.8rem', lineHeight: 1.45 }}>
+                        {importResult.detail || importResult.error || 'Dữ liệu file Excel không phù hợp với cấu hình đợt đồ án.'}
+                      </div>
+                    </div>
+                  ) : importResult && (
                     <div className="utc-alert-box" style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '0.65rem 0.85rem', borderRadius: 8, margin: '0.4rem 1.5rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.35rem' }}>
                         <strong style={{ color: '#065f46', fontSize: '0.85rem' }}>✅ Kết quả import Excel:</strong>

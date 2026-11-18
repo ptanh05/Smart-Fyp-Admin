@@ -225,3 +225,116 @@ class AdvancedUserManagementTests(APITestCase):
         student.refresh_from_db()
         self.assertEqual(student.academic_batch, self.batch)
         self.assertFalse(CourseClass.objects.filter(batch=other_batch).exists())
+
+    def test_excel_import_filters_students_by_batch_education_program(self):
+        def build_program_file(rows, filename="programs.xlsx"):
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            assert ws is not None
+            ws.title = "DS_Sinh_Vien"
+            ws.append(["STT", "Mã sinh viên", "Họ và tên", "Lớp sinh hoạt", "Hệ đào tạo"])
+            for idx, (mssv, name, cls_name, edu_label) in enumerate(rows, start=1):
+                ws.append([idx, mssv, name, cls_name, edu_label])
+            buf = io.BytesIO()
+            wb.save(buf)
+            buf.seek(0)
+            buf.name = filename
+            return buf
+
+        bachelor_batch = AcademicBatch.objects.create(
+            batch_code="BACHELOR_ONLY",
+            batch_name="Đợt Cử nhân",
+            program_type="BACHELOR",
+        )
+        # Mixed file containing Kỹ sư (spelled "Kĩ sư") must be rejected completely
+        bachelor_reject = self.client.post(
+            reverse("admin-users-import-excel"),
+            {
+                "file": build_program_file([
+                    ("211100001", "Nguyễn Văn Cử Nhân", "CNTT1 - K62", "Cử nhân"),
+                    ("211100002", "Trần Văn Kỹ Sư", "CNTT Kỹ sư 1 - K62", "Kĩ sư"),
+                ]),
+                "batch_id": bachelor_batch.id,
+            },
+            format="multipart",
+        )
+        self.assertEqual(bachelor_reject.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(bachelor_reject.data["success"])
+        self.assertEqual(bachelor_reject.data["conflict_type"], "EDUCATION_PROGRAM_MISMATCH")
+        self.assertFalse(Student.objects.filter(academic_batch=bachelor_batch).exists())
+        self.assertFalse(CourseClass.objects.filter(batch=bachelor_batch).exists())
+
+        # Pure Cử nhân file succeeds
+        bachelor_ok = self.client.post(
+            reverse("admin-users-import-excel"),
+            {
+                "file": build_program_file([
+                    ("211100001", "Nguyễn Văn Cử Nhân", "CNTT1 - K62", "Cử nhân"),
+                ]),
+                "batch_id": bachelor_batch.id,
+            },
+            format="multipart",
+        )
+        self.assertEqual(bachelor_ok.status_code, status.HTTP_200_OK)
+        self.assertEqual(bachelor_ok.data["created"], 1)
+        self.assertTrue(Student.objects.filter(registration_no="211100001", education_program="BACHELOR").exists())
+
+        engineer_batch = AcademicBatch.objects.create(
+            batch_code="ENGINEER_ONLY",
+            batch_name="Đợt Kỹ sư",
+            program_type="ENGINEER",
+        )
+        # Mixed file containing Cử nhân must be rejected completely
+        engineer_reject = self.client.post(
+            reverse("admin-users-import-excel"),
+            {
+                "file": build_program_file([
+                    ("221100001", "Nguyễn Văn Cử Nhân", "CNTT1 - K62", "Cử nhân"),
+                    ("221100002", "Trần Văn Kỹ Sư", "CNTT Kỹ sư 1 - K62", "Kĩ sư"),
+                ]),
+                "batch_id": engineer_batch.id,
+            },
+            format="multipart",
+        )
+        self.assertEqual(engineer_reject.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(engineer_reject.data["success"])
+        self.assertEqual(engineer_reject.data["conflict_type"], "EDUCATION_PROGRAM_MISMATCH")
+        self.assertFalse(Student.objects.filter(academic_batch=engineer_batch).exists())
+        self.assertFalse(CourseClass.objects.filter(batch=engineer_batch).exists())
+
+        # Pure Kỹ sư file succeeds
+        engineer_ok = self.client.post(
+            reverse("admin-users-import-excel"),
+            {
+                "file": build_program_file([
+                    ("221100002", "Trần Văn Kỹ Sư", "CNTT Kỹ sư 1 - K62", "Kĩ sư"),
+                ]),
+                "batch_id": engineer_batch.id,
+            },
+            format="multipart",
+        )
+        self.assertEqual(engineer_ok.status_code, status.HTTP_200_OK)
+        self.assertEqual(engineer_ok.data["created"], 1)
+        self.assertTrue(Student.objects.filter(registration_no="221100002", education_program="ENGINEER").exists())
+
+        both_batch = AcademicBatch.objects.create(
+            batch_code="BOTH_PROGRAMS",
+            batch_name="Đợt Cả hai",
+            program_type="BOTH",
+        )
+        both_response = self.client.post(
+            reverse("admin-users-import-excel"),
+            {
+                "file": build_program_file([
+                    ("231100001", "Nguyễn Văn Cử Nhân", "CNTT1 - K62", "Cử nhân"),
+                    ("231100002", "Trần Văn Kỹ Sư", "CNTT Kỹ sư 1 - K62", "Kĩ sư"),
+                ]),
+                "batch_id": both_batch.id,
+            },
+            format="multipart",
+        )
+        self.assertEqual(both_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(both_response.data["created"], 2)
+        self.assertEqual(both_response.data["skipped"], 0)
+        self.assertTrue(Student.objects.filter(registration_no="231100001", education_program="BACHELOR").exists())
+        self.assertTrue(Student.objects.filter(registration_no="231100002", education_program="ENGINEER").exists())

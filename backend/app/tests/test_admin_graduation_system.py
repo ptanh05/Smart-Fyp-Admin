@@ -130,7 +130,12 @@ class AdminGraduationSystemTests(TestCase):
         wb.save(buffer)
         buffer.seek(0)
 
-        res = ExcelImportService.import_students_from_excel(buffer, self.batch.id)
+        engineer_batch = AcademicBatch.objects.create(
+            batch_code="2026_2027_KS",
+            batch_name="Đợt Kỹ sư K62",
+            program_type="ENGINEER",
+        )
+        res = ExcelImportService.import_students_from_excel(buffer, engineer_batch.id)
         self.assertTrue(res["success"])
         self.assertEqual(res["total"], 2)
         self.assertEqual(res["created"], 2)
@@ -246,7 +251,10 @@ class AdminGraduationSystemTests(TestCase):
         self.assertIsNotNone(buf)
 
         batch = AcademicBatch.objects.create(
-            batch_code="SAMPLE_ROSTER", batch_name="Sample Roster", is_active=False
+            batch_code="SAMPLE_ROSTER",
+            batch_name="Sample Roster",
+            program_type="BOTH",
+            is_active=False,
         )
         buf.seek(0)
         res = ExcelImportService.import_students_from_excel(buf, batch.id)

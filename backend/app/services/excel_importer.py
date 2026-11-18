@@ -4,6 +4,7 @@ import io
 import re
 import random
 import string
+import unicodedata
 from django.db import transaction
 from django.contrib.auth.hashers import make_password
 from app.models import (
@@ -20,6 +21,30 @@ from app.models import (
 def generate_random_password(length=8):
     chars = string.ascii_letters + string.digits + "!@#"
     return "".join(random.choice(chars) for _ in range(length))
+
+
+def _detect_education_program(value):
+    """Return ENGINEER/BACHELOR from common Vietnamese and English tags."""
+    raw = str(value or "").strip().lower().replace("đ", "d")
+    normalized = "".join(
+        char for char in unicodedata.normalize("NFD", raw)
+        if unicodedata.category(char) != "Mn"
+    )
+    normalized = re.sub(r"\s+", " ", normalized)
+    if (
+        "ky su" in normalized
+        or "ki su" in normalized
+        or "engineer" in normalized
+        or re.search(r"(^|\W)ks($|\W)", normalized)
+    ):
+        return "ENGINEER"
+    if (
+        "cu nhan" in normalized
+        or "bachelor" in normalized
+        or re.search(r"(^|\W)cn($|\W)", normalized)
+    ):
+        return "BACHELOR"
+    return None
 
 
 def _infer_mssv_column(ws):
@@ -102,6 +127,201 @@ def _infer_name_column(ws, exclude_col=None):
             best_score, best_col = score, col
 
     return best_col
+
+def _parse_sheet_metadata_and_columns(ws, sheet_name, batch_program_type, default_major="CNTT"):
+    """Parse sheet-level class metadata and detect table header columns."""
+    class_code = sheet_name.strip()
+    class_name = f"Lớp {class_code}"
+    class_group = ""
+    program_type = "KHMT" if default_major == "KHMT" else "DAI_TRA"
+    education_program = "ENGINEER" if batch_program_type == "ENGINEER" else "BACHELOR"
+
+    for r in range(1, min(10, ws.max_row + 1)):
+        val = str(ws.cell(r, 1).value or "")
+        if "Học phần:" in val:
+            class_name = val.replace("Học phần:", "").strip()
+            match_grp = re.search(r'\((N\d+)\)', class_name)
+            if match_grp:
+                class_group = match_grp.group(1)
+            if "Việt - Anh" in class_name or "Việt Anh" in class_name:
+                program_type = "VIET_ANH"
+            elif "Khoa học máy tính" in class_name or "KHMT" in class_name:
+                program_type = "KHMT"
+
+            detected_course_edu = _detect_education_program(class_name)
+            if detected_course_edu:
+                education_program = detected_course_edu
+            break
+
+    # Fallback: detect education program from sheet name if not found in "Học phần:"
+    if not _detect_education_program(class_name):
+        detected_sheet_edu = _detect_education_program(class_code)
+        if detected_sheet_edu:
+            education_program = detected_sheet_edu
+
+    is_generic_sheet = (
+        class_code.lower() in [
+            "ds_sinh_vien", "dssv", "danh_sach", "danhsach", "sheet1", "sheet_1", "danh sách"
+        ]
+        or any(k in class_code.lower() for k in ["danh sách", "danh sach", "sinh viên", "sinh vien", "sheet", "dssv", "student", "hoc vien"])
+    )
+
+    header_row_idx = None
+    col_mssv = None
+    col_first_name = None
+    col_last_name = None
+    col_full_name = None
+    col_class = None
+    col_major = None
+    col_education_program = None
+    col_phone = None
+    col_email = None
+    inferred_mssv = False
+
+    def _clean_header_cell(val):
+        if not val:
+            return ""
+        s = str(val).strip().lower()
+        s = s.replace("*", "").replace(":", "").replace("(", " ").replace(")", " ")
+        s = re.sub(r"\s+", " ", s)
+        return s.strip()
+
+    MSSV_STRONG_KEYS = [
+        "mã sinh viên", "ma sinh vien", "mã số sinh viên", "ma so sinh vien",
+        "mssv", "mã sv", "ma sv", "masv", "mã số sv", "ma so sv",
+        "student id", "student_id", "studentid", "mã trình", "số hiệu sinh viên",
+    ]
+    MSSV_WEAK_KEYS = ["sinh viên", "sinh vien", "mã", "ma"]
+    MSSV_KEYS = MSSV_STRONG_KEYS + MSSV_WEAK_KEYS
+    FULLNAME_KEYS = [
+        "họ và tên", "ho va ten", "họ tên", "ho ten", "họ và tên sinh viên",
+        "tên sinh viên", "ten sinh vien", "full name", "fullname", "hoten",
+        "họ và tên đầy đủ",
+    ]
+    LASTNAME_KEYS = [
+        "họ đệm", "ho dem", "họ và tên", "họ lót", "ho lot", "họ",
+        "last name", "lastname", "họ và tên cuối",
+    ]
+    FIRSTNAME_KEYS = [
+        "tên", "ten", "tên sv", "ten sinh vien", "first name", "firstname",
+        "tên thật",
+    ]
+    CLASS_KEYS = [
+        "lớp sinh hoạt", "lop sinh hoat", "lớp quản lý", "lop quan ly",
+        "lớp sinh viên", "lop sinh vien", "lớp", "lop", "class", "course class",
+        "course_class", "lớp học", "lop hoc", "nhóm", "nhom",
+    ]
+    MAJOR_KEYS = ["ngành", "nganh", "chuyên ngành", "chuyen nganh", "major", "khoa"]
+    EDUCATION_PROGRAM_KEYS = [
+        "hệ đào tạo", "he dao tao", "chương trình đào tạo", "chuong trinh dao tao",
+        "bậc đào tạo", "bac dao tao", "hệ", "he", "education program", "degree program",
+    ]
+    PHONE_KEYS = [
+        "số điện thoại", "so dien thoai", "điện thoại", "dien thoai",
+        "sđt", "sdt", "phone", "mobile", "số di động", "so di dong",
+        "điện thoại liên hệ",
+    ]
+    EMAIL_KEYS = ["email", "e-mail", "hòm thư", "hom thu", "mail", "thư điện tử"]
+
+    def _match_col(row_vals, keywords, exclude_keywords=(), exclude_cols=()):
+        best_idx, best_score = None, 0
+        for c_idx, val in enumerate(row_vals, start=1):
+            if not val or c_idx in exclude_cols:
+                continue
+            if any(ex in val for ex in exclude_keywords):
+                continue
+            for kw in keywords:
+                if kw == val:
+                    score = 100
+                elif kw in val:
+                    score = 60 + len(kw)
+                else:
+                    continue
+                if score > best_score:
+                    best_score, best_idx = score, c_idx
+        return best_idx, best_score
+
+    for r in range(1, min(60, ws.max_row + 1)):
+        row_vals = [_clean_header_cell(ws.cell(r, c).value) for c in range(1, ws.max_column + 1)]
+        if not any(row_vals):
+            continue
+
+        cand_mssv, score_mssv = _match_col(row_vals, MSSV_STRONG_KEYS)
+        if cand_mssv is None:
+            cand_mssv, score_mssv = _match_col(
+                row_vals, MSSV_WEAK_KEYS,
+                exclude_keywords=("họ", "ho", "tên sinh viên", "ten sinh vien"),
+            )
+        if cand_mssv is None:
+            continue
+
+        other_cols = sum(1 for v in row_vals if v and not any(k in v for k in MSSV_KEYS))
+        has_support = any(
+            _match_col(row_vals, kws)[0] is not None
+            for kws in (FULLNAME_KEYS, LASTNAME_KEYS, FIRSTNAME_KEYS, CLASS_KEYS, MAJOR_KEYS, EDUCATION_PROGRAM_KEYS)
+        )
+        if score_mssv < 70 and not (has_support and other_cols >= 2):
+            continue
+
+        header_row_idx = r
+        col_mssv = cand_mssv
+
+        cand_full, _ = _match_col(
+            row_vals, FULLNAME_KEYS,
+            exclude_keywords=("họ đệm", "ho dem"),
+            exclude_cols=(col_mssv,),
+        )
+        if cand_full:
+            col_full_name = cand_full
+        else:
+            cand_last, _ = _match_col(row_vals, LASTNAME_KEYS, exclude_cols=(col_mssv,))
+            cand_first, _ = _match_col(
+                row_vals, FIRSTNAME_KEYS,
+                exclude_keywords=("họ", "ho"),
+                exclude_cols=(col_mssv,),
+            )
+            if cand_last:
+                col_last_name = cand_last
+            if cand_first:
+                col_first_name = cand_first
+        col_class, _ = _match_col(row_vals, CLASS_KEYS, exclude_cols=(col_mssv,))
+        col_major, _ = _match_col(row_vals, MAJOR_KEYS, exclude_cols=(col_mssv,))
+        col_education_program, _ = _match_col(
+            row_vals,
+            EDUCATION_PROGRAM_KEYS,
+            exclude_cols=tuple(c for c in (col_mssv, col_class, col_major) if c is not None),
+        )
+        col_phone, _ = _match_col(row_vals, PHONE_KEYS, exclude_cols=(col_mssv,))
+        col_email, _ = _match_col(row_vals, EMAIL_KEYS, exclude_cols=(col_mssv,))
+        break
+
+    if col_mssv is None:
+        col_mssv = _infer_mssv_column(ws)
+        if col_mssv is not None:
+            header_row_idx = 0
+            col_full_name = _infer_name_column(ws, exclude_col=col_mssv)
+            inferred_mssv = True
+
+    return {
+        "class_code": class_code,
+        "class_name": class_name,
+        "class_group": class_group,
+        "program_type": program_type,
+        "education_program": education_program,
+        "is_generic_sheet": is_generic_sheet,
+        "header_row_idx": header_row_idx,
+        "col_mssv": col_mssv,
+        "col_first_name": col_first_name,
+        "col_last_name": col_last_name,
+        "col_full_name": col_full_name,
+        "col_class": col_class,
+        "col_major": col_major,
+        "col_education_program": col_education_program,
+        "col_phone": col_phone,
+        "col_email": col_email,
+        "inferred_mssv": inferred_mssv,
+    }
+
 
 class ExcelImportService:
     @staticmethod
@@ -204,6 +424,88 @@ class ExcelImportService:
                 "created_accounts": [],
             }
 
+        # Preflight: enforce strict education program match for single-program batches
+        # (BACHELOR-only or ENGINEER-only). BOTH intentionally accepts both programs.
+        if batch.program_type in ("BACHELOR", "ENGINEER"):
+            program_mismatches = []
+            for sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+                if ws.max_row < 2:
+                    continue
+                meta = _parse_sheet_metadata_and_columns(ws, sheet_name, batch.program_type, default_major)
+                col_mssv_pre = meta["col_mssv"]
+                if col_mssv_pre is None:
+                    continue
+                data_start = (meta["header_row_idx"] or 0) + 1
+                col_edu_pre = meta["col_education_program"]
+                col_cls_pre = meta["col_class"]
+                sheet_edu = meta["education_program"]
+                sheet_label = meta["class_name"]
+
+                for r in range(data_start, ws.max_row + 1):
+                    mssv_val = ws.cell(r, col_mssv_pre).value
+                    if not mssv_val:
+                        continue
+                    mssv = str(mssv_val).strip()
+                    if mssv.endswith(".0"):
+                        mssv = mssv[:-2]
+                    if not re.match(r"^\d{9}$", mssv):
+                        continue
+
+                    explicit_edu = (
+                        str(ws.cell(r, col_edu_pre).value).strip()
+                        if (col_edu_pre and ws.cell(r, col_edu_pre).value)
+                        else ""
+                    )
+                    row_cls = (
+                        str(ws.cell(r, col_cls_pre).value).strip()
+                        if (col_cls_pre and ws.cell(r, col_cls_pre).value)
+                        else ""
+                    )
+                    detected_edu = _detect_education_program(explicit_edu)
+                    if not detected_edu:
+                        detected_edu = _detect_education_program(f"{row_cls} {sheet_label} {sheet_name}")
+                    student_edu = detected_edu or sheet_edu
+
+                    if student_edu != batch.program_type:
+                        program_mismatches.append({
+                            "mssv": mssv,
+                            "row": r,
+                            "sheet": sheet_name,
+                            "student_edu": student_edu,
+                            "context": row_cls or sheet_name,
+                        })
+
+            if program_mismatches:
+                expected_label = "Cử nhân" if batch.program_type == "BACHELOR" else "Kỹ sư"
+                wrong_label = "Kỹ sư" if batch.program_type == "BACHELOR" else "Cử nhân"
+                sample_summary = ", ".join(
+                    f"{item['mssv']} ({item['context']})"
+                    for item in program_mismatches[:5]
+                )
+                if len(program_mismatches) > 5:
+                    sample_summary += f", ... và {len(program_mismatches) - 5} sinh viên khác"
+                detail = (
+                    f"Không thể import! Đợt '{batch.batch_name}' chỉ dành cho hệ {expected_label}, "
+                    f"nhưng trong file Excel có {len(program_mismatches)} sinh viên thuộc hệ {wrong_label} "
+                    f"({sample_summary}). Vui lòng chỉ import danh sách sinh viên hệ {expected_label} "
+                    f"hoặc chuyển cấu hình đợt sang 'Cả hai (Hỗn hợp)'."
+                )
+                return {
+                    "success": False,
+                    "error": detail,
+                    "detail": detail,
+                    "conflict_type": "EDUCATION_PROGRAM_MISMATCH",
+                    "conflict_count": len(program_mismatches),
+                    "expected_program": batch.program_type,
+                    "total": 0,
+                    "created": 0,
+                    "updated": 0,
+                    "skipped": len(program_mismatches),
+                    "errors": [detail],
+                    "created_accounts": [],
+                }
+
         total_count = 0
         created_count = 0
         updated_count = 0
@@ -216,39 +518,36 @@ class ExcelImportService:
             if ws.max_row < 2:
                 continue
 
-            class_code = sheet_name.strip()
-            class_name = f"Lớp {class_code}"
-            class_group = ""
-            program_type = "DAI_TRA"
-            if default_major == "KHMT":
-                program_type = "KHMT"
+            meta = _parse_sheet_metadata_and_columns(ws, sheet_name, batch.program_type, default_major)
+            class_code = meta["class_code"]
+            class_name = meta["class_name"]
+            class_group = meta["class_group"]
+            program_type = meta["program_type"]
+            education_program = meta["education_program"]
+            is_generic_sheet = meta["is_generic_sheet"]
+            header_row_idx = meta["header_row_idx"]
+            col_mssv = meta["col_mssv"]
+            col_first_name = meta["col_first_name"]
+            col_last_name = meta["col_last_name"]
+            col_full_name = meta["col_full_name"]
+            col_class = meta["col_class"]
+            col_major = meta["col_major"]
+            col_education_program = meta["col_education_program"]
+            col_phone = meta["col_phone"]
+            col_email = meta["col_email"]
 
-            education_program = "ENGINEER" if batch.program_type == "ENGINEER" else "BACHELOR"
+            if meta["inferred_mssv"]:
+                errors.append(
+                    f"Sheet '{sheet_name}': Không tìm thấy dòng tiêu đề chuẩn. "
+                    f"Hệ thống tự động nhận diện cột Mã sinh viên ở cột {col_mssv}."
+                )
 
-            for r in range(1, min(10, ws.max_row + 1)):
-                val = str(ws.cell(r, 1).value or "")
-                if "Học phần:" in val:
-                    class_name = val.replace("Học phần:", "").strip()
-                    match_grp = re.search(r'\((N\d+)\)', class_name)
-                    if match_grp:
-                        class_group = match_grp.group(1)
-                    if "Việt - Anh" in class_name or "Việt Anh" in class_name:
-                        program_type = "VIET_ANH"
-                    elif "Khoa học máy tính" in class_name or "KHMT" in class_name:
-                        program_type = "KHMT"
-                    
-                    if "Kỹ sư" in class_name or "KS" in class_name:
-                        education_program = "ENGINEER"
-                    elif "Cử nhân" in class_name or "CN" in class_name:
-                        education_program = "BACHELOR"
-                    break
-
-            is_generic_sheet = (
-                class_code.lower() in [
-                    "ds_sinh_vien", "dssv", "danh_sach", "danhsach", "sheet1", "sheet_1", "danh sách"
-                ]
-                or any(k in class_code.lower() for k in ["danh sách", "danh sach", "sinh viên", "sinh vien", "sheet", "dssv", "student", "hoc vien"])
-            )
+            if header_row_idx is None or col_mssv is None:
+                errors.append(
+                    f"Sheet '{sheet_name}': Không tìm thấy cột 'Mã sinh viên (MSSV)' "
+                    f"và không thể tự động nhận diện. Sheet này bị bỏ qua."
+                )
+                continue
 
             course_class = None
             if not is_generic_sheet:
@@ -268,173 +567,6 @@ class ExcelImportService:
                     course_class.program_type = program_type
                     course_class.education_program = education_program
                     course_class.save()
-
-            # Find table header row with robust fuzzy & normalized matching
-            header_row_idx = None
-            col_mssv = None
-            col_first_name = None
-            col_last_name = None
-            col_full_name = None
-            col_class = None
-            col_major = None
-            col_phone = None
-            col_email = None
-
-            def _clean_header_cell(val):
-                if not val:
-                    return ""
-                s = str(val).strip().lower()
-                s = s.replace("*", "").replace(":", "").replace("(", " ").replace(")", " ")
-                s = re.sub(r"\s+", " ", s)
-                return s.strip()
-
-            def _is_blank(val):
-                return val is None or str(val).strip() == ""
-
-            # --- Điểm số cho từng cột, chọn cột MSSV theo điểm cao nhất ---
-            # Bảng từ khóa mở rộng để nhận diện được file xuất từ Cổng đào tạo UTC,
-            # file export mẫu của hệ thống, và file do Khoa tự chỉnh sửa.
-            MSSV_STRONG_KEYS = [
-                "mã sinh viên", "ma sinh vien", "mã số sinh viên", "ma so sinh vien",
-                "mssv", "mã sv", "ma sv", "masv", "mã số sv", "ma so sv",
-                "student id", "student_id", "studentid", "mã trình", "số hiệu sinh viên",
-            ]
-            # Từ khóa mơ hồ: chỉ dùng khi không tìm được từ khóa mạnh.
-            MSSV_WEAK_KEYS = ["sinh viên", "sinh vien", "mã", "ma"]
-            MSSV_KEYS = MSSV_STRONG_KEYS + MSSV_WEAK_KEYS
-            FULLNAME_KEYS = [
-                "họ và tên", "ho va ten", "họ tên", "ho ten", "họ và tên sinh viên",
-                "tên sinh viên", "ten sinh vien", "full name", "fullname", "hoten",
-                "họ và tên đầy đủ",
-            ]
-            LASTNAME_KEYS = [
-                "họ đệm", "ho dem", "họ và tên", "họ lót", "ho lot", "họ",
-                "last name", "lastname", "họ và tên cuối",
-            ]
-            FIRSTNAME_KEYS = [
-                "tên", "ten", "tên sv", "ten sinh vien", "first name", "firstname",
-                "tên thật",
-            ]
-            CLASS_KEYS = [
-                "lớp sinh hoạt", "lop sinh hoat", "lớp quản lý", "lop quan ly",
-                "lớp sinh viên", "lop sinh vien", "lớp", "lop", "class", "course class",
-                "course_class", "lớp học", "lop hoc", "nhóm", "nhom",
-            ]
-            MAJOR_KEYS = ["ngành", "nganh", "chuyên ngành", "chuyen nganh", "major", "khoa"]
-            PHONE_KEYS = [
-                "số điện thoại", "so dien thoai", "điện thoại", "dien thoai",
-                "sđt", "sdt", "phone", "mobile", "số di động", "so di dong",
-                "điện thoại liên hệ",
-            ]
-            EMAIL_KEYS = ["email", "e-mail", "hòm thư", "hom thu", "mail", "thư điện tử"]
-
-            def _match_col(row_vals, keywords, exclude_keywords=(), exclude_cols=()):
-                """Trả về (col_index, điểm) cho cột khớp từ khóa."""
-                best_idx, best_score = None, 0
-                for c_idx, val in enumerate(row_vals, start=1):
-                    if not val:
-                        continue
-                    if c_idx in exclude_cols:
-                        continue
-                    if any(ex in val for ex in exclude_keywords):
-                        continue
-                    for kw in keywords:
-                        if kw == val:
-                            score = 100
-                        elif kw in val:
-                            score = 60 + len(kw)
-                        else:
-                            continue
-                        # Ưu tiên cột có từ khóa dài / khớp chính xác
-                        if score > best_score:
-                            best_score, best_idx = score, c_idx
-                return best_idx, best_score
-
-            for r in range(1, min(60, ws.max_row + 1)):
-                row_vals = [_clean_header_cell(ws.cell(r, c).value) for c in range(1, ws.max_column + 1)]
-                if not any(row_vals):
-                    continue
-
-                # Ưu tiên cột MSSV khớp CHÍNH XÁC từ khóa mạnh (mã sv, mssv, mã số sv...)
-                # trước; các từ khóa mơ hồ ("sinh viên") chỉ dùng làm phương án dự phòng.
-                cand_mssv, score_mssv = _match_col(row_vals, MSSV_STRONG_KEYS)
-                if cand_mssv is None:
-                    # Từ khóa mơ hồ: loại trừ các cột họ tên để không chọn nhầm
-                    # cột "Họ và tên sinh viên" làm cột MSSV.
-                    cand_mssv, score_mssv = _match_col(
-                        row_vals, MSSV_WEAK_KEYS,
-                        exclude_keywords=("họ", "ho", "tên sinh viên", "ten sinh vien"),
-                    )
-                if cand_mssv is None:
-                    continue
-
-                # Chỉ coi là hàng header nếu bên cạnh cột MSSV có thêm ít nhất
-                # 1 cột thông tin khác (tên / lớp / ngành / STT...) => tránh nhầm
-                # dòng dữ liệu đầu tiên làm header.
-                other_cols = sum(
-                    1 for v in row_vals
-                    if v and not any(k in v for k in MSSV_KEYS)
-                )
-                has_support = any(
-                    _match_col(row_vals, kws)[0] is not None
-                    for kws in (FULLNAME_KEYS, LASTNAME_KEYS, FIRSTNAME_KEYS, CLASS_KEYS, MAJOR_KEYS)
-                )
-                if score_mssv < 70 and not (has_support and other_cols >= 2):
-                    continue
-
-                header_row_idx = r
-                col_mssv = cand_mssv
-
-                # Tên: loại trừ cột MSSV để không chọn nhầm "Sinh viên" làm cột họ tên.
-                cand_full, _ = _match_col(
-                    row_vals, FULLNAME_KEYS,
-                    exclude_keywords=("họ đệm", "ho dem"),
-                    exclude_cols=(col_mssv,),
-                )
-                if cand_full:
-                    col_full_name = cand_full
-                else:
-                    cand_last, _ = _match_col(row_vals, LASTNAME_KEYS, exclude_cols=(col_mssv,))
-                    cand_first, _ = _match_col(
-                        row_vals, FIRSTNAME_KEYS,
-                        exclude_keywords=("họ", "ho"),
-                        exclude_cols=(col_mssv,),
-                    )
-                    if cand_last:
-                        col_last_name = cand_last
-                    if cand_first:
-                        col_first_name = cand_first
-                cand_class, _ = _match_col(row_vals, CLASS_KEYS, exclude_cols=(col_mssv,))
-                if cand_class:
-                    col_class = cand_class
-                cand_major, _ = _match_col(row_vals, MAJOR_KEYS, exclude_cols=(col_mssv,))
-                if cand_major:
-                    col_major = cand_major
-                cand_phone, _ = _match_col(row_vals, PHONE_KEYS, exclude_cols=(col_mssv,))
-                if cand_phone:
-                    col_phone = cand_phone
-                cand_email, _ = _match_col(row_vals, EMAIL_KEYS, exclude_cols=(col_mssv,))
-                if cand_email:
-                    col_email = cand_email
-                break
-
-            # --- FALLBACK: Nếu không dò được header, tự suy luận cột MSSV từ dữ liệu ---
-            if col_mssv is None:
-                col_mssv = _infer_mssv_column(ws)
-                if col_mssv is not None:
-                    header_row_idx = 0  # coi như không có hàng header, bắt đầu đọc từ dòng 1
-                    col_full_name = _infer_name_column(ws, exclude_col=col_mssv)
-                    errors.append(
-                        f"Sheet '{sheet_name}': Không tìm thấy dòng tiêu đề chuẩn. "
-                        f"Hệ thống tự động nhận diện cột Mã sinh viên ở cột {col_mssv}."
-                    )
-
-            if header_row_idx is None or col_mssv is None:
-                errors.append(
-                    f"Sheet '{sheet_name}': Không tìm thấy cột 'Mã sinh viên (MSSV)' "
-                    f"và không thể tự động nhận diện. Sheet này bị bỏ qua."
-                )
-                continue
 
             # First pass: collect valid rows to pre-fetch in batch (drastically accelerates import)
             valid_rows = []
@@ -525,14 +657,35 @@ class ExcelImportService:
                             else:
                                 detected_major = "CNTT"
 
-                        # Determine education program (Kỹ sư vs Cử nhân)
+                        # Determine education program (Kỹ sư vs Cử nhân). The
+                        # explicit Excel tag has priority; class/sheet text is
+                        # the fallback for files exported by the UTC portal.
                         student_edu = education_program
                         course_cls_name = course_class.class_name if course_class else ""
-                        combined_text = f"{student_class_name} {course_cls_name}".lower()
-                        if "kỹ sư" in combined_text or "ks" in combined_text:
-                            student_edu = "ENGINEER"
-                        elif "cử nhân" in combined_text or "cn" in combined_text:
-                            student_edu = "BACHELOR"
+                        explicit_education = ""
+                        if col_education_program and ws.cell(r, col_education_program).value:
+                            explicit_education = str(ws.cell(r, col_education_program).value).strip().lower()
+                        # The row tag wins. If absent, infer from class/course
+                        # text (e.g. "CNTT Kỹ sư 1 - K62").
+                        detected_education = _detect_education_program(explicit_education)
+                        if not detected_education:
+                            detected_education = _detect_education_program(
+                                f"{student_class_name} {course_cls_name}"
+                            )
+                        if detected_education:
+                            student_edu = detected_education
+
+                        # A single-program batch accepts only matching rows.
+                        # BOTH intentionally bypasses this filter.
+                        if batch.program_type in ("BACHELOR", "ENGINEER") and student_edu != batch.program_type:
+                            skipped_count += 1
+                            expected_label = "Cử nhân" if batch.program_type == "BACHELOR" else "Kỹ sư"
+                            actual_label = "Kỹ sư" if student_edu == "ENGINEER" else "Cử nhân"
+                            errors.append(
+                                f"Dòng {r}, MSSV {mssv}: Bỏ qua sinh viên hệ {actual_label} "
+                                f"vì đợt '{batch.batch_name}' chỉ dành cho hệ {expected_label}."
+                            )
+                            continue
 
                         # Map to administrative class (Lớp sinh hoạt) if specified
                         assigned_course_class = course_class
