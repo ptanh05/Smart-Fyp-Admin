@@ -59,17 +59,19 @@ const getBatchStageInfo = (stage: string) => {
     case 'PHASE_1_SETUP':
       return { step: 1, label: 'GĐ 1: Khởi tạo đợt', color: '#b45309', bg: '#fef3c7', border: '#fde68a' };
     case 'PHASE_2_ALLOCATING':
+    case 'PHASE_2_LOCKED':
       return { step: 2, label: 'GĐ 2: Phân công GVHD', color: '#0369a1', bg: '#e0f2fe', border: '#bae6fd' };
     case 'PHASE_3_TOPIC':
-      return { step: 3, label: 'GĐ 3: Đề tài & Đề cương', color: '#4338ca', bg: '#e0e7ff', border: '#c7d2fe' };
+      return { step: 3, label: 'GĐ 3: Duyệt đề cương', color: '#4338ca', bg: '#e0e7ff', border: '#c7d2fe' };
+    case 'PHASE_4_ELIGIBILITY':
     case 'PHASE_4_WEEKLY':
-      return { step: 4, label: 'GĐ 4: Báo cáo tuần', color: '#6d28d9', bg: '#ede9fe', border: '#ddd6fe' };
+    case 'PHASE_5_IN_PROGRESS':
+      return { step: 4, label: 'GĐ 4: Thực hiện đồ án', color: '#6d28d9', bg: '#ede9fe', border: '#ddd6fe' };
     case 'PHASE_5_REVIEW':
-      return { step: 5, label: 'GĐ 5: Phản biện đồ án', color: '#be185d', bg: '#fce7f3', border: '#fbcfe8' };
     case 'PHASE_6_DEFENSE':
-      return { step: 6, label: 'GĐ 6: Bảo vệ hội đồng', color: '#047857', bg: '#d1fae5', border: '#a7f3d0' };
+      return { step: 5, label: 'GĐ 5: Hội đồng & bảo vệ', color: '#be185d', bg: '#fce7f3', border: '#fbcfe8' };
     case 'COMPLETED':
-      return { step: 6, label: 'Đã hoàn thành', color: '#475569', bg: '#f1f5f9', border: '#cbd5e1' };
+      return { step: 6, label: 'GĐ 6: Chấm điểm & đóng đợt', color: '#047857', bg: '#d1fae5', border: '#a7f3d0' };
     default:
       return { step: 1, label: stage || 'Đang thực hiện', color: '#0369a1', bg: '#e0f2fe', border: '#bae6fd' };
   }

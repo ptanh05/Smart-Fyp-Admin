@@ -149,8 +149,8 @@ class SixPhasesWorkflowTests(TestCase):
         # base_quota (5) * 1.5 = 8 (rounded)
         self.assertEqual(self.quota1.max_total_quota, 8)
 
-    def test_admin_progress_uses_real_project_stage(self):
-        """Admin progress follows students even before the stored batch stage advances."""
+    def test_admin_progress_matches_batch_current_stage(self):
+        """Admin progress must stay synchronized with batch.current_stage across all portals."""
         self.batch.current_stage = "PHASE_3_TOPIC"
         self.batch.save(update_fields=["current_stage"])
         GraduationProject.objects.create(
@@ -160,13 +160,14 @@ class SixPhasesWorkflowTests(TestCase):
             topic_title_vi="Đề tài đã duyệt đề cương",
             status="OUTLINE_APPROVED",
             topic_review_status="APPROVED",
+            is_eligible_for_defense=True,
         )
 
         progress = compute_batch_progress(self.batch)
 
-        self.assertEqual(progress["current_stage_number"], 4)
-        self.assertEqual(progress["stages"][2]["status"], "done")
-        self.assertEqual(progress["stages"][3]["status"], "active")
+        self.assertEqual(progress["current_stage_number"], 3)
+        self.assertEqual(progress["stages"][1]["status"], "done")
+        self.assertEqual(progress["stages"][2]["status"], "active")
 
     def test_phase_2_allocation_with_engineer_hard_constraint(self):
         """Phase 2: Ràng buộc Kỹ sư -> ThS không được nhận SV Kỹ sư"""
