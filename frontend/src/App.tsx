@@ -21,6 +21,11 @@ const SupervisorsPage = lazy(() => import('./pages/Supervisors/SupervisorsPage')
 const SecurityCenterPage = lazy(() => import('./pages/Security/SecurityCenterPage').then(m => ({ default: m.SecurityCenterPage })));
 const AuditLogsPage = lazy(() => import('./pages/AuditLogs/AuditLogsPage').then(m => ({ default: m.AuditLogsPage })));
 const AcademicStaffPage = lazy(() => import('./pages/AcademicStaff/AcademicStaffPage').then(m => ({ default: m.AcademicStaffPage })));
+const FacultyAnalyticsPage = lazy(() => import('./pages/FacultyAnalytics/FacultyAnalyticsPage').then(m => ({ default: m.FacultyAnalyticsPage })));
+const RubricManagementPage = lazy(() => import('./pages/RubricManagement/RubricManagementPage').then(m => ({ default: m.RubricManagementPage })));
+const ThesisArchivePage = lazy(() => import('./pages/ThesisArchive/ThesisArchivePage').then(m => ({ default: m.ThesisArchivePage })));
+const DataRetentionPage = lazy(() => import('./pages/DataRetention/DataRetentionPage').then(m => ({ default: m.DataRetentionPage })));
+const FeatureAuditLogsPage = lazy(() => import('./pages/FeatureAuditLogs/FeatureAuditLogsPage').then(m => ({ default: m.FeatureAuditLogsPage })));
 
 const AdminLoadingFallback: React.FC = () => (
   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: '12px' }}>
@@ -241,6 +246,62 @@ export const App: React.FC = () => {
                 <ProtectedAdminRoute>
                   <RoleRoute allow={['academic_staff']}>
                     <AcademicStaffPage />
+                  </RoleRoute>
+                </ProtectedAdminRoute>
+              }
+            />
+
+            {/* --- Feature Extension: Admin-only --- */}
+            <Route
+              path="/analytics"
+              element={
+                <ProtectedAdminRoute>
+                  <RoleRoute allow={['admin']}>
+                    <FacultyAnalyticsPage />
+                  </RoleRoute>
+                </ProtectedAdminRoute>
+              }
+            />
+
+            <Route
+              path="/rubrics"
+              element={
+                <ProtectedAdminRoute>
+                  <RoleRoute allow={['admin']}>
+                    <RubricManagementPage />
+                  </RoleRoute>
+                </ProtectedAdminRoute>
+              }
+            />
+
+            <Route
+              path="/archive"
+              element={
+                <ProtectedAdminRoute>
+                  <RoleRoute allow={['admin']}>
+                    <ThesisArchivePage />
+                  </RoleRoute>
+                </ProtectedAdminRoute>
+              }
+            />
+
+            <Route
+              path="/data-retention"
+              element={
+                <ProtectedAdminRoute>
+                  <RoleRoute allow={['admin']}>
+                    <DataRetentionPage />
+                  </RoleRoute>
+                </ProtectedAdminRoute>
+              }
+            />
+
+            <Route
+              path="/feature-audit-logs"
+              element={
+                <ProtectedAdminRoute>
+                  <RoleRoute allow={['admin']}>
+                    <FeatureAuditLogsPage />
                   </RoleRoute>
                 </ProtectedAdminRoute>
               }

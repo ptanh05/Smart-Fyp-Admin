@@ -176,3 +176,180 @@ export interface AuditLogStats {
   by_evaluation_type: Record<string, number>;
   by_action_type: Record<string, number>;
 }
+
+// =============================================================================
+// Feature Extension Types
+// =============================================================================
+
+export interface SupervisorLoadEntry {
+  supervisor_id: number;
+  name: string;
+  academic_title: string | null;
+  department: string | null;
+  assigned: number;
+  quota: number | null;
+}
+
+export interface ScoreDistributionBucket {
+  range: string;
+  count: number;
+}
+
+export interface FacultyAnalyticsData {
+  batch_id: string | null;
+  total_projects: number;
+  status_counts: Record<string, number>;
+  pass_rate: number | null;
+  average_final_score: number | null;
+  score_distribution: ScoreDistributionBucket[];
+  supervisor_load: SupervisorLoadEntry[];
+  tasks: {
+    total: number;
+    overdue: number;
+    late_submissions: number;
+    late_rate: number;
+  };
+  deferrals: Record<string, number>;
+  available_batches: Array<{ id: number; batch_code: string; batch_name: string }>;
+  generated_at: string;
+}
+
+export interface ScoreEntry {
+  source: string;
+  evaluator: string;
+  score_10: number;
+  deviation?: number;
+  is_outlier?: boolean;
+}
+
+export interface ScoreDiscrepancyItem {
+  project_id: number;
+  student_code: string;
+  topic_title_vi: string;
+  batch_code: string;
+  supervisor_name: string;
+  entries: ScoreEntry[];
+  mean_score: number;
+  spread: number;
+  threshold: number;
+  needs_review: boolean;
+}
+
+export interface ScoreDiscrepancyResponse {
+  count: number;
+  threshold: number;
+  results: ScoreDiscrepancyItem[];
+}
+
+export interface RubricCriterion {
+  id?: number;
+  rubric?: number;
+  name: string;
+  description?: string;
+  max_score: number;
+  order?: number;
+}
+
+export interface Rubric {
+  id?: number;
+  name: string;
+  evaluator_role: 'SUPERVISOR' | 'REVIEWER' | 'COUNCIL';
+  batch?: number | null;
+  batch_code?: string | null;
+  description?: string;
+  is_active?: boolean;
+  created_at?: string;
+  criteria?: RubricCriterion[];
+  has_scores?: boolean;
+  total_max?: number;
+}
+
+export interface ThesisArchiveRecord {
+  id: number;
+  project: number;
+  project_title?: string;
+  student_code?: string;
+  batch_code?: string;
+  title: string;
+  abstract: string;
+  keywords: string;
+  final_version?: number | null;
+  final_version_info?: {
+    id: number;
+    kind: string;
+    version_no: number;
+    original_name: string;
+    file_size: number;
+    created_at: string;
+  } | null;
+  visibility: 'PUBLIC' | 'INTERNAL' | 'EMBARGOED';
+  embargo_until: string | null;
+  embargo_reason: string;
+  license: string;
+  final_score: number | null;
+  archived_by: number | null;
+  archived_at: string;
+  is_embargoed?: boolean;
+}
+
+export interface ThesisArchiveListResponse {
+  count: number;
+  page: number;
+  page_size: number;
+  results: ThesisArchiveRecord[];
+}
+
+export interface DataRetentionBatch {
+  id: number;
+  batch_code: string;
+  batch_name: string;
+  end_date: string;
+}
+
+export interface DataRetentionCounts {
+  batches: number;
+  projects_in_scope: number;
+  deferral_evidence_files: number;
+  weekly_report_files: number;
+  task_deliverable_files: number;
+  submission_versions: number;
+  internship_info: number;
+  student_preferences: number;
+}
+
+export interface DataRetentionPreview {
+  years: number;
+  cutoff: string;
+  batches: DataRetentionBatch[];
+  counts: DataRetentionCounts;
+}
+
+export interface DataRetentionApplyResult {
+  applied: boolean;
+  years: number;
+  cutoff: string;
+  deleted_counts?: DataRetentionCounts;
+  detail?: string;
+}
+
+export interface FeatureAuditLog {
+  id: number;
+  user: number | null;
+  user_name: string | null;
+  action_type: string;
+  description: string;
+  field_name: string | null;
+  old_value: string | null;
+  new_value: string | null;
+  evaluation_type: string | null;
+  ip_address: string | null;
+  created_at: string;
+}
+
+export interface FeatureAuditLogResponse {
+  count: number;
+  page: number;
+  page_size: number;
+  action_types: string[];
+  results: FeatureAuditLog[];
+}

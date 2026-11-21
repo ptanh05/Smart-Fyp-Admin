@@ -134,6 +134,42 @@ const NAV_ITEMS: NavItem[] = [
     roles: ['admin'],
     group: 'system',
   },
+  // --- Feature Extensions ---
+  {
+    to: '/analytics',
+    icon: '📊',
+    label: 'Phân Tích GV & SV',
+    roles: ['admin'],
+    group: 'system',
+  },
+  {
+    to: '/rubrics',
+    icon: '📋',
+    label: 'Quản Lý Rubric',
+    roles: ['admin'],
+    group: 'system',
+  },
+  {
+    to: '/archive',
+    icon: '🗂️',
+    label: 'Kho Lưu Trữ Đồ Án',
+    roles: ['admin'],
+    group: 'system',
+  },
+  {
+    to: '/data-retention',
+    icon: '🗑️',
+    label: 'Lưu Giữ Dữ Liệu',
+    roles: ['admin'],
+    group: 'system',
+  },
+  {
+    to: '/feature-audit-logs',
+    icon: '🔍',
+    label: 'Nhật Ký Hành Động',
+    roles: ['admin'],
+    group: 'system',
+  },
 ];
 
 export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
