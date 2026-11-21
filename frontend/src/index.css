@@ -121,7 +121,8 @@ body {
 }
 
 .utc-modal-foot,
-.utc-modal-footer {
+.utc-modal-footer,
+.utc-modal-actions {
   padding: 1.25rem 1.75rem;
   background: #f8fafc;
   border-top: 1px solid #f1f5f9;

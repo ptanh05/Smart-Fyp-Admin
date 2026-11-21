@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AdminLayout } from '../../components/layout/AdminLayout';
 import { apiClient } from '../../api/client';
+import { formatDepartmentName } from '../../utils/nameHelper';
 import './SupervisorsPage.css';
 
 export const UTC_RESEARCH_AREAS = [
@@ -336,7 +337,7 @@ export const SupervisorsPage: React.FC = () => {
               <option value="ALL">🏢 Tất cả Bộ Môn</option>
               {departments.map((d) => (
                 <option key={d.id} value={String(d.id)}>
-                  {d.name} ({d.code})
+                  {formatDepartmentName(d.name, d.code)} ({d.code})
                 </option>
               ))}
               <option value="NONE">Chưa phân bộ môn</option>
@@ -413,7 +414,7 @@ export const SupervisorsPage: React.FC = () => {
                         </span>
                       </td>
                       <td>
-                        <div className="dept-name font-medium">{s.department_name || 'Khoa CNTT'}</div>
+                        <div className="dept-name font-medium">{formatDepartmentName(s.department_name, s.department_code)}</div>
                         {s.department_code && <span className="dept-code">{s.department_code}</span>}
                       </td>
                       <td className="text-center font-bold text-emerald">
@@ -500,7 +501,7 @@ export const SupervisorsPage: React.FC = () => {
                       <option value="">-- Chưa phân bổ bộ môn --</option>
                       {departments.map((d) => (
                         <option key={d.id} value={d.id}>
-                          {d.name} ({d.code})
+                          {formatDepartmentName(d.name, d.code)} ({d.code})
                         </option>
                       ))}
                     </select>

@@ -15,7 +15,7 @@ import { SkeletonTable } from '../../components/common/SkeletonLoader';
 import './UserManagementPage.css';
 import '../../components/common/Modal.css';
 import { useDebounce } from '../../hooks/useDebounce';
-import { formatFullName } from '../../utils/nameHelper';
+import { formatFullName, formatDepartmentName } from '../../utils/nameHelper';
 
 export const UserManagementPage: React.FC = () => {
   // Data state
@@ -1027,7 +1027,7 @@ export const UserManagementPage: React.FC = () => {
                             </span>
                           </td>
                           <td style={{ fontSize: '0.85rem' }}>
-                            {spv?.department_name || 'Khoa CNTT'}
+                            {formatDepartmentName(spv?.department_name, (spv as any)?.department_code)}
                             {spv?.is_external && <span style={{ marginLeft: 4, color: '#d97706', fontSize: '0.75rem' }}>(Ngoài trường)</span>}
                           </td>
                           <td>

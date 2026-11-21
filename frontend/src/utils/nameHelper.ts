@@ -220,3 +220,52 @@ export function formatFullName(
   // Mặc định chuẩn tiếng Việt: last_name (Họ và đệm) đứng trước, first_name (Tên) đứng sau
   return normalizeVietnameseFullName(`${ln} ${fn}`);
 }
+
+/**
+ * Chuẩn hóa tên Bộ môn chuyên môn UTC có dấu chuẩn tiếng Việt.
+ * Khắc phục tình trạng "chỗ có dấu chỗ không" (vd: "Bo mon Cong nghe phan mem" -> "Bộ môn Công nghệ phần mềm")
+ */
+export function formatDepartmentName(department?: string | null, code?: string | null): string {
+  const c = (code || '').toUpperCase().trim();
+  const raw = (department || '').trim();
+
+  // 1. Kiểm tra theo mã code nếu có
+  if (c === 'CNPM') return 'Bộ môn Công nghệ phần mềm';
+  if (c === 'HTTT') return 'Bộ môn Hệ thống thông tin';
+  if (c === 'KHMT') return 'Bộ môn Khoa học máy tính & Mạng máy tính';
+  if (c === 'MMT') return 'Bộ môn Mạng máy tính & ATTT';
+  if (c === 'ATTT') return 'Bộ môn An toàn thông tin';
+
+  if (!raw) return 'Khoa CNTT';
+
+  // 2. Chuẩn hóa theo nội dung chuỗi (không phân biệt dấu / hoa thường)
+  const lower = raw
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (lower.includes('cong nghe phan mem') || lower === 'cnpm') {
+    return 'Bộ môn Công nghệ phần mềm';
+  }
+  if (lower.includes('he thong thong tin') || lower === 'httt') {
+    return 'Bộ môn Hệ thống thông tin';
+  }
+  if (lower.includes('khoa hoc may tinh') || lower === 'khmt') {
+    return 'Bộ môn Khoa học máy tính & Mạng máy tính';
+  }
+  if (lower.includes('mang may tinh') || lower.includes('attt') || lower.includes('an toan thong tin') || lower === 'mmt') {
+    return 'Bộ môn Mạng máy tính & ATTT';
+  }
+
+  // Chuẩn hóa tiền tố "Bo mon " -> "Bộ môn " nếu chuỗi bắt đầu bằng Bo mon
+  if (lower.startsWith('bo mon ')) {
+    const idx = raw.toLowerCase().indexOf('bo mon ');
+    return 'Bộ môn ' + raw.substring(idx + 7).trim();
+  }
+
+  return raw;
+}
+

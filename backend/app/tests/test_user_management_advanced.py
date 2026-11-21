@@ -338,3 +338,107 @@ class AdvancedUserManagementTests(APITestCase):
         self.assertEqual(both_response.data["skipped"], 0)
         self.assertTrue(Student.objects.filter(registration_no="231100001", education_program="BACHELOR").exists())
         self.assertTrue(Student.objects.filter(registration_no="231100002", education_program="ENGINEER").exists())
+
+    def test_excel_import_generic_sheet_does_not_create_unused_course_class(self):
+        """
+        Verify that importing an Excel file with a generic sheet name like 'Danh_Sach_Sinh_Vien'
+        does NOT create an extra empty CourseClass for the sheet when student classes are specified.
+        """
+        test_batch = AcademicBatch.objects.create(
+            batch_code="BATCH_CLEAN_SHEET",
+            batch_name="Đợt Test Clean Sheet",
+            program_type="BACHELOR"
+        )
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Danh_Sach_Sinh_Vien"
+        ws.append(["Mã sinh viên", "Họ và tên", "Lớp", "Hệ đào tạo"])
+        ws.append(["201200111", "Sinh Viên Một", "CNTT1 - K62", "Cử nhân"])
+        ws.append(["201200112", "Sinh Viên Hai", "CNTT2 - K62", "Cử nhân"])
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        response = self.client.post(
+            reverse("admin-users-import-excel"),
+            {"file": buf, "batch_id": test_batch.id},
+            format="multipart"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["success"])
+
+        # 'Danh_Sach_Sinh_Vien' class should NOT exist
+        self.assertFalse(CourseClass.objects.filter(batch=test_batch, class_code="Danh_Sach_Sinh_Vien").exists())
+
+        # The actual classes should exist with students
+        self.assertTrue(CourseClass.objects.filter(batch=test_batch, class_code="CNTT1 - K62").exists())
+        self.assertTrue(CourseClass.objects.filter(batch=test_batch, class_code="CNTT2 - K62").exists())
+
+        # When querying batches API, only 2 classes are returned
+        batches_res = self.client.get(reverse("admin-batches-list") + "?_t=1")
+        self.assertEqual(batches_res.status_code, status.HTTP_200_OK)
+        found_batch = next(b for b in batches_res.data if b["id"] == test_batch.id)
+        self.assertEqual(len(found_batch["classes"]), 2)
+        class_codes = [c["class_code"] for c in found_batch["classes"]]
+        self.assertNotIn("Danh_Sach_Sinh_Vien", class_codes)
+
+    def test_delete_empty_course_class_api(self):
+        """
+        Verify that admin can delete an empty course class, but cannot delete a class with students.
+        """
+        empty_class = CourseClass.objects.create(
+            batch=self.batch,
+            class_code="EMPTY_CLASS_TEST",
+            class_name="Lớp trống cần xóa",
+            program_type="DAI_TRA"
+        )
+
+        # Successfully delete empty class
+        del_res = self.client.delete(reverse("admin-classes-detail", kwargs={"pk": empty_class.id}))
+        self.assertEqual(del_res.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(CourseClass.objects.filter(id=empty_class.id).exists())
+
+        # Cannot delete class with students
+        Student.objects.create(
+            user=CustomUser.objects.create_user(username="201209999", password="pw"),
+            registration_no="201209999",
+            course_class=self.class_dt,
+            academic_batch=self.batch
+        )
+        del_non_empty = self.client.delete(reverse("admin-classes-detail", kwargs={"pk": self.class_dt.id}))
+        self.assertEqual(del_non_empty.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(CourseClass.objects.filter(id=self.class_dt.id).exists())
+
+    def test_department_normalization_helper(self):
+        """
+        Verify that normalize_department_name correctly formats unaccented department strings.
+        """
+        from app.utils.department_formatter import normalize_department_name
+        self.assertEqual(normalize_department_name("Bo mon Cong nghe phan mem"), "Bộ môn Công nghệ phần mềm")
+        self.assertEqual(normalize_department_name("Bo mon He thong thong tin"), "Bộ môn Hệ thống thông tin")
+        self.assertEqual(normalize_department_name("Bo mon Khoa hoc may tinh va Mang may tinh"), "Bộ môn Khoa học máy tính & Mạng máy tính")
+        self.assertEqual(normalize_department_name("Bộ môn Mạng máy tính & ATTT"), "Bộ môn Mạng máy tính & ATTT")
+        self.assertEqual(normalize_department_name(None, "CNPM"), "Bộ môn Công nghệ phần mềm")
+        self.assertEqual(normalize_department_name("", "MMT"), "Bộ môn Mạng máy tính & ATTT")
+
+    def test_supervisor_serializer_normalizes_department_accent(self):
+        """
+        Verify that supervisor API returns normalized accented department name even if stored unaccented.
+        """
+        from app.models import Department
+        dept = Department.objects.create(code="CNPM", name="Bo mon Cong nghe phan mem")
+        sup_user = CustomUser.objects.create_user(username="gv_test_accent", first_name="Hoa", last_name="Nguyen Thi", user_type="supervisor")
+        spv = Supervisor.objects.create(
+            user=sup_user,
+            supervisor_id="UTC099",
+            department_name="Bo mon Cong nghe phan mem",
+            department_obj=dept
+        )
+
+        res = self.client.get(reverse("admin-users-list") + "?user_type=supervisor&search=UTC099")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        users = res.data["users"]
+        self.assertEqual(len(users), 1)
+        self.assertEqual(users[0]["supervisor_profile"]["department_name"], "Bộ môn Công nghệ phần mềm")

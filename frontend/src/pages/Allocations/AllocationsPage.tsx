@@ -117,6 +117,12 @@ export const AllocationsPage: React.FC = () => {
   }, [selectedBatchId]);
 
   const currentBatch = batches.find((b) => b.id === selectedBatchId);
+  const isAllocationLocked = currentBatch?.current_stage === 'PHASE_2_LOCKED';
+  const isAllocationPublished = Boolean(
+    currentBatch?.is_allocation_published ||
+    (currentBatch?.current_stage && !['PHASE_1_SETUP', 'PHASE_2_ALLOCATING', 'PHASE_2_LOCKED'].includes(currentBatch.current_stage))
+  );
+  const canPublish = isAllocationLocked && !isAllocationPublished;
 
   const handleRunMCMF = async () => {
     if (!selectedBatchId) return;
@@ -167,6 +173,14 @@ export const AllocationsPage: React.FC = () => {
 
   const handlePublishAllocation = async () => {
     if (!selectedBatchId) return;
+    if (!isAllocationLocked) {
+      showToast('⚠️ Khoa cần chốt danh sách phân công (Khoa Chốt Phân Công) trước khi công bố!', 'error');
+      return;
+    }
+    if (isAllocationPublished) {
+      showToast('ℹ️ Đợt này đã được công bố kết quả phân công trước đó.', 'info');
+      return;
+    }
     if (!confirm('CÔNG BỐ & PHÁT THÔNG BÁO kết quả phân công cho toàn bộ Giảng viên và Sinh viên qua hệ thống?')) return;
 
     try {
@@ -230,11 +244,17 @@ export const AllocationsPage: React.FC = () => {
               }}
               className="utc-batch-dropdown"
             >
-              {batches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.batch_code} - {b.batch_name} ({b.program_type === 'ENGINEER' ? 'Kỹ Sư' : 'Cử Nhân'})
-                </option>
-              ))}
+              {batches.map((b) => {
+                const code = (b.batch_code || '').trim();
+                const name = (b.batch_name || '').trim();
+                const prog = b.program_type === 'ENGINEER' ? 'Kỹ Sư' : 'Cử Nhân';
+                const label = code && name && code !== name ? `${code} – ${name} (${prog})` : `${name || code} (${prog})`;
+                return (
+                  <option key={b.id} value={b.id}>
+                    {label}
+                  </option>
+                );
+              })}
             </select>
 
             {currentBatch && (
@@ -251,28 +271,35 @@ export const AllocationsPage: React.FC = () => {
           <div className="utc-alloc-actions">
             <button
               onClick={handleRunMCMF}
-              disabled={matching}
+              disabled={matching || isAllocationPublished}
               className="utc-btn-gradient-green"
-              title="Chạy giải thuật MCMF tối ưu NV1-NV3 và kiểm tra ràng buộc Kỹ sư"
+              title={isAllocationPublished ? 'Đợt này đã công bố kết quả phân công' : 'Chạy giải thuật MCMF tối ưu NV1-NV3 và kiểm tra ràng buộc Kỹ sư'}
             >
               <span>⚡</span> {matching ? 'Đang chạy tối ưu...' : 'Chạy Tối Ưu Phân Công (MCMF)'}
             </button>
 
             <button
               onClick={handleFinalizeAllocation}
-              className="utc-btn-warning"
-              title="Khoa chốt danh sách phân công (Bước 17)"
+              disabled={isAllocationPublished}
+              className={`utc-btn-warning ${isAllocationLocked ? 'utc-btn-is-locked' : ''}`}
+              title={isAllocationPublished ? 'Khoa đã chốt và công bố kết quả phân công' : 'Khoa chốt danh sách phân công (Bước 17)'}
             >
-              <span>🔒</span> Khoa Chốt Phân Công
+              <span>🔒</span> {isAllocationPublished ? 'Đã Chốt & Công Bố' : isAllocationLocked ? '✓ Đã Chốt Phân Công' : 'Khoa Chốt Phân Công'}
             </button>
 
             <button
               onClick={handlePublishAllocation}
-              disabled={sendingEmails || matching}
-              className="utc-btn-primary"
-              title="Công bố và gửi email kết quả cho SV & GV (Bước 18 & 19)"
+              disabled={!canPublish || sendingEmails || matching}
+              className={`utc-btn-primary ${!canPublish ? 'btn-disabled-guide' : ''}`}
+              title={
+                !isAllocationLocked && !isAllocationPublished
+                  ? "Vui lòng nhấn 'Khoa Chốt Phân Công' trước khi công bố và gửi thông báo!"
+                  : isAllocationPublished
+                  ? 'Đã công bố và gửi thông báo kết quả cho toàn bộ GV & SV'
+                  : 'Công bố và gửi email kết quả cho SV & GV (Bước 18 & 19)'
+              }
             >
-              <span>📢</span> {sendingEmails ? 'Đang công bố & gửi email...' : 'Công Bố & Gửi Thông Báo'}
+              <span>📢</span> {isAllocationPublished ? '✓ Đã Công Bố & Gửi Thông Báo' : sendingEmails ? 'Đang công bố & gửi email...' : 'Công Bố & Gửi Thông Báo'}
             </button>
           </div>
         </div>

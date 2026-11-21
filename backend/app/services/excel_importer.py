@@ -6,6 +6,7 @@ import random
 import string
 import unicodedata
 from django.db import transaction
+from django.db.models import Q
 from django.contrib.auth.hashers import make_password
 from app.models import (
     CustomUser,
@@ -159,11 +160,21 @@ def _parse_sheet_metadata_and_columns(ws, sheet_name, batch_program_type, defaul
         if detected_sheet_edu:
             education_program = detected_sheet_edu
 
+    clean_code = re.sub(r'[\s_\-]+', ' ', class_code.lower()).strip()
+    compact_code = re.sub(r'[^a-z0-9]', '', class_code.lower())
+    generic_keywords = [
+        "danh sách", "danh sach", "sinh viên", "sinh vien",
+        "sheet", "dssv", "student", "hoc vien", "ds sv", "trang"
+    ]
     is_generic_sheet = (
         class_code.lower() in [
-            "ds_sinh_vien", "dssv", "danh_sach", "danhsach", "sheet1", "sheet_1", "danh sách"
+            "ds_sinh_vien", "dssv", "danh_sach", "danhsach", "sheet1", "sheet_1", "danh sách",
+            "danh_sach_sinh_vien", "danhsachsinhvien", "ds_sv", "dssv_k62", "dssv_k61", "dssv_k63"
         ]
-        or any(k in class_code.lower() for k in ["danh sách", "danh sach", "sinh viên", "sinh vien", "sheet", "dssv", "student", "hoc vien"])
+        or any(k in class_code.lower() for k in generic_keywords)
+        or any(k in clean_code for k in generic_keywords)
+        or any(k in compact_code for k in ["danhsach", "sinhvien", "dssv", "student", "sheet", "trang"])
+        or compact_code in ["danhsachsinhvien", "dssinhvien", "dssv", "sheet1", "sheet2", "sheet3", "trang1", "ds"]
     )
 
     header_row_idx = None
@@ -837,10 +848,22 @@ class ExcelImportService:
 
         # Delete unused placeholder sheet classes if specific classes were created with students
         try:
+            placeholder_codes = [
+                "Sheet1", "Sheet 1", "Trang 1", "DS_Sinh_Vien", "dssv", "DS_Sinh_Vien ", "DanhSach",
+                "Danh_Sach_Sinh_Vien", "danh_sach_sinh_vien", "DanhSachSinhVien", "Danh_sach_sinh_vien"
+            ]
             CourseClass.objects.filter(
                 batch=batch,
-                students__isnull=True,
-                class_code__in=["Sheet1", "Sheet 1", "Trang 1", "DS_Sinh_Vien", "dssv", "DS_Sinh_Vien ", "DanhSach"]
+                students__isnull=True
+            ).filter(
+                Q(class_code__in=placeholder_codes) |
+                Q(class_code__icontains="sheet") |
+                Q(class_code__icontains="dssv") |
+                Q(class_code__icontains="danh_sach") |
+                Q(class_code__icontains="danhsach") |
+                Q(class_code__icontains="sinh_vien") |
+                Q(class_code__icontains="sinhvien") |
+                Q(class_code__icontains="student")
             ).delete()
         except Exception:
             pass

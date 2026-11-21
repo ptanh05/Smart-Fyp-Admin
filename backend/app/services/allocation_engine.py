@@ -317,10 +317,109 @@ class MinCostMaxFlowAllocationEngine:
     def publish_and_notify_allocation(cls, batch_id, user=None):
         """Công bố và gửi email kết quả phân công (Bước 18 & 19)"""
         batch = AcademicBatch.objects.get(id=batch_id)
+        if batch.current_stage != "PHASE_2_LOCKED":
+            if batch.is_allocation_published:
+                return {
+                    "success": False,
+                    "error": "Đợt đồ án này đã được công bố kết quả phân công trước đó."
+                }
+            return {
+                "success": False,
+                "error": "Khoa cần nhấn 'Khoa Chốt Phân Công' trước khi thực hiện công bố và phát lệnh thông báo."
+            }
         batch.is_allocation_published = True
         batch.allocation_published_at = timezone.now()
         batch.current_stage = "PHASE_3_TOPIC"
         batch.save(update_fields=["is_allocation_published", "allocation_published_at", "current_stage"])
+
+        from app.models import Notification
+
+        # 1. Tạo thông báo cho toàn bộ Giảng viên và Sinh viên trong đợt
+        projects = GraduationProject.objects.filter(
+            batch=batch, student__isnull=False, supervisor__isnull=False
+        ).select_related("student__user", "supervisor__user")
+
+        sup_students_map = collections.defaultdict(list)
+        for p in projects:
+            st = p.student
+            st_u = st.user
+            st_name = f"{st_u.last_name} {st_u.first_name}".strip() if (st_u.last_name or st_u.first_name) else (st_u.get_full_name() or st_u.username)
+            sup_students_map[p.supervisor].append(f"{st.registration_no} - {st_name}")
+
+        batch_quotas = SupervisorQuota.objects.filter(batch=batch).select_related("supervisor__user")
+        all_batch_supervisors = set(sup_students_map.keys()) | {q.supervisor for q in batch_quotas if q.supervisor}
+
+        notifs = []
+        batch_name_display = batch.batch_name or batch.batch_code
+
+        # Thông báo cho từng Giảng viên hướng dẫn
+        for sup in all_batch_supervisors:
+            if not sup or not sup.user:
+                continue
+            students_list = sup_students_map.get(sup, [])
+            count = len(students_list)
+            sup_title = sup.academic_title or "Thầy/Cô"
+            sup_name = sup.user.get_full_name() or sup.user.username
+
+            if count > 0:
+                preview = ", ".join(students_list[:4])
+                if count > 4:
+                    preview += f" và {count - 4} sinh viên khác"
+                title = f"🎉 [Kết quả phân công GVHD] Danh sách sinh viên hướng dẫn - {batch_name_display}"
+                msg = (
+                    f"Kính gửi {sup_title} {sup_name},\n"
+                    f"Khoa CNTT đã chính thức công bố kết quả phân công Giảng viên hướng dẫn cho Đợt '{batch_name_display}'.\n"
+                    f"Thầy/Cô được phân công hướng dẫn {count} sinh viên: {preview}.\n"
+                    f"Vui lòng truy cập Cổng Giảng viên để theo dõi danh sách chi tiết và phối hợp cùng sinh viên xây dựng bản thảo đề tài (Giai đoạn 3)."
+                )
+                action_url = "/supervisor/dashboard?tab=utc_graduation&subtab=students"
+            else:
+                title = f"📢 [Kết quả phân công GVHD] Thông báo đợt - {batch_name_display}"
+                msg = (
+                    f"Kính gửi {sup_title} {sup_name},\n"
+                    f"Khoa CNTT đã công bố kết quả phân công GVHD cho Đợt '{batch_name_display}'.\n"
+                    f"Trong đợt này, Thầy/Cô hiện chưa được phân công sinh viên nào."
+                )
+                action_url = "/supervisor/dashboard?tab=utc_graduation"
+
+            notifs.append(
+                Notification(
+                    user=sup.user,
+                    title=title,
+                    message=msg,
+                    action_url=action_url,
+                    notification_type="system",
+                    is_read=False,
+                )
+            )
+
+        # Thông báo cho từng Sinh viên được phân công
+        for p in projects:
+            st = p.student
+            if not st or not st.user:
+                continue
+            sup = p.supervisor
+            sup_title = sup.academic_title or "Thầy/Cô"
+            sup_name = sup.user.get_full_name() or sup.user.username
+            st_title = f"🎉 [Kết quả phân công GVHD] Bạn đã được phân công Giảng viên hướng dẫn - {batch_name_display}"
+            st_msg = (
+                f"Chúc mừng bạn! Khoa đã công bố kết quả phân công ĐATN đợt '{batch_name_display}'.\n"
+                f"Bạn được phân công {sup_title} {sup_name} ({sup.department_name or 'Bộ môn CNTT'}) hướng dẫn.\n"
+                f"Hãy liên hệ ngay với GVHD để thống nhất hướng đề tài và xây dựng đề cương (Giai đoạn 3)."
+            )
+            notifs.append(
+                Notification(
+                    user=st.user,
+                    title=st_title,
+                    message=st_msg,
+                    action_url="/student/dashboard?tab=utc_graduation&subtab=project",
+                    notification_type="system",
+                    is_read=False,
+                )
+            )
+
+        if notifs:
+            Notification.objects.bulk_create(notifs)
 
         if user:
             AuditLog.objects.create(

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/layout/AdminLayout';
 import { apiClient } from '../../api/client';
-import { formatFullName } from '../../utils/nameHelper';
+import { formatFullName, formatDepartmentName } from '../../utils/nameHelper';
 import './CouncilsPage.css';
 
 interface CouncilMember {
@@ -904,7 +904,7 @@ export const CouncilsPage: React.FC = () => {
                       if (!sup) return null;
                       return (
                         <option key={sup.id} value={sup.id}>
-                          {sup.academic_title} {u.full_name} ({sup.department_name || 'Khoa CNTT'})
+                          {sup.academic_title} {u.full_name} ({formatDepartmentName(sup.department_name)})
                         </option>
                       );
                     })}

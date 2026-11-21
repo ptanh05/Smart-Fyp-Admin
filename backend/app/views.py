@@ -5,7 +5,7 @@ from django.db.models import Q, Count, Prefetch
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
 from rest_framework.views import APIView
-from rest_framework.generics import ListAPIView, ListCreateAPIView, RetrieveUpdateDestroyAPIView
+from rest_framework.generics import ListAPIView, ListCreateAPIView, RetrieveUpdateDestroyAPIView, RetrieveDestroyAPIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -583,9 +583,10 @@ class AdminUserManagementAPIView(APIView):
 
             # Handle Supervisor Profile
             elif user_type == "supervisor":
+                from .utils.department_formatter import normalize_department_name
                 spv_id = data.get("supervisor_id") or username
                 academic_title = data.get("academic_title", "").strip()
-                department_name = data.get("department_name", "Khoa CNTT - ĐHGTVT").strip()
+                department_name = normalize_department_name(data.get("department_name", "Khoa CNTT - ĐHGTVT"))
                 is_external = data.get("is_external", False)
 
                 spv = Supervisor.objects.create(
@@ -682,7 +683,8 @@ class AdminUserManagementAPIView(APIView):
             if academic_title is not None:
                 spv.academic_title = academic_title.strip()
             if department_name is not None:
-                spv.department_name = department_name.strip()
+                from .utils.department_formatter import normalize_department_name
+                spv.department_name = normalize_department_name(department_name)
             if phone_number is not None:
                 spv.phone_number = phone_number.strip()
             if is_external is not None:
@@ -999,6 +1001,16 @@ class AcademicBatchListCreateAPIView(ListCreateAPIView):
     def get_queryset(self):
         classes_qs = CourseClass.objects.annotate(
             student_count=Count("students", distinct=True)
+        ).exclude(
+            Q(student_count=0) & (
+                Q(class_code__icontains="sheet") |
+                Q(class_code__icontains="dssv") |
+                Q(class_code__icontains="danh_sach") |
+                Q(class_code__icontains="danhsach") |
+                Q(class_code__icontains="sinh_vien") |
+                Q(class_code__icontains="sinhvien") |
+                Q(class_code__icontains="student")
+            )
         ).order_by("class_code")
 
         return AcademicBatch.objects.annotate(
@@ -1009,6 +1021,8 @@ class AcademicBatchListCreateAPIView(ListCreateAPIView):
         ).order_by("-created_at")
 
     def list(self, request, *args, **kwargs):
+        if request.query_params.get("_t") or request.query_params.get("nocache"):
+            cache.delete(BATCHES_CACHE_KEY)
         cached_data = cache.get(BATCHES_CACHE_KEY)
         if cached_data is not None:
             res = Response(cached_data, status=status.HTTP_200_OK)
@@ -1056,6 +1070,16 @@ class AcademicBatchDetailAPIView(RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         classes_qs = CourseClass.objects.annotate(
             student_count=Count("students", distinct=True)
+        ).exclude(
+            Q(student_count=0) & (
+                Q(class_code__icontains="sheet") |
+                Q(class_code__icontains="dssv") |
+                Q(class_code__icontains="danh_sach") |
+                Q(class_code__icontains="danhsach") |
+                Q(class_code__icontains="sinh_vien") |
+                Q(class_code__icontains="sinhvien") |
+                Q(class_code__icontains="student")
+            )
         ).order_by("class_code")
 
         return AcademicBatch.objects.annotate(
@@ -1076,6 +1100,23 @@ class AcademicBatchDetailAPIView(RetrieveUpdateDestroyAPIView):
         cache.delete(BATCHES_CACHE_KEY)
         invalidate_user_summary_cache()
         return response
+
+
+class CourseClassDetailAPIView(RetrieveDestroyAPIView):
+    """
+    Cho phép xem chi tiết hoặc xóa lớp học phần (chỉ khi lớp có 0 sinh viên).
+    """
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+    serializer_class = CourseClassSerializer
+    queryset = CourseClass.objects.all()
+
+    def perform_destroy(self, instance):
+        if instance.students.exists():
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("Không thể xóa lớp học phần đang có sinh viên.")
+        super().perform_destroy(instance)
+        cache.delete(BATCHES_CACHE_KEY)
+        invalidate_user_summary_cache()
 
 
 class OpenBatchAPIView(APIView):
@@ -1412,12 +1453,13 @@ class ManualSupervisorAllocationAPIView(APIView):
         if not batch:
             return Response({"detail": "Sinh viên chưa thuộc đợt đào tạo nào."}, status=status.HTTP_400_BAD_REQUEST)
 
+        existing_proj = GraduationProject.objects.filter(student=student).first()
         proj, created = GraduationProject.objects.update_or_create(
             student=student,
             defaults={
                 "supervisor": supervisor,
                 "batch": batch,
-                "topic_title_vi": f"Đồ án tốt nghiệp của {student.user.get_full_name()}",
+                "topic_title_vi": existing_proj.topic_title_vi if existing_proj else "",
                 "status": "ALLOCATED"
             }
         )
@@ -1593,7 +1635,7 @@ class GraduationProjectsAdminListAPIView(APIView):
             key_extractor=get_student_sort_name
         )
 
-        serializer = GraduationProjectAdminSerializer(projects_list, many=True)
+        serializer = GraduationProjectAdminSerializer(projects_list, many=True, context={"request": request})
         data = list(serializer.data)
 
         # Synchronize GĐ2 (Phân công GVHD) with GĐ1 (Đợt & Sinh viên):
@@ -1644,10 +1686,6 @@ class GraduationProjectsAdminListAPIView(APIView):
                     topic_title = ""
                     if survey and survey.tentative_title:
                         topic_title = survey.tentative_title
-                    elif pref and pref.topic_direction:
-                        topic_title = pref.topic_direction.name
-                    else:
-                        topic_title = f"Đề tài tốt nghiệp của {full_name}"
 
                     unassigned_item = {
                         "id": -st.id,
@@ -2064,6 +2102,11 @@ class DepartmentListCreateAPIView(ListCreateAPIView):
     pagination_class = FlexibleAdminPagination
     opt_in_pagination = True
 
+    def get(self, request, *args, **kwargs):
+        from .utils.department_formatter import auto_heal_unaccented_departments
+        auto_heal_unaccented_departments()
+        return super().get(request, *args, **kwargs)
+
 
 class DepartmentDetailAPIView(RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
@@ -2099,7 +2142,8 @@ class SupervisorProfileUpdateAPIView(APIView):
         if department_id is not None:
             supervisor.department_obj = Department.objects.filter(id=department_id).first()
             if supervisor.department_obj:
-                supervisor.department_name = supervisor.department_obj.name
+                from .utils.department_formatter import normalize_department_name
+                supervisor.department_name = normalize_department_name(supervisor.department_obj.name, supervisor.department_obj.code)
         if rank_multiplier is not None:
             try:
                 supervisor.academic_rank_multiplier = float(rank_multiplier)

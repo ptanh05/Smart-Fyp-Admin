@@ -68,17 +68,37 @@ def seed_database():
     # 2. Departments
     dept_cnpm, _ = Department.objects.get_or_create(
         code="CNPM",
-        defaults={"name": "Bo mon Cong nghe phan mem", "description": "Khoa CNTT - UTC"}
+        defaults={"name": "Bộ môn Công nghệ phần mềm", "description": "Khoa CNTT - UTC"}
     )
+    if dept_cnpm.name != "Bộ môn Công nghệ phần mềm":
+        dept_cnpm.name = "Bộ môn Công nghệ phần mềm"
+        dept_cnpm.save(update_fields=["name"])
+
     dept_httt, _ = Department.objects.get_or_create(
         code="HTTT",
-        defaults={"name": "Bo mon He thong thong tin", "description": "Khoa CNTT - UTC"}
+        defaults={"name": "Bộ môn Hệ thống thông tin", "description": "Khoa CNTT - UTC"}
     )
+    if dept_httt.name != "Bộ môn Hệ thống thông tin":
+        dept_httt.name = "Bộ môn Hệ thống thông tin"
+        dept_httt.save(update_fields=["name"])
+
     dept_khmt, _ = Department.objects.get_or_create(
         code="KHMT",
-        defaults={"name": "Bo mon Khoa hoc may tinh va Mang may tinh", "description": "Khoa CNTT - UTC"}
+        defaults={"name": "Bộ môn Khoa học máy tính & Mạng máy tính", "description": "Khoa CNTT - UTC"}
     )
-    print(f"[OK] [2/9] Bo mon: {dept_cnpm.code}, {dept_httt.code}, {dept_khmt.code}")
+    if dept_khmt.name != "Bộ môn Khoa học máy tính & Mạng máy tính":
+        dept_khmt.name = "Bộ môn Khoa học máy tính & Mạng máy tính"
+        dept_khmt.save(update_fields=["name"])
+
+    dept_mmt, _ = Department.objects.get_or_create(
+        code="MMT",
+        defaults={"name": "Bộ môn Mạng máy tính & ATTT", "description": "Khoa CNTT - UTC"}
+    )
+    if dept_mmt.name != "Bộ môn Mạng máy tính & ATTT":
+        dept_mmt.name = "Bộ môn Mạng máy tính & ATTT"
+        dept_mmt.save(update_fields=["name"])
+
+    print(f"[OK] [2/9] Bo mon: {dept_cnpm.code}, {dept_httt.code}, {dept_khmt.code}, {dept_mmt.code}")
 
     # 3. Academic Batch K62
     batch, _ = AcademicBatch.objects.get_or_create(
@@ -302,6 +322,10 @@ def seed_database():
     check_res = council.check_utc_model_validity()
     print(f"[OK] [9/9] Hoi dong bao ve: {council.council_name}")
     print(f"   -> Kiem tra co cau UTC: {check_res['is_valid']} ({check_res['expected_formula']})")
+
+    # Chuan hoa toan bo phong tieng Viet co dau cho Bo mon va Giang vien
+    from app.utils.department_formatter import auto_heal_unaccented_departments
+    auto_heal_unaccented_departments()
 
     # Audit log
     AuditLog.objects.create(

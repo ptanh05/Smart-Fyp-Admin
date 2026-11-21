@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AdminLayout } from '../../components/layout/AdminLayout';
 import { apiClient } from '../../api/client';
-import { formatFullName } from '../../utils/nameHelper';
+import { formatFullName, formatDepartmentName } from '../../utils/nameHelper';
 import './OutlineManagementPage.css';
 
 interface OutlineGroup {
@@ -145,7 +145,7 @@ export const OutlineManagementPage: React.FC = () => {
           supervisor_id_db: u.supervisor_profile.id,
           name: u.full_name || u.username,
           title: u.supervisor_profile.academic_title || 'ThS.',
-          department: u.supervisor_profile.department_name || '',
+          department: formatDepartmentName(u.supervisor_profile.department_name),
         }));
       setSupervisors(parsed);
     } catch (err) {
@@ -889,7 +889,7 @@ export const OutlineManagementPage: React.FC = () => {
                     <div className="utc-outline-card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div>
                         <h4 className="utc-outline-title">{g.name}</h4>
-                        <span className="utc-outline-dept">{g.department}</span>
+                        <span className="utc-outline-dept">{formatDepartmentName(g.department)}</span>
                       </div>
                       <div style={{ display: 'flex', gap: '0.3rem' }}>
                         <button
@@ -1027,7 +1027,7 @@ export const OutlineManagementPage: React.FC = () => {
                           }}
                         />
                         <span style={{ fontSize: '0.85rem' }}>
-                          <strong>{spv.title} {spv.name}</strong> {spv.department ? `(${spv.department})` : ''}
+                          <strong>{spv.title} {spv.name}</strong> {spv.department ? `(${formatDepartmentName(spv.department)})` : ''}
                         </span>
                       </label>
                     );
@@ -1067,7 +1067,7 @@ export const OutlineManagementPage: React.FC = () => {
                 >
                   {groups.map((g) => (
                     <option key={g.id} value={g.id}>
-                      {g.name} ({g.department}) - Đã có {g.total_projects} đề tài
+                      {g.name} ({formatDepartmentName(g.department)}) - Đã có {g.total_projects} đề tài
                     </option>
                   ))}
                 </select>
