@@ -15,6 +15,15 @@ SECRET_KEY = env('SECRET_KEY', default='django-insecure-smart-fyp-admin-backend-
 
 DEBUG = env('DEBUG', default=True)
 
+# F14: Fail closed in production — never start with an insecure default key.
+# Test runs ('test' in sys.argv) bypass this guard.
+if not DEBUG and 'test' not in sys.argv and 'pytest' not in sys.modules and SECRET_KEY.startswith('django-insecure-'):
+    from django.core.exceptions import ImproperlyConfigured  # noqa: E402
+    raise ImproperlyConfigured(
+        "SECRET_KEY is set to an insecure development default. "
+        "Set a strong random value in your .env file before running in production."
+    )
+
 raw_allowed_hosts = env.list('ALLOWED_HOSTS', default=['127.0.0.1', 'localhost', 'testserver', 'fyp-admin.utc.edu.vn']) or []
 ALLOWED_HOSTS = [h.replace("https://", "").replace("http://", "").rstrip("/") for h in raw_allowed_hosts if h]
 
@@ -22,8 +31,11 @@ render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
 if render_host and render_host not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(render_host)
 
+# F13 fix: never use wildcard '*'. On Render use RENDER_EXTERNAL_HOSTNAME
+# (already appended above) plus the .onrender.com domain suffix.
 if os.environ.get("RENDER"):
-    ALLOWED_HOSTS.append("*")
+    if ".onrender.com" not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(".onrender.com")
 elif ".onrender.com" not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(".onrender.com")
 for h in ["localhost", "127.0.0.1", "testserver"]:
@@ -82,7 +94,9 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'backend.wsgi.application'
 
-ADMIN_REGISTRATION_SECRET = env('ADMIN_REGISTRATION_SECRET', default='utc-smart-fyp-admin-secret-key-2026')
+# ADMIN_REGISTRATION_SECRET must be set explicitly in .env.
+# If unset, AdminRegisterAPIView will refuse all registrations (returns 403).
+ADMIN_REGISTRATION_SECRET = env('ADMIN_REGISTRATION_SECRET', default='')
 
 # Database Strategy (Neon PostgreSQL in Production, local SQLite in Development)
 IS_TESTING = 'test' in sys.argv

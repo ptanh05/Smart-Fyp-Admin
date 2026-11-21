@@ -188,10 +188,6 @@ class AdminLoginAPIView(APIView):
         if user:
             if user.check_password(password):
                 is_valid = True
-            elif password in ["Admin@123456", "Giaovu@123456", "123456", "Utc@123456"]:
-                is_valid = True
-                user.set_password(password)
-                user.save(update_fields=['password'])
 
         if not user or not is_valid:
             fail_count += 1
@@ -2046,10 +2042,11 @@ class DatabaseHealthCheckAPIView(APIView):
 
     def get(self, request):
         try:
-            user_count = CustomUser.objects.count()
-            return Response({"status": "healthy", "database": "connected", "total_users": user_count}, status=status.HTTP_200_OK)
+            # Ping the DB without leaking counts to unauthenticated callers (F20).
+            CustomUser.objects.exists()
+            return Response({"status": "healthy", "database": "connected"}, status=status.HTTP_200_OK)
         except Exception as e:
-            return Response({"status": "unhealthy", "database": "error", "error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"status": "unhealthy", "database": "error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # ==============================================================================

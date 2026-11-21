@@ -234,6 +234,10 @@ class AuditDeepVerificationTests(TestCase):
 
     def test_excel_import_idempotency_and_duplicate_prevention(self):
         """Importing the same roster twice does not duplicate students/users"""
+        # Roster below is an engineer-program class ("Kỹ sư CNTT ... K62"),
+        # so the batch must be an engineer batch for the import to be valid.
+        self.batch.program_type = "ENGINEER"
+        self.batch.save(update_fields=["program_type"])
         wb = openpyxl.Workbook()
         ws = wb.active
         assert ws is not None

@@ -746,7 +746,7 @@ class ExcelImportService:
                                 user_type="student",
                                 is_staff=False,
                                 is_active=True,
-                                password=make_password(plain_password, hasher="md5")
+                                password=make_password(plain_password)
                             )
                             user_created = True
                             existing_users[username] = user
