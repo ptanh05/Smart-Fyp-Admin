@@ -58,6 +58,20 @@ from .views import (
 )
 
 from .views_auth_sso import AdminGoogleSSOLoginAPIView
+from .feature_views import (
+    FacultyAnalyticsAPIView,
+    ScoreDiscrepancyListAPIView,
+    RubricListCreateAPIView,
+    RubricDetailAPIView,
+    RubricActivateAPIView,
+    RubricCriterionListCreateAPIView,
+    RubricCriterionDetailAPIView,
+    ThesisArchiveListAPIView,
+    ThesisArchiveEmbargoAPIView,
+    DataRetentionPreviewAPIView,
+    DataRetentionApplyAPIView,
+    FeatureAuditLogListAPIView,
+)
 
 urlpatterns = [
     # Health checks
@@ -171,4 +185,30 @@ urlpatterns = [
     path("admin/academic-staff/final-grades/", AcademicStaffFinalGradesAPIView.as_view(), name="admin-academic-staff-final-grades"),
     path("admin/academic-staff/export-class-grades-excel/", AcademicStaffExportClassGradesExcelAPIView.as_view(), name="admin-academic-staff-export-class-grades"),
     path("admin/academic-staff/complete-batch/", AcademicStaffCompleteBatchAPIView.as_view(), name="admin-academic-staff-complete-batch"),
+
+    # =========================================================================
+    # Feature Extensions — Analytics, Rubrics, Archive, Data Retention
+    # =========================================================================
+
+    # Faculty Analytics & Score Discrepancy
+    path("admin/analytics/faculty/", FacultyAnalyticsAPIView.as_view(), name="admin-analytics-faculty"),
+    path("admin/analytics/score-discrepancy/", ScoreDiscrepancyListAPIView.as_view(), name="admin-analytics-score-discrepancy"),
+
+    # Rubric Management (CRUD with in-use protection)
+    path("admin/rubrics/", RubricListCreateAPIView.as_view(), name="admin-rubrics-list-create"),
+    path("admin/rubrics/<int:pk>/", RubricDetailAPIView.as_view(), name="admin-rubrics-detail"),
+    path("admin/rubrics/<int:pk>/activate/", RubricActivateAPIView.as_view(), name="admin-rubrics-activate"),
+    path("admin/rubrics/<int:rubric_pk>/criteria/", RubricCriterionListCreateAPIView.as_view(), name="admin-rubric-criteria-list-create"),
+    path("admin/rubrics/<int:rubric_pk>/criteria/<int:pk>/", RubricCriterionDetailAPIView.as_view(), name="admin-rubric-criteria-detail"),
+
+    # Thesis Archive (list/search + embargo management)
+    path("admin/archive/", ThesisArchiveListAPIView.as_view(), name="admin-archive-list"),
+    path("admin/archive/<int:pk>/embargo/", ThesisArchiveEmbargoAPIView.as_view(), name="admin-archive-embargo"),
+
+    # Data Retention (preview + apply)
+    path("admin/data-retention/preview/", DataRetentionPreviewAPIView.as_view(), name="admin-data-retention-preview"),
+    path("admin/data-retention/apply/", DataRetentionApplyAPIView.as_view(), name="admin-data-retention-apply"),
+
+    # Feature-scoped Audit Logs
+    path("admin/audit-logs/features/", FeatureAuditLogListAPIView.as_view(), name="admin-audit-logs-features"),
 ]
