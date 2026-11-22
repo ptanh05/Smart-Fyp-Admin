@@ -2066,6 +2066,7 @@ class OutlineReviewDetailAPIView(APIView):
                 project.topic_review_status = "REJECTED"
             elif review.verdict == "PENDING":
                 project.status = "OUTLINE_PENDING"
+                project.topic_review_status = "DRAFT"
             project.save()
 
         if "comments" in data:
