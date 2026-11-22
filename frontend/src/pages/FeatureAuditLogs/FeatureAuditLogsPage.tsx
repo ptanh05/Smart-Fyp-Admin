@@ -2,73 +2,83 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { AdminLayout } from '../../components/layout/AdminLayout';
 import { featuresApi } from '../../api/features';
 import type { FeatureAuditLogResponse, FeatureAuditLog } from '../../types';
+import './FeatureAuditLogsPage.css';
 
 const ACTION_LABEL: Record<string, string> = {
-  admin_rubric_create: 'Tao rubric',
-  admin_rubric_update: 'Cap nhat rubric',
-  admin_rubric_delete: 'Xoa rubric',
-  admin_rubric_deactivate: 'Vo hieu hoa rubric',
-  admin_rubric_activate: 'Kich hoat rubric',
-  admin_archive_embargo_set: 'Dat embargo',
-  admin_archive_embargo_lift: 'Go embargo',
-  admin_data_retention_apply: 'Ap dung luu giu du lieu',
-  admin_criterion_create: 'Tao tieu chi',
-  admin_criterion_update: 'Cap nhat tieu chi',
-  admin_criterion_delete: 'Xoa tieu chi',
+  admin_rubric_create: 'Tạo rubric',
+  admin_rubric_update: 'Cập nhật rubric',
+  admin_rubric_delete: 'Xóa rubric',
+  admin_rubric_deactivate: 'Vô hiệu hóa rubric',
+  admin_rubric_activate: 'Kích hoạt rubric',
+  admin_archive_embargo_set: 'Đặt hạn chế công bố (Embargo)',
+  admin_archive_embargo_lift: 'Gỡ hạn chế công bố (Embargo)',
+  admin_data_retention_apply: 'Áp dụng chính sách lưu giữ dữ liệu',
+  admin_criterion_create: 'Tạo tiêu chí',
+  admin_criterion_update: 'Cập nhật tiêu chí',
+  admin_criterion_delete: 'Xóa tiêu chí',
 };
 
-const ACTION_COLOR: Record<string, string> = {
-  admin_rubric_delete: '#dc2626',
-  admin_rubric_deactivate: '#d97706',
-  admin_archive_embargo_set: '#7c3aed',
-  admin_archive_embargo_lift: '#059669',
-  admin_data_retention_apply: '#dc2626',
-  admin_criterion_delete: '#dc2626',
+const ACTION_TONE: Record<string, 'danger' | 'warning' | 'purple' | 'success' | 'default'> = {
+  admin_rubric_delete: 'danger',
+  admin_rubric_deactivate: 'warning',
+  admin_archive_embargo_set: 'purple',
+  admin_archive_embargo_lift: 'success',
+  admin_rubric_activate: 'success',
+  admin_data_retention_apply: 'danger',
+  admin_criterion_delete: 'danger',
 };
 
 const LogRow: React.FC<{ log: FeatureAuditLog }> = ({ log }) => {
   const [expanded, setExpanded] = useState(false);
-  const color = ACTION_COLOR[log.action_type] || '#003366';
+  const tone = ACTION_TONE[log.action_type] ?? 'default';
+  const badgeClass = tone === 'default' ? 'fal-badge' : `fal-badge fal-badge--${tone}`;
+
   return (
     <>
-      <tr
-        style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}
-        onClick={() => setExpanded((v) => !v)}
-      >
-        <td style={{ padding: '9px 12px', whiteSpace: 'nowrap', color: '#64748b', fontSize: '0.82rem' }}>
+      <tr className="fal-row" onClick={() => setExpanded((v) => !v)}>
+        <td className="fal-td-time">
           {new Date(log.created_at).toLocaleString('vi-VN')}
         </td>
-        <td style={{ padding: '9px 12px' }}>
-          <span style={{
-            background: `${color}18`, color, borderRadius: 20,
-            padding: '2px 10px', fontSize: '0.76rem', fontWeight: 700,
-          }}>
+        <td>
+          <span className={badgeClass}>
             {ACTION_LABEL[log.action_type] ?? log.action_type}
           </span>
         </td>
-        <td style={{ padding: '9px 12px', fontSize: '0.84rem', color: '#1e293b', maxWidth: 360 }}>
-          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{log.description}</div>
+        <td className="fal-td-desc">
+          <div className="fal-desc-truncate" title={log.description}>
+            {log.description}
+          </div>
         </td>
-        <td style={{ padding: '9px 12px', fontSize: '0.82rem', color: '#475569' }}>{log.user_name ?? '—'}</td>
-        <td style={{ padding: '9px 12px', fontSize: '0.78rem', color: '#94a3b8' }}>{log.ip_address ?? '—'}</td>
-        <td style={{ padding: '9px 12px', fontSize: '0.76rem', color: '#94a3b8' }}>
-          {expanded ? '▲' : '▼'}
-        </td>
+        <td className="fal-td-user">{log.user_name ?? '—'}</td>
+        <td className="fal-td-ip">{log.ip_address ?? '—'}</td>
+        <td className="fal-td-chevron">{expanded ? '▲' : '▼'}</td>
       </tr>
       {expanded && (
-        <tr style={{ background: '#f8fafc' }}>
-          <td colSpan={6} style={{ padding: '10px 20px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: '0.82rem' }}>
+        <tr className="fal-detail-row">
+          <td colSpan={6} className="fal-detail-cell">
+            <div className="fal-detail-grid">
               {log.field_name && (
-                <div><strong style={{ color: '#64748b' }}>Truong:</strong> {log.field_name}</div>
+                <div>
+                  <span className="fal-detail-label">Trường:</span>
+                  {log.field_name}
+                </div>
               )}
               {log.old_value && (
-                <div><strong style={{ color: '#64748b' }}>Gia tri cu:</strong> <code style={{ background: '#fff', padding: '1px 6px', borderRadius: 4 }}>{log.old_value}</code></div>
+                <div>
+                  <span className="fal-detail-label">Giá trị cũ:</span>
+                  <code className="fal-detail-code">{log.old_value}</code>
+                </div>
               )}
               {log.new_value && (
-                <div><strong style={{ color: '#64748b' }}>Gia tri moi:</strong> <code style={{ background: '#fff', padding: '1px 6px', borderRadius: 4 }}>{log.new_value}</code></div>
+                <div>
+                  <span className="fal-detail-label">Giá trị mới:</span>
+                  <code className="fal-detail-code">{log.new_value}</code>
+                </div>
               )}
-              <div><strong style={{ color: '#64748b' }}>Mo ta day du:</strong> {log.description}</div>
+              <div>
+                <span className="fal-detail-label">Mô tả đầy đủ:</span>
+                {log.description}
+              </div>
             </div>
           </td>
         </tr>
@@ -94,93 +104,106 @@ export const FeatureAuditLogsPage: React.FC = () => {
       });
       setLogData(data);
     } catch {
-      setError('Loi tai nhat ky hanh dong.');
+      setError('Lỗi tải nhật ký hành động.');
     } finally {
       setLoading(false);
     }
   }, [page, filterAction]);
 
-  useEffect(() => { fetchLogs(); }, [fetchLogs]);
+  useEffect(() => {
+    fetchLogs();
+  }, [fetchLogs]);
 
-  const totalPages = logData ? Math.ceil(logData.count / (logData.page_size || 30)) : 1;
+  const totalPages = logData ? Math.max(1, Math.ceil(logData.count / (logData.page_size || 30))) : 1;
 
   return (
     <AdminLayout>
-      <div className="utc-admin-portal">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
-          <h2 style={{ fontSize: '1.4rem', fontWeight: 700, margin: 0 }}>
-            Nhat Ky Hanh Dong Quan Tri (Feature Audit)
-          </h2>
-          <button
-            onClick={fetchLogs}
-            disabled={loading}
-            style={{ background: '#003366', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 16px', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}
-          >
-            {loading ? 'Dang tai...' : 'Lam moi'}
+      <div className="fal-page">
+        <div className="fal-header">
+          <div className="fal-header-text">
+            <h2>Nhật Ký Hành Động Quản Trị</h2>
+            <p>
+              Theo dõi chi tiết các thao tác cấu hình rubric, hạn chế công bố lưu trữ và áp dụng chính sách dữ liệu
+            </p>
+          </div>
+          <button onClick={fetchLogs} disabled={loading} className="fal-refresh-btn">
+            {loading ? 'Đang tải...' : 'Làm mới'}
           </button>
         </div>
 
-        {/* Filter */}
-        <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+        {/* Filter Bar */}
+        <div className="fal-filter-bar">
           <select
             value={filterAction}
-            onChange={(e) => { setFilterAction(e.target.value); setPage(1); }}
-            style={{ padding: '7px 12px', borderRadius: 7, border: '1px solid #cbd5e1', fontSize: '0.86rem' }}
+            onChange={(e) => {
+              setFilterAction(e.target.value);
+              setPage(1);
+            }}
+            className="fal-select"
+            aria-label="Lọc theo loại hành động"
           >
-            <option value="">-- Tat ca hanh dong --</option>
+            <option value="">-- Tất cả hành động --</option>
             {logData?.action_types?.map((at) => (
-              <option key={at} value={at}>{ACTION_LABEL[at] ?? at}</option>
+              <option key={at} value={at}>
+                {ACTION_LABEL[at] ?? at}
+              </option>
             ))}
           </select>
+          {logData && (
+            <div className="fal-meta">
+              {logData.count} bản ghi &bull; Trang {page}/{totalPages}
+            </div>
+          )}
         </div>
 
-        {error && <div style={{ background: '#fef2f2', color: '#dc2626', padding: '10px 16px', borderRadius: 8, marginBottom: 12 }}>{error}</div>}
+        {error && <div className="fal-alert-error">{error}</div>}
 
-        {loading && <div style={{ textAlign: 'center', padding: 32, color: '#64748b' }}>Dang tai...</div>}
+        {loading && !logData && <div className="fal-loading">Đang tải...</div>}
 
         {logData && (
           <>
-            <div style={{ fontSize: '0.84rem', color: '#64748b', marginBottom: 10 }}>
-              {logData.count} ban ghi &bull; Trang {page}/{totalPages}
-            </div>
-
             {logData.results.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Chua co nhat ky nao.</div>
+              <div className="fal-empty">Chưa có nhật ký nào.</div>
             ) : (
-              <div style={{ overflowX: 'auto', background: '#fff', borderRadius: 10, boxShadow: '0 2px 8px rgba(0,51,102,0.08)' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+              <div className="fal-table-card">
+                <table className="fal-table">
                   <thead>
-                    <tr style={{ background: '#f8fafc' }}>
-                      {['Thoi gian', 'Hanh dong', 'Mo ta', 'Nguoi thuc hien', 'IP', ''].map((h) => (
-                        <th key={h} style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#475569', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>
-                          {h}
-                        </th>
-                      ))}
+                    <tr>
+                      <th>Thời gian</th>
+                      <th>Hành động</th>
+                      <th>Mô tả</th>
+                      <th>Người thực hiện</th>
+                      <th>Địa chỉ IP</th>
+                      <th />
                     </tr>
                   </thead>
                   <tbody>
-                    {logData.results.map((log) => <LogRow key={log.id} log={log} />)}
+                    {logData.results.map((log) => (
+                      <LogRow key={log.id} log={log} />
+                    ))}
                   </tbody>
                 </table>
               </div>
             )}
 
             {totalPages > 1 && (
-              <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'center' }}>
+              <div className="fal-pagination">
                 <button
                   disabled={page <= 1}
                   onClick={() => setPage((p) => p - 1)}
-                  style={{ padding: '5px 14px', borderRadius: 6, border: '1px solid #e2e8f0', cursor: 'pointer', background: page <= 1 ? '#f8fafc' : '#fff' }}
+                  className="fal-page-btn"
                 >
-                  Truoc
+                  Trước
                 </button>
-                <span style={{ padding: '5px 14px', fontSize: '0.85rem', color: '#475569' }}>{page} / {totalPages}</span>
+                <span className="fal-page-info">
+                  {page} / {totalPages}
+                </span>
                 <button
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => p + 1)}
-                  style={{ padding: '5px 14px', borderRadius: 6, border: '1px solid #e2e8f0', cursor: 'pointer', background: page >= totalPages ? '#f8fafc' : '#fff' }}
+                  className="fal-page-btn"
                 >
-                  Tiep
+                  Tiếp
                 </button>
               </div>
             )}

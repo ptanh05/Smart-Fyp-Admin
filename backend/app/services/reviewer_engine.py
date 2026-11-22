@@ -49,10 +49,16 @@ class ReviewerAndCouncilAllocationEngine:
             council_supervisors[c.id] = sup_ids
             council_reviewers[c.id] = rev_candidates
 
-        # Target projects per council
+        # Target projects per council (balanced distribution, differing by at most 1)
         n_proj = len(projects)
         n_coun = len(councils)
         target_per_council = (n_proj + n_coun - 1) // n_coun
+        base_per_council = n_proj // n_coun
+        rem_per_council = n_proj % n_coun
+        council_targets = {
+            c.id: base_per_council + (1 if idx < rem_per_council else 0)
+            for idx, c in enumerate(councils)
+        }
 
         council_assigned_projects = {c.id: [] for c in councils}
         reviewer_load = {}  # supervisor_id -> count
@@ -68,21 +74,29 @@ class ReviewerAndCouncilAllocationEngine:
             # Find valid councils where supervisor is NOT a member
             valid_councils = []
             for c in councils:
-                if sup_id not in council_supervisors[c.id]:
+                if sup_id is None or sup_id not in council_supervisors[c.id]:
                     valid_councils.append(c)
 
-            # Sort valid councils by least assigned
-            valid_councils.sort(key=lambda c: len(council_assigned_projects[c.id]))
+            # Prefer councils still under their balanced target (and <= target_per_council), then least assigned
+            valid_councils.sort(
+                key=lambda c: (
+                    0 if len(council_assigned_projects[c.id]) < council_targets[c.id] else (
+                        1 if len(council_assigned_projects[c.id]) < target_per_council else 2
+                    ),
+                    len(council_assigned_projects[c.id]),
+                )
+            )
 
             if valid_councils:
                 assigned_council = valid_councils[0]
                 council_assigned_projects[assigned_council.id].append(proj)
             else:
+                sup_name = proj.supervisor.user.get_full_name() if proj.supervisor else "Chưa phân công"
                 conflicts.append({
                     "project_id": proj.id,
                     "student_name": proj.student.user.get_full_name(),
                     "registration_no": proj.student.registration_no,
-                    "supervisor_name": proj.supervisor.user.get_full_name(),
+                    "supervisor_name": sup_name,
                     "reason": "Tất cả các Hội đồng hiện có đều có GVHD của sinh viên tham gia (Trùng xung đột lợi ích)."
                 })
                 unassigned_count += 1
@@ -107,12 +121,13 @@ class ReviewerAndCouncilAllocationEngine:
                         proj.save(update_fields=["council", "reviewer"])
 
                         assigned_count += 1
+                        sup_name = proj.supervisor.user.get_full_name() if proj.supervisor else "Chưa phân công"
                         assignments.append({
                             "project_id": proj.id,
                             "student_name": proj.student.user.get_full_name(),
                             "registration_no": proj.student.registration_no,
                             "topic_title": proj.topic_title_vi,
-                            "supervisor": proj.supervisor.user.get_full_name(),
+                            "supervisor": sup_name,
                             "council_name": c.council_name,
                             "reviewer": f"{chosen_rev.academic_title or ''} {chosen_rev.user.get_full_name()}".strip()
                         })
@@ -136,12 +151,20 @@ class ReviewerAndCouncilAllocationEngine:
     @classmethod
     def manual_override_reviewer(cls, project_id, council_id, reviewer_id, user=None):
         """Khoa điều chỉnh thủ công Hội đồng & Giảng viên phản biện cho sinh viên"""
-        project = GraduationProject.objects.get(id=project_id)
+        project = GraduationProject.objects.select_related("supervisor__user", "student").get(id=project_id)
         council = DefenseCouncil.objects.filter(id=council_id).first() if council_id else None
         reviewer = Supervisor.objects.filter(id=reviewer_id).first() if reviewer_id else None
 
         if reviewer and project.supervisor_id == reviewer.id:
             return {"success": False, "error": "Giảng viên phản biện không được trùng với Giảng viên hướng dẫn!"}
+
+        if council and project.supervisor_id:
+            if council.members.filter(supervisor_id=project.supervisor_id).exists():
+                sup_name = project.supervisor.user.get_full_name() if project.supervisor else "GVHD"
+                return {
+                    "success": False,
+                    "error": f"Xung đột lợi ích (COI): Giảng viên hướng dẫn ({sup_name}) là thành viên của {council.council_name}."
+                }
 
         if council and reviewer:
             # Kiểm tra xem GV phản biện có nằm trong hội đồng này không

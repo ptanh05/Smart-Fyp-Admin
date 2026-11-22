@@ -772,7 +772,7 @@ class GraduationProjectAdminSerializer(serializers.ModelSerializer):
         return f"{prefix}{obj.reviewer.user.get_full_name()}".strip()
 
     def get_schedule_slot_info(self, obj):
-        slot = getattr(obj, "scheduled_defense_slot", None)
+        slot = getattr(obj, "schedule_slot", None)
         if slot:
             return {
                 "order": slot.order_number,

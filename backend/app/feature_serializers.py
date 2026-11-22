@@ -47,10 +47,11 @@ class RubricSerializer(serializers.ModelSerializer):
 
 class RubricCriterionInlineSerializer(serializers.ModelSerializer):
     """Used for nested criteria within RubricWriteSerializer (no rubric FK needed)."""
+    id = serializers.IntegerField(required=False, allow_null=True)
+
     class Meta:
         model = RubricCriterion
         fields = ["id", "name", "description", "max_score", "order"]
-        read_only_fields = ["id"]
 
 
 class RubricWriteSerializer(serializers.ModelSerializer):
@@ -64,6 +65,7 @@ class RubricWriteSerializer(serializers.ModelSerializer):
         criteria_data = validated_data.pop("criteria", [])
         rubric = Rubric.objects.create(**validated_data)
         for i, cdata in enumerate(criteria_data):
+            cdata.pop("id", None)
             cdata.setdefault("order", i)
             RubricCriterion.objects.create(rubric=rubric, **cdata)
         return rubric
@@ -74,10 +76,24 @@ class RubricWriteSerializer(serializers.ModelSerializer):
             setattr(instance, attr, val)
         instance.save()
         if criteria_data is not None:
-            instance.criteria.all().delete()
+            existing_map = {c.id: c for c in instance.criteria.all()}
+            kept_ids = set()
             for i, cdata in enumerate(criteria_data):
+                cid = cdata.pop("id", None)
                 cdata.setdefault("order", i)
-                RubricCriterion.objects.create(rubric=instance, **cdata)
+                if cid is not None and cid in existing_map:
+                    crit = existing_map[cid]
+                    for attr, val in cdata.items():
+                        setattr(crit, attr, val)
+                    crit.save()
+                    kept_ids.add(cid)
+                else:
+                    new_crit = RubricCriterion.objects.create(rubric=instance, **cdata)
+                    kept_ids.add(new_crit.id)
+
+            removed_ids = [cid for cid in existing_map.keys() if cid not in kept_ids]
+            if removed_ids:
+                instance.criteria.filter(id__in=removed_ids).delete()
         return instance
 
 

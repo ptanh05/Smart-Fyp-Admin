@@ -266,60 +266,51 @@ export const ArchivedBatchesPage: React.FC = () => {
               <div
                 key={batch.id}
                 onClick={() => setSelectedBatchId(batch.id)}
-                className={`utc-batch-card ${selectedBatchId === batch.id ? 'selected' : ''}`}
-                style={{
-                  borderLeft: selectedBatchId === batch.id ? '4px solid #003366' : '1px solid #e2e8f0',
-                  background: selectedBatchId === batch.id ? '#f8fafc' : '#ffffff',
-                }}
+                className={`utc-batch-card is-archived ${selectedBatchId === batch.id ? 'selected' : ''}`}
               >
                 <div className="utc-batch-card-head">
-                  <div>
+                  <div className="utc-batch-tags-row">
                     <span className="utc-batch-code-tag">{batch.batch_code}</span>
                     <span className={`utc-prog-tag prog-${batch.program_type.toLowerCase()}`}>
                       {batch.program_type === 'ENGINEER' ? '⚙️ Kỹ Sư' : batch.program_type === 'BACHELOR' ? '🎓 Cử Nhân' : '🔄 Cả Hai'}
                     </span>
                   </div>
-                  <span className="utc-status-pill pill-gray" style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1' }}>
+                  <span className="utc-status-pill pill-gray">
                     🔒 Đã kết thúc
                   </span>
                 </div>
 
                 <h4 className="utc-batch-name">{batch.batch_name}</h4>
                 <div className="utc-batch-stage-text">
-                  <strong>Trạng thái lưu trữ:</strong> <span style={{ color: '#64748b', fontWeight: 600 }}>Hoàn tất (COMPLETED)</span>
+                  <strong>Trạng thái lưu trữ:</strong>{' '}
+                  <span className="utc-stage-badge badge-archived">Hoàn tất (COMPLETED)</span>
                 </div>
 
-                <div className="utc-batch-stats">
-                  <div className="utc-stat-item">
-                    <span className="utc-stat-label">Sinh viên</span>
-                    <span className="utc-stat-value">{batch.student_count || 0}</span>
+                <div className="utc-batch-metrics-grid">
+                  <div className="utc-metric-item">
+                    <span className="utc-metric-icon">🎓</span>
+                    <span className="utc-metric-value">{batch.student_count || 0}</span>
+                    <span className="utc-metric-label">Sinh viên</span>
                   </div>
-                  <div className="utc-stat-item">
-                    <span className="utc-stat-label">Lớp học phần</span>
-                    <span className="utc-stat-value">{batch.classes?.length || 0}</span>
+                  <div className="utc-metric-item">
+                    <span className="utc-metric-icon">🏫</span>
+                    <span className="utc-metric-value">{batch.classes?.length || 0}</span>
+                    <span className="utc-metric-label">Lớp học phần</span>
                   </div>
-                  <div className="utc-stat-item">
-                    <span className="utc-stat-label">Đề tài đồ án</span>
-                    <span className="utc-stat-value">{batch.project_count || 0}</span>
+                  <div className="utc-metric-item">
+                    <span className="utc-metric-icon">📑</span>
+                    <span className="utc-metric-value">{batch.project_count || 0}</span>
+                    <span className="utc-metric-label">Đề tài đồ án</span>
                   </div>
                 </div>
 
-                <div className="utc-batch-footer" style={{ borderTop: '1px solid #e2e8f0', paddingTop: '0.85rem', marginTop: '0.85rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Nhấp để xem hồ sơ lưu trữ</span>
-                  <div style={{ display: 'flex', gap: '0.4rem' }}>
+                <div className="utc-batch-footer">
+                  <span className="utc-archive-hint">Nhấp để xem hồ sơ lưu trữ</span>
+                  <div className="utc-batch-footer-actions">
                     <button
                       type="button"
                       onClick={(e) => handleExportStudents(batch.id, e)}
-                      style={{
-                        background: '#f8fafc',
-                        border: '1px solid #cbd5e1',
-                        padding: '0.35rem 0.65rem',
-                        borderRadius: '6px',
-                        fontSize: '0.78rem',
-                        fontWeight: 600,
-                        color: '#334155',
-                        cursor: 'pointer',
-                      }}
+                      className="utc-btn-archive-export"
                       title="Xuất file Excel danh sách sinh viên đợt này"
                     >
                       📥 Xuất Excel
@@ -327,16 +318,7 @@ export const ArchivedBatchesPage: React.FC = () => {
                     <button
                       type="button"
                       onClick={(e) => handleReopenBatch(batch.id, e)}
-                      style={{
-                        background: '#eff6ff',
-                        border: '1px solid #bfdbfe',
-                        padding: '0.35rem 0.65rem',
-                        borderRadius: '6px',
-                        fontSize: '0.78rem',
-                        fontWeight: 600,
-                        color: '#1d4ed8',
-                        cursor: 'pointer',
-                      }}
+                      className="utc-btn-reopen-batch"
                       title="Mở lại đợt đồ án vào danh sách hoạt động"
                     >
                       🔄 Mở lại đợt

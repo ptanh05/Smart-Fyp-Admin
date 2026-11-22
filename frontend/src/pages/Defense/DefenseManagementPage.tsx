@@ -30,6 +30,55 @@ interface ProjectAdmin {
   is_passed: boolean;
 }
 
+interface ActionNotice {
+  type: 'success' | 'error' | 'warning';
+  title: string;
+  message: string;
+  details?: string[];
+}
+
+const formatMissingStudentItem = (item: any): string => {
+  if (typeof item === 'string') return item;
+  if (!item || typeof item !== 'object') return String(item);
+  const regNo = item.student_reg_no || item.registration_no || item.mssv || '';
+  const name = item.student_name || item.full_name || item.name || '';
+  const missing = Array.isArray(item.missing_fields)
+    ? item.missing_fields.join(', ')
+    : item.missing || item.reason || item.detail || '';
+  const label = [regNo, name].filter(Boolean).join(' - ');
+  if (label && missing) return `${label}: ${missing}`;
+  return label || missing || JSON.stringify(item);
+};
+
+const extractApiErrorDetails = (data: any, fallback: string): { message: string; details: string[] } => {
+  if (!data || typeof data !== 'object') {
+    return { message: typeof data === 'string' && data.trim() ? data : fallback, details: [] };
+  }
+  const message =
+    data.detail ||
+    data.error ||
+    data.message ||
+    fallback;
+
+  const listKeys = [
+    'missing_students',
+    'incomplete_students',
+    'incomplete_projects',
+    'ungraded_students',
+    'ungraded_projects',
+    'unfinalized_councils',
+    'students',
+    'errors',
+  ];
+  const details: string[] = [];
+  for (const key of listKeys) {
+    if (Array.isArray(data[key]) && data[key].length > 0) {
+      data[key].forEach((entry: any) => details.push(formatMissingStudentItem(entry)));
+    }
+  }
+  return { message, details };
+};
+
 export const DefenseManagementPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'grades' | 'deferral'>('grades');
   const [batches, setBatches] = useState<any[]>([]);
@@ -39,15 +88,28 @@ export const DefenseManagementPage: React.FC = () => {
   const [projects, setProjects] = useState<ProjectAdmin[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Action loading & notice banner states
+  const [finalizing, setFinalizing] = useState(false);
+  const [closingBatch, setClosingBatch] = useState(false);
+  const [exportingSummary, setExportingSummary] = useState(false);
+  const [actionNotice, setActionNotice] = useState<ActionNotice | null>(null);
+
   // Import Final Academic Modal
   const [showImportFinalModal, setShowImportFinalModal] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<any>(null);
 
+  const selectedBatch = batches.find((b) => b.id === selectedBatchId) || null;
+  const selectedCouncil = selectedCouncilId
+    ? councils.find((c) => String(c.id) === String(selectedCouncilId)) || null
+    : null;
+  const finalizedCouncilCount = councils.filter((c) => Boolean(c.is_finalized)).length;
+  const allCouncilsFinalized = councils.length > 0 && finalizedCouncilCount === councils.length;
+
   const fetchBatches = async () => {
     try {
-      const res = await apiClient.get('/admin/batches/');
+      const res = await apiClient.get(`/admin/batches/?_t=${Date.now()}`);
       const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
       setBatches(list);
       if (list.length > 0 && !selectedBatchId) {
@@ -69,7 +131,7 @@ export const DefenseManagementPage: React.FC = () => {
       }
 
       const [counRes, projRes] = await Promise.all([
-        apiClient.get(`/admin/councils/?batch_id=${selectedBatchId}`),
+        apiClient.get(`/admin/councils/?batch_id=${selectedBatchId}&_t=${Date.now()}`),
         apiClient.get(url),
       ]);
       setCouncils(Array.isArray(counRes.data) ? counRes.data : (counRes.data?.results || []));
@@ -142,6 +204,8 @@ export const DefenseManagementPage: React.FC = () => {
   const handleDownloadFinalSummaryExcel = async () => {
     if (!selectedBatchId) return;
     try {
+      setExportingSummary(true);
+      setActionNotice(null);
       const res = await apiClient.get(`/admin/export/final-summary-excel/?batch_id=${selectedBatchId}`, {
         responseType: 'blob',
       });
@@ -154,36 +218,94 @@ export const DefenseManagementPage: React.FC = () => {
       a.download = `Bao_cao_du_lieu_cuoi_ky_Dot_${selectedBatchId}.xlsx`;
       a.click();
       window.URL.revokeObjectURL(url);
-    } catch (err) {
-      alert('Lỗi xuất báo cáo cuối kỳ!');
+    } catch (err: any) {
+      let errData = err.response?.data;
+      if (errData instanceof Blob) {
+        try {
+          const text = await errData.text();
+          errData = JSON.parse(text);
+        } catch {
+          errData = null;
+        }
+      }
+      const { message, details } = extractApiErrorDetails(
+        errData,
+        err.message || 'Không thể xuất báo cáo dữ liệu cuối kỳ.'
+      );
+      setActionNotice({
+        type: 'error',
+        title: 'Lỗi xuất dữ liệu cuối kỳ',
+        message,
+        details,
+      });
+    } finally {
+      setExportingSummary(false);
     }
   };
 
   const handleFinalizeCouncilScores = async () => {
     if (!selectedCouncilId) {
-      alert('Vui lòng chọn một Hội đồng cụ thể để chốt điểm!');
+      setActionNotice({
+        type: 'warning',
+        title: 'Chưa chọn Hội đồng',
+        message: 'Vui lòng chọn một Hội đồng cụ thể để xác nhận chốt điểm.',
+      });
       return;
     }
+    if (selectedCouncil?.is_finalized || selectedBatch?.is_closed) return;
     if (!confirm('Xác nhận Hội đồng chấm thi đã hoàn thành và CHỐT ĐIỂM chính thức? Sau khi chốt, điểm số sẽ được khóa.')) return;
     try {
+      setFinalizing(true);
+      setActionNotice(null);
       const res = await apiClient.post(`/admin/councils/${selectedCouncilId}/finalize-scores/`);
-      alert(res.data?.message || 'Đã chốt điểm thành công!');
-      fetchData();
+      setActionNotice({
+        type: 'success',
+        title: 'Chốt điểm Hội đồng thành công',
+        message: res.data?.message || 'Đã xác nhận chốt điểm chính thức cho Hội đồng.',
+      });
+      await fetchData();
     } catch (err: any) {
-      alert('Lỗi chốt điểm: ' + (err.response?.data?.detail || err.message));
+      const { message, details } = extractApiErrorDetails(
+        err.response?.data,
+        err.message || 'Không thể chốt điểm Hội đồng.'
+      );
+      setActionNotice({
+        type: 'error',
+        title: 'Không thể chốt điểm Hội đồng',
+        message,
+        details,
+      });
+    } finally {
+      setFinalizing(false);
     }
   };
 
   const handleCloseBatch = async () => {
-    if (!selectedBatchId) return;
+    if (!selectedBatchId || selectedBatch?.is_closed || !allCouncilsFinalized) return;
     if (!confirm('Khoa xác nhận HOÀN TẤT VÀ KẾT THÚC ĐỢT ĐỒ ÁN TỐT NGHIỆP? Toàn bộ hồ sơ sẽ được lưu trữ.')) return;
     try {
+      setClosingBatch(true);
+      setActionNotice(null);
       const res = await apiClient.post(`/admin/batches/${selectedBatchId}/close/`);
-      alert(res.data?.message || 'Đã kết thúc đợt thành công!');
-      fetchBatches();
-      fetchData();
+      setActionNotice({
+        type: 'success',
+        title: 'Kết thúc đợt đồ án thành công',
+        message: res.data?.message || 'Đợt đồ án đã được hoàn tất và chuyển vào kho lưu trữ.',
+      });
+      await Promise.all([fetchBatches(), fetchData()]);
     } catch (err: any) {
-      alert('Lỗi kết thúc đợt: ' + (err.response?.data?.detail || err.message));
+      const { message, details } = extractApiErrorDetails(
+        err.response?.data,
+        err.message || 'Không thể kết thúc đợt đồ án.'
+      );
+      setActionNotice({
+        type: 'error',
+        title: 'Không thể kết thúc đợt đồ án',
+        message,
+        details,
+      });
+    } finally {
+      setClosingBatch(false);
     }
   };
 
@@ -258,36 +380,61 @@ export const DefenseManagementPage: React.FC = () => {
 
         {/* Header Bar */}
         <div className="utc-defense-header-bar">
-          <div className="utc-defense-filters-group">
-            <div className="utc-defense-filter-item">
-              <label>Đợt ĐATN:</label>
-              <select
-                value={selectedBatchId || ''}
-                onChange={(e) => setSelectedBatchId(Number(e.target.value))}
-                className="utc-form-select"
-              >
-                {batches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.batch_code} - {b.batch_name}
-                  </option>
-                ))}
-              </select>
+          <div className="utc-defense-header-top">
+            <div className="utc-defense-filters-group">
+              <div className="utc-defense-filter-item">
+                <label>Đợt ĐATN:</label>
+                <select
+                  value={selectedBatchId || ''}
+                  onChange={(e) => {
+                    setSelectedBatchId(Number(e.target.value));
+                    setSelectedCouncilId('');
+                    setActionNotice(null);
+                  }}
+                  className="utc-form-select"
+                >
+                  {batches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.batch_code} - {b.batch_name}{b.is_closed ? ' (Đã kết thúc)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="utc-defense-filter-item">
+                <label>Lọc Hội Đồng:</label>
+                <select
+                  value={selectedCouncilId}
+                  onChange={(e) => {
+                    setSelectedCouncilId(e.target.value);
+                    setActionNotice(null);
+                  }}
+                  className="utc-form-select"
+                >
+                  <option value="">-- Tất cả Hội đồng --</option>
+                  {councils.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.council_name} ({c.defense_room || 'Phòng ?'}){c.is_finalized ? ' ✓ Đã chốt' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            <div className="utc-defense-filter-item">
-              <label>Lọc Hội Đồng:</label>
-              <select
-                value={selectedCouncilId}
-                onChange={(e) => setSelectedCouncilId(e.target.value)}
-                className="utc-form-select"
-              >
-                <option value="">-- Tất cả Hội đồng --</option>
-                {councils.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.council_name} ({c.defense_room || 'Phòng ?'})
-                  </option>
-                ))}
-              </select>
+            <div className="utc-defense-status-pills">
+              {selectedBatch && (
+                <span className={`utc-status-badge ${selectedBatch.is_closed ? 'is-closed' : 'is-open'}`}>
+                  {selectedBatch.is_closed ? '🔒 Đợt đã kết thúc' : '🟢 Đợt đang hoạt động'}
+                </span>
+              )}
+              <span className={`utc-status-badge ${allCouncilsFinalized ? 'is-done' : 'is-pending'}`}>
+                {allCouncilsFinalized ? '✅' : '⏳'} {finalizedCouncilCount} / {councils.length} hội đồng đã chốt điểm
+              </span>
+              {selectedCouncil && (
+                <span className={`utc-status-badge ${selectedCouncil.is_finalized ? 'is-done' : 'is-warn'}`}>
+                  {selectedCouncil.is_finalized ? '🔒 HĐ đã chốt điểm' : '⚠️ HĐ chưa chốt điểm'}
+                </span>
+              )}
             </div>
           </div>
 
@@ -296,7 +443,7 @@ export const DefenseManagementPage: React.FC = () => {
               onClick={handleDownloadToTrinhDocx}
               disabled={!selectedCouncilId}
               className="utc-btn-blue-outline"
-              title="Xuất Tờ trình thành lập Hội đồng Word chuẩn UTC"
+              title={!selectedCouncilId ? 'Chọn một Hội đồng cụ thể để xuất Tờ trình Word' : 'Xuất Tờ trình thành lập Hội đồng Word chuẩn UTC'}
             >
               <span>📄</span> Xuất Tờ Trình Word
             </button>
@@ -305,44 +452,112 @@ export const DefenseManagementPage: React.FC = () => {
               onClick={handleDownloadBienBanExcel}
               disabled={!selectedCouncilId}
               className="utc-btn-emerald-outline"
-              title="Xuất file Biên bản chấm điểm Excel của Hội đồng"
+              title={!selectedCouncilId ? 'Chọn một Hội đồng cụ thể để xuất Bảng điểm Excel' : 'Xuất file Biên bản chấm điểm Excel của Hội đồng'}
             >
               <span>📊</span> Xuất Bảng Điểm HĐ (Excel)
             </button>
 
             <button
               onClick={handleFinalizeCouncilScores}
-              disabled={!selectedCouncilId}
+              disabled={
+                !selectedCouncilId ||
+                finalizing ||
+                Boolean(selectedCouncil?.is_finalized) ||
+                Boolean(selectedBatch?.is_closed)
+              }
               className="utc-btn-amber"
-              title="Hội đồng xác nhận chốt điểm chính thức"
+              title={
+                selectedBatch?.is_closed
+                  ? 'Đợt đồ án đã kết thúc'
+                  : !selectedCouncilId
+                  ? 'Vui lòng chọn một Hội đồng cụ thể để chốt điểm'
+                  : selectedCouncil?.is_finalized
+                  ? 'Hội đồng này đã xác nhận chốt điểm'
+                  : 'Hội đồng xác nhận chốt điểm chính thức'
+              }
             >
-              <span>🔒</span> HĐ Xác Nhận Chốt Điểm
+              <span>🔒</span>{' '}
+              {finalizing
+                ? 'Đang chốt điểm...'
+                : selectedCouncil?.is_finalized
+                ? 'HĐ Đã Chốt Điểm'
+                : 'HĐ Xác Nhận Chốt Điểm'}
             </button>
 
             <button
               onClick={handleDownloadFinalSummaryExcel}
+              disabled={!selectedBatchId || exportingSummary}
               className="utc-btn-emerald"
-              title="Xuất toàn bộ dữ liệu cuối kỳ phục vụ ký số và lưu trữ"
+              title={!selectedBatchId ? 'Vui lòng chọn đợt đồ án' : 'Xuất toàn bộ dữ liệu cuối kỳ phục vụ ký số và lưu trữ'}
             >
-              <span>📑</span> Xuất Dữ Liệu Cuối Kỳ (Ký)
+              <span>📑</span> {exportingSummary ? 'Đang xuất...' : 'Xuất Dữ Liệu Cuối Kỳ (Ký)'}
             </button>
 
             <button
               onClick={handleCloseBatch}
+              disabled={
+                !selectedBatchId ||
+                closingBatch ||
+                Boolean(selectedBatch?.is_closed) ||
+                !allCouncilsFinalized
+              }
               className="utc-btn-red"
-              title="Khoa hoàn tất và kết thúc đợt đồ án"
+              title={
+                selectedBatch?.is_closed
+                  ? 'Đợt đồ án này đã kết thúc và được lưu trữ'
+                  : !allCouncilsFinalized
+                  ? 'Chỉ có thể kết thúc đợt khi tất cả Hội đồng đã xác nhận chốt điểm'
+                  : 'Khoa hoàn tất và kết thúc đợt đồ án'
+              }
             >
-              <span>🏁</span> Kết Thúc Đợt Đồ Án
+              <span>🏁</span>{' '}
+              {closingBatch
+                ? 'Đang kết thúc...'
+                : selectedBatch?.is_closed
+                ? 'Đợt Đã Kết Thúc'
+                : 'Kết Thúc Đợt Đồ Án'}
             </button>
           </div>
         </div>
+
+        {/* Action Notice Banner */}
+        {actionNotice && (
+          <div className={`utc-notice-banner notice-${actionNotice.type}`} role="alert">
+            <div className="utc-notice-content">
+              <div className="utc-notice-title">
+                <span>
+                  {actionNotice.type === 'success' ? '✅' : actionNotice.type === 'warning' ? '⚠️' : '❌'}
+                </span>
+                <strong>{actionNotice.title}</strong>
+              </div>
+              <p className="utc-notice-message">{actionNotice.message}</p>
+              {actionNotice.details && actionNotice.details.length > 0 && (
+                <ul className="utc-notice-details-list">
+                  {actionNotice.details.map((item, idx) => (
+                    <li key={idx}>{item}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <button
+              type="button"
+              className="utc-notice-close"
+              onClick={() => setActionNotice(null)}
+              title="Đóng thông báo"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* TAB 1: GRADES & COUNCIL SUMMARY */}
         {activeTab === 'grades' && (
           <div className="utc-defense-table-card">
             <div className="utc-panel-head">
-              <h4>Bảng Tổng Hợp Điểm Bảo Vệ & Xếp Loại Đồ Án Tốt Nghiệp ({projects.length})</h4>
-              <span className="text-muted">Tổng hợp tự động: Điểm GVHD (40%), Điểm Phản biện (20%), Điểm Hội đồng (40%)</span>
+              <div>
+                <h4>Bảng Tổng Hợp Điểm Bảo Vệ & Xếp Loại Đồ Án Tốt Nghiệp ({projects.length})</h4>
+                <span className="utc-panel-subtitle">Tổng hợp tự động: Điểm GVHD (40%), Điểm Phản biện (20%), Điểm Hội đồng (40%)</span>
+              </div>
             </div>
 
             {loading ? (
@@ -359,11 +574,11 @@ export const DefenseManagementPage: React.FC = () => {
                       <th>Hội Đồng</th>
                       <th>GV Hướng Dẫn</th>
                       <th>GV Phản Biện</th>
-                      <th>Điểm GVHD</th>
-                      <th>Điểm GVPB</th>
-                      <th>Tổng Hệ 10</th>
-                      <th>Hệ 4</th>
-                      <th>Điểm Chữ</th>
+                      <th className="utc-cell-center">Điểm GVHD</th>
+                      <th className="utc-cell-center">Điểm GVPB</th>
+                      <th className="utc-cell-center">Tổng Hệ 10</th>
+                      <th className="utc-cell-center">Hệ 4</th>
+                      <th className="utc-cell-center">Điểm Chữ</th>
                       <th>Kết Luận</th>
                     </tr>
                   </thead>
@@ -371,24 +586,24 @@ export const DefenseManagementPage: React.FC = () => {
                     {projects.map((proj) => {
                       const isDeferred = proj.deferral_status === 'APPROVED';
                       return (
-                        <tr key={proj.id} style={{ backgroundColor: isDeferred ? '#fffbeb' : undefined }}>
-                          <td className="font-bold">{proj.student_reg_no}</td>
+                        <tr key={proj.id} className={isDeferred ? 'utc-row-deferred' : undefined}>
+                          <td className="utc-cell-bold">{proj.student_reg_no}</td>
                           <td>
-                            <div className="font-semibold">{formatFullName(proj.student_name)}</div>
-                            <div className="text-xs text-muted">{proj.student_class}</div>
+                            <div className="utc-cell-semibold">{formatFullName(proj.student_name)}</div>
+                            <div className="utc-cell-sub">{proj.student_class}</div>
                           </td>
                           <td>{proj.council_name || '—'}</td>
                           <td>{formatFullName(proj.supervisor_name)}</td>
                           <td>{formatFullName(proj.reviewer_name) || '—'}</td>
-                          <td className="text-center font-bold">{proj.supervisor_score !== null ? proj.supervisor_score : '—'}</td>
-                          <td className="text-center font-bold">{proj.reviewer_score !== null ? proj.reviewer_score : '—'}</td>
-                          <td className="text-center font-bold text-blue-700">
+                          <td className="utc-cell-center utc-cell-bold">{proj.supervisor_score !== null ? proj.supervisor_score : '—'}</td>
+                          <td className="utc-cell-center utc-cell-bold">{proj.reviewer_score !== null ? proj.reviewer_score : '—'}</td>
+                          <td className="utc-cell-center utc-cell-bold utc-cell-score-primary">
                             {isDeferred ? '—' : proj.final_score_10 !== null ? proj.final_score_10 : '—'}
                           </td>
-                          <td className="text-center font-bold">
+                          <td className="utc-cell-center utc-cell-bold">
                             {isDeferred ? '—' : proj.final_score_4 !== null ? proj.final_score_4 : '—'}
                           </td>
-                          <td className="text-center font-bold">
+                          <td className="utc-cell-center utc-cell-bold">
                             {isDeferred ? '—' : proj.final_letter_grade || '—'}
                           </td>
                           <td>
@@ -415,11 +630,11 @@ export const DefenseManagementPage: React.FC = () => {
         {/* TAB 2: DEFERRAL & FINAL ACADEMIC STATUS */}
         {activeTab === 'deferral' && (
           <div className="utc-defense-table-card">
-            <div className="utc-panel-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="utc-panel-head">
               <div>
                 <h4>Nhánh Bảo Lưu & Rà Soát Học Vụ Cuối (Bước 36, 37 & 43)</h4>
-                <span className="text-muted">
-                  Nếu không đủ điều kiện học vụ hoặc không đủ khả năng bảo vệ: Khoa duyệt đơn Bảo lưu $\rightarrow$ Lưu hồ sơ và kết thúc; Không duyệt $\rightarrow$ Loại khỏi đợt
+                <span className="utc-panel-subtitle">
+                  Nếu không đủ điều kiện học vụ hoặc không đủ khả năng bảo vệ: Khoa duyệt đơn Bảo lưu → Lưu hồ sơ và kết thúc; Không duyệt → Loại khỏi đợt
                 </span>
               </div>
               <button onClick={() => setShowImportFinalModal(true)} className="utc-btn-emerald">
@@ -443,15 +658,15 @@ export const DefenseManagementPage: React.FC = () => {
                 <tbody>
                   {deferralCandidates.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="text-center py-6 text-slate-500">
+                      <td colSpan={7} className="utc-table-empty-cell">
                         Không có sinh viên nào rơi vào diện bảo lưu hoặc nợ học vụ cuối.
                       </td>
                     </tr>
                   ) : (
                     deferralCandidates.map((proj) => (
                       <tr key={proj.id}>
-                        <td className="font-bold">{proj.student_reg_no}</td>
-                        <td>{formatFullName(proj.student_name)}</td>
+                        <td className="utc-cell-bold">{proj.student_reg_no}</td>
+                        <td className="utc-cell-semibold">{formatFullName(proj.student_name)}</td>
                         <td>
                           <span className={`utc-pill ${proj.supervisor_defense_confirmed ? 'pill-green' : 'pill-amber'}`}>
                             {proj.supervisor_defense_confirmed ? 'Đủ khả năng BV' : 'Chưa xác nhận'}
@@ -471,8 +686,8 @@ export const DefenseManagementPage: React.FC = () => {
                               : '⏳ Đơn Xin Bảo Lưu'}
                           </span>
                         </td>
-                        <td style={{ maxWidth: '250px' }}>
-                          <span className="text-xs text-slate-700">{proj.deferral_reason || proj.final_academic_notes || '—'}</span>
+                        <td className="utc-cell-notes-col">
+                          <span className="utc-cell-notes">{proj.deferral_reason || proj.final_academic_notes || '—'}</span>
                         </td>
                         <td>
                           <div className="utc-action-btn-group">
@@ -480,7 +695,7 @@ export const DefenseManagementPage: React.FC = () => {
                               <button
                                 onClick={() => handleDeferralDecision(proj.id, 'APPROVE_DEFERRAL', proj.student_reg_no)}
                                 className="utc-btn-sm-approve"
-                                title="Khoa duyệt bảo lưu -> Lưu hồ sơ và kết thúc"
+                                title="Khoa duyệt bảo lưu → Lưu hồ sơ và kết thúc"
                               >
                                 ✓ Duyệt Bảo Lưu
                               </button>
@@ -489,7 +704,7 @@ export const DefenseManagementPage: React.FC = () => {
                               <button
                                 onClick={() => handleDeferralDecision(proj.id, 'REJECT_DEFERRAL', proj.student_reg_no)}
                                 className="utc-btn-sm-reject"
-                                title="Từ chối bảo lưu -> Loại khỏi đợt"
+                                title="Từ chối bảo lưu → Loại khỏi đợt"
                               >
                                 ✕ Loại Khỏi Đợt
                               </button>
@@ -514,28 +729,30 @@ export const DefenseManagementPage: React.FC = () => {
                 <button onClick={() => setShowImportFinalModal(false)} className="utc-btn-close">✕</button>
               </div>
               <form onSubmit={handleImportFinalAcademic}>
-                <div className="utc-form-group">
-                  <label>Chọn File Excel Rà Soát Học Vụ:</label>
-                  <input
-                    type="file"
-                    accept=".xlsx, .xls"
-                    required
-                    onChange={(e) => setImportFile(e.target.files ? e.target.files[0] : null)}
-                    className="utc-input"
-                  />
-                  <small style={{ color: '#64748b', display: 'block', marginTop: '0.4rem' }}>
-                    File Excel kiểm tra chuẩn đầu ra ngoại ngữ, công nợ học phí và điều kiện bảo vệ.
-                  </small>
-                </div>
-
-                {importResult && (
-                  <div className="utc-alert-box">
-                    <strong>Kết quả rà soát:</strong>
-                    <div>Đã kiểm tra: {importResult.total} sinh viên</div>
-                    <div style={{ color: '#059669' }}>Đủ điều kiện: {importResult.eligible_count}</div>
-                    <div style={{ color: '#dc2626' }}>Không đủ ĐK (Chuyển bảo lưu): {importResult.ineligible_count}</div>
+                <div className="utc-modal-body">
+                  <div className="utc-form-group">
+                    <label>Chọn File Excel Rà Soát Học Vụ:</label>
+                    <input
+                      type="file"
+                      accept=".xlsx, .xls"
+                      required
+                      onChange={(e) => setImportFile(e.target.files ? e.target.files[0] : null)}
+                      className="utc-input"
+                    />
+                    <small>
+                      File Excel kiểm tra chuẩn đầu ra ngoại ngữ, công nợ học phí và điều kiện bảo vệ.
+                    </small>
                   </div>
-                )}
+
+                  {importResult && (
+                    <div className="utc-alert-box">
+                      <strong>Kết quả rà soát:</strong>
+                      <div>Đã kiểm tra: {importResult.total} sinh viên</div>
+                      <div className="utc-alert-stat-ok">Đủ điều kiện: {importResult.eligible_count}</div>
+                      <div className="utc-alert-stat-err">Không đủ ĐK (Chuyển bảo lưu): {importResult.ineligible_count}</div>
+                    </div>
+                  )}
+                </div>
 
                 <div className="utc-modal-foot">
                   <button type="button" onClick={() => setShowImportFinalModal(false)} className="utc-btn-cancel">Đóng</button>

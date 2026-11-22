@@ -1,0 +1,463 @@
+/* Faculty Analytics Page — Self-contained Admin Portal Styles */
+
+.fa-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Header Banner */
+.fa-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1.4rem 1.75rem;
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
+  border-radius: 14px;
+  color: #ffffff;
+  box-shadow: 0 8px 20px -6px rgba(15, 23, 42, 0.2);
+}
+
+.fa-header-text h2 {
+  font-size: 1.4rem;
+  font-weight: 800;
+  margin: 0 0 0.3rem 0;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+}
+
+.fa-header-text p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #cbd5e1;
+}
+
+.fa-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+  padding: 0.55rem 1.15rem;
+  border-radius: 8px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.15s ease;
+}
+
+.fa-refresh-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.24);
+  transform: translateY(-1px);
+}
+
+.fa-refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Filter Bar */
+.fa-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  background: #ffffff;
+  padding: 0.9rem 1.25rem;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+}
+
+.fa-select,
+.fa-input {
+  padding: 0.5rem 0.85rem;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  font-size: 0.87rem;
+  color: #1e293b;
+  background: #f8fafc;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.fa-select:focus,
+.fa-input:focus {
+  border-color: #0284c7;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.12);
+}
+
+.fa-select {
+  min-width: 240px;
+}
+
+.fa-input {
+  width: 240px;
+}
+
+/* Alerts & Loading */
+.fa-alert-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  padding: 0.85rem 1.15rem;
+  border-radius: 10px;
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+.fa-loading {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #64748b;
+  font-size: 0.92rem;
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+/* KPI Grid */
+.fa-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1rem;
+}
+
+.fa-kpi-card {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 1.15rem 1.35rem;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(0, 51, 102, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.fa-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 51, 102, 0.1);
+}
+
+.fa-kpi-label {
+  font-size: 0.78rem;
+  color: #64748b;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.fa-kpi-value {
+  font-size: 1.65rem;
+  font-weight: 800;
+  color: #003366;
+  line-height: 1.2;
+}
+
+.fa-kpi-value--warn {
+  color: #d97706;
+}
+
+.fa-kpi-value--danger {
+  color: #dc2626;
+}
+
+.fa-kpi-value--success {
+  color: #16a34a;
+}
+
+.fa-kpi-sub {
+  font-size: 0.76rem;
+  color: #94a3b8;
+  margin-top: 0.1rem;
+}
+
+/* Two-column cards */
+.fa-two-col {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 1.25rem;
+}
+
+.fa-card {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 1.35rem 1.5rem;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(0, 51, 102, 0.06);
+}
+
+.fa-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.fa-card-title {
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 1rem 0;
+}
+
+.fa-card-header .fa-card-title {
+  margin-bottom: 0;
+}
+
+.fa-empty {
+  color: #94a3b8;
+  font-size: 0.86rem;
+  padding: 0.5rem 0;
+}
+
+.fa-empty--success {
+  color: #16a34a;
+  font-weight: 500;
+}
+
+/* Score Distribution Bars */
+.fa-bar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.fa-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.fa-bar-label {
+  width: 54px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #475569;
+  flex-shrink: 0;
+}
+
+.fa-bar-track {
+  flex: 1;
+  background: #e2e8f0;
+  border-radius: 6px;
+  height: 18px;
+  overflow: hidden;
+}
+
+.fa-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #003366 0%, #0284c7 100%);
+  border-radius: 6px;
+  transition: width 0.35s ease;
+}
+
+.fa-bar-count {
+  width: 36px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #1e293b;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* Status Breakdown List */
+.fa-status-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.fa-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.fa-status-row:last-child {
+  border-bottom: none;
+}
+
+.fa-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.fa-status-badge--success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.fa-status-badge--info {
+  background: #e0f2fe;
+  color: #075985;
+}
+
+.fa-status-badge--warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.fa-status-badge--danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.fa-status-count {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #003366;
+}
+
+/* Tables */
+.fa-table-wrap {
+  overflow-x: auto;
+}
+
+.fa-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.fa-table thead th {
+  padding: 0.7rem 0.9rem;
+  text-align: left;
+  font-weight: 700;
+  color: #475569;
+  background: #f8fafc;
+  border-bottom: 2px solid #e2e8f0;
+  white-space: nowrap;
+}
+
+.fa-table tbody tr {
+  border-bottom: 1px solid #f1f5f9;
+  transition: background 0.15s ease;
+}
+
+.fa-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.fa-table tbody td {
+  padding: 0.65rem 0.9rem;
+  color: #1e293b;
+}
+
+.fa-td-muted {
+  color: #64748b !important;
+}
+
+.fa-td-strong {
+  font-weight: 700;
+  color: #003366 !important;
+}
+
+.fa-quota-ok {
+  font-weight: 600;
+  color: #16a34a !important;
+}
+
+.fa-quota-over {
+  font-weight: 700;
+  color: #dc2626 !important;
+}
+
+/* Discrepancy Table Variant */
+.fa-toggle-btn {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  padding: 0.35rem 0.9rem;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #334155;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.fa-toggle-btn:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+
+.fa-table--warn thead th {
+  background: #fffbeb;
+  color: #92400e;
+  border-bottom: 2px solid #fbbf24;
+}
+
+.fa-table--warn tbody tr {
+  border-bottom: 1px solid #fef3c7;
+}
+
+.fa-table--warn tbody tr:hover {
+  background: #fffdf5;
+}
+
+.fa-topic-cell {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fa-spread-val {
+  color: #dc2626 !important;
+  font-weight: 700;
+}
+
+.fa-score-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.fa-score-pill {
+  display: inline-block;
+  border-radius: 5px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #86efac;
+}
+
+.fa-score-pill--outlier {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fca5a5;
+}
+
+@media (max-width: 640px) {
+  .fa-header {
+    padding: 1.15rem 1.25rem;
+  }
+
+  .fa-select,
+  .fa-input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .fa-two-col {
+    grid-template-columns: 1fr;
+  }
+}
