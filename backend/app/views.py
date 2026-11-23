@@ -39,6 +39,7 @@ from .models import (
     DefenseCouncil,
     CouncilMember,
     DefenseScheduleSlot,
+    CouncilLiveScore,
     FinalGradeSummary,
     EvaluationPolicy
 )
@@ -1389,7 +1390,9 @@ class AutoSupervisorAllocationAPIView(APIView):
         )
 
         if not res.get("success") and "detail" not in res:
-            res["detail"] = res.get("error")
+            error_msg = res.get("error")
+            if error_msg is not None:
+                res["detail"] = error_msg
 
         return Response(res, status=status.HTTP_200_OK if res.get("success") else status.HTTP_400_BAD_REQUEST)
 
