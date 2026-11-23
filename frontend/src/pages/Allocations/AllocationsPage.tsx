@@ -77,7 +77,7 @@ export const AllocationsPage: React.FC = () => {
           const preferredBatch =
             list.find((b: any) => b.is_active && b.batch_code.includes('K62')) ||
             list.find((b: any) => b.is_active) ||
-            list[0];
+             list[0];
           setSelectedBatchId(preferredBatch.id);
         }
       }
