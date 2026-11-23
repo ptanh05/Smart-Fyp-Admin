@@ -3,6 +3,7 @@ import { AdminLayout } from '../../components/layout/AdminLayout';
 import { apiClient } from '../../api/client';
 import SelectedBatchProgress from '../../components/SelectedBatchProgress';
 import QuotaRow from './QuotaRow';
+import { formatDepartmentName } from '../../utils/nameHelper';
 import './BatchesPage.css';
 import '../../components/common/Modal.css';
 
@@ -75,6 +76,18 @@ const getBatchStageInfo = (stage: string) => {
     default:
       return { step: 1, label: stage || 'Đang thực hiện', color: '#0369a1', bg: '#e0f2fe', border: '#bae6fd' };
   }
+};
+
+export const isPlaceholderClass = (cls: { class_code?: string; student_count?: number }) => {
+  if (cls.student_count && cls.student_count > 0) return false;
+  const code = (cls.class_code || '').trim().toLowerCase();
+  const clean = code.replace(/[\s_\-]+/g, ' ');
+  const compact = code.replace(/[^a-z0-9]/g, '');
+  const keywords = ['danh sach', 'sinh vien', 'sheet', 'dssv', 'student', 'hoc vien', 'ds sv', 'trang'];
+  return (
+    keywords.some((k) => code.includes(k) || clean.includes(k)) ||
+    ['danhsachsinhvien', 'dssinhvien', 'dssv', 'danhsach', 'sinhvien', 'sheet1', 'sheet2', 'trang1'].some((k) => compact.includes(k))
+  );
 };
 
 export const BatchesPage: React.FC = () => {
@@ -504,6 +517,21 @@ export const BatchesPage: React.FC = () => {
     }
   };
 
+  // Delete Empty Course Class Handler
+  const handleDeleteClass = async (classId: number, classCode: string) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa lớp học phần "${classCode}"?`)) {
+      return;
+    }
+    try {
+      await apiClient.delete(`/admin/classes/${classId}/`);
+      showToast(`✓ Đã xóa lớp học phần "${classCode}" thành công!`, 'success');
+      await fetchBatches();
+    } catch (err: any) {
+      console.error('Lỗi khi xóa lớp học phần:', err);
+      showToast('❌ ' + (err.response?.data?.detail || 'Không thể xóa lớp học phần này.'), 'error');
+    }
+  };
+
   // Add Manual Student Handler
   const handleAddStudentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -620,13 +648,7 @@ export const BatchesPage: React.FC = () => {
   };
 
   const formatDeptName = (code: string, originalName: string) => {
-    const c = (code || '').toUpperCase().trim();
-    if (c === 'CNPM') return 'Bộ môn Công nghệ Phần mềm';
-    if (c === 'HTTT') return 'Bộ môn Hệ thống Thông tin';
-    if (c === 'KHMT') return 'Bộ môn Khoa học Máy tính & Mạng máy tính';
-    if (c === 'MMT') return 'Bộ môn Mạng Máy tính & ATTT';
-    if (c === 'ATTT') return 'Bộ môn An toàn Thông tin';
-    return originalName || `Bộ môn ${code}`;
+    return formatDepartmentName(originalName, code);
   };
 
   const getDeptColorTheme = (code: string) => {
@@ -850,6 +872,7 @@ export const BatchesPage: React.FC = () => {
   });
 
   const currBatch = batches.find((b) => b.id === selectedBatchId);
+  const currentBatchClasses = (currBatch?.classes || []).filter((c) => !isPlaceholderClass(c));
   const activeBatches = batches.filter((b) => !b.is_closed && b.is_active !== false && b.current_stage !== 'COMPLETED');
   const archivedBatches = batches.filter((b) => b.is_closed || b.is_active === false || b.current_stage === 'COMPLETED');
 
@@ -1022,7 +1045,7 @@ export const BatchesPage: React.FC = () => {
                         </div>
                         <div className="utc-metric-item">
                           <span className="utc-metric-icon">📚</span>
-                          <span className="utc-metric-value">{batch.classes?.length || 0}</span>
+                          <span className="utc-metric-value">{batch.classes?.filter((c) => !isPlaceholderClass(c)).length || 0}</span>
                           <span className="utc-metric-label">Lớp học phần</span>
                         </div>
                         <div className="utc-metric-item">
@@ -1175,7 +1198,7 @@ export const BatchesPage: React.FC = () => {
                     onClick={() => setBatchDetailTab('classes')}
                   >
                     <span>🏫</span> Danh Sách Lớp Học Phần
-                    <span className="utc-batch-subtab-badge">{currBatch?.classes?.length || 0}</span>
+                    <span className="utc-batch-subtab-badge">{currentBatchClasses.length}</span>
                   </button>
                   <button
                     type="button"
@@ -1338,7 +1361,7 @@ export const BatchesPage: React.FC = () => {
                 {/* Subtab Content: Classes */}
                 {batchDetailTab === 'classes' && (
                   <div>
-                    {(!currBatch || !currBatch.classes || currBatch.classes.length === 0) ? (
+                    {(!currentBatchClasses || currentBatchClasses.length === 0) ? (
                       <div className="utc-empty-classes">Đợt này chưa có dữ liệu lớp học phần. Hãy nhấn nút Import Excel để tạo lớp tự động.</div>
                     ) : (
                       <div className="utc-classes-table-wrapper">
@@ -1351,10 +1374,11 @@ export const BatchesPage: React.FC = () => {
                               <th>Hệ đào tạo</th>
                               <th>Nhóm</th>
                               <th>Số Sinh Viên</th>
+                              <th style={{ textAlign: 'center', width: '90px' }}>Thao tác</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {currBatch.classes.map((cls) => (
+                            {currentBatchClasses.map((cls) => (
                               <tr key={cls.id}>
                                 <td className="font-bold">{cls.class_code}</td>
                                 <td>{cls.class_name}</td>
@@ -1368,6 +1392,30 @@ export const BatchesPage: React.FC = () => {
                                 </td>
                                 <td>{cls.class_group || '—'}</td>
                                 <td className="text-center font-bold text-blue-600">{cls.student_count}</td>
+                                <td className="text-center">
+                                  {cls.student_count === 0 ? (
+                                    <button
+                                      type="button"
+                                      className="utc-btn-delete-class"
+                                      style={{
+                                        padding: '4px 10px',
+                                        fontSize: '0.8rem',
+                                        color: '#dc2626',
+                                        backgroundColor: '#fee2e2',
+                                        border: '1px solid #fca5a5',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        fontWeight: 600
+                                      }}
+                                      onClick={() => handleDeleteClass(cls.id, cls.class_code)}
+                                      title="Xóa lớp học phần trống này"
+                                    >
+                                      🗑️ Xóa
+                                    </button>
+                                  ) : (
+                                    <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>—</span>
+                                  )}
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -1484,7 +1532,7 @@ export const BatchesPage: React.FC = () => {
                         </div>
                         <div className="utc-metric-item">
                           <span className="utc-metric-icon">📚</span>
-                          <span className="utc-metric-value">{batch.classes?.length || 0}</span>
+                          <span className="utc-metric-value">{batch.classes?.filter((c) => !isPlaceholderClass(c)).length || 0}</span>
                           <span className="utc-metric-label">Lớp học phần</span>
                         </div>
                         <div className="utc-metric-item">
@@ -1539,7 +1587,7 @@ export const BatchesPage: React.FC = () => {
                     onClick={() => setBatchDetailTab('classes')}
                   >
                     <span>🏫</span> Danh Sách Lớp Học Phần
-                    <span className="utc-batch-subtab-badge">{currBatch?.classes?.length || 0}</span>
+                    <span className="utc-batch-subtab-badge">{currentBatchClasses.length}</span>
                   </button>
                 </div>
 
@@ -1609,7 +1657,7 @@ export const BatchesPage: React.FC = () => {
                 {/* Subtab Content: Classes */}
                 {batchDetailTab === 'classes' && (
                   <div className="utc-classes-pane">
-                    {(!currBatch?.classes || currBatch.classes.length === 0) ? (
+                    {(!currentBatchClasses || currentBatchClasses.length === 0) ? (
                       <div className="utc-empty-box">Đợt này không có lớp học phần nào.</div>
                     ) : (
                       <div className="utc-table-container">
@@ -1622,10 +1670,11 @@ export const BatchesPage: React.FC = () => {
                               <th>Hệ Đào Tạo</th>
                               <th>Nhóm Lớp</th>
                               <th>Số Sinh Viên</th>
+                              <th style={{ textAlign: 'center', width: '90px' }}>Thao tác</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {currBatch.classes.map((cls, idx) => (
+                            {currentBatchClasses.map((cls, idx) => (
                               <tr key={cls.id}>
                                 <td>{idx + 1}</td>
                                 <td><strong>{cls.class_code}</strong></td>
@@ -1637,6 +1686,30 @@ export const BatchesPage: React.FC = () => {
                                 </td>
                                 <td>{cls.class_group || '-'}</td>
                                 <td><strong>{cls.student_count || 0}</strong> sinh viên</td>
+                                <td className="text-center">
+                                  {cls.student_count === 0 ? (
+                                    <button
+                                      type="button"
+                                      className="utc-btn-delete-class"
+                                      style={{
+                                        padding: '4px 10px',
+                                        fontSize: '0.8rem',
+                                        color: '#dc2626',
+                                        backgroundColor: '#fee2e2',
+                                        border: '1px solid #fca5a5',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        fontWeight: 600
+                                      }}
+                                      onClick={() => handleDeleteClass(cls.id, cls.class_code)}
+                                      title="Xóa lớp học phần trống này"
+                                    >
+                                      🗑️ Xóa
+                                    </button>
+                                  ) : (
+                                    <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>—</span>
+                                  )}
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -1942,7 +2015,7 @@ export const BatchesPage: React.FC = () => {
                           {s.academic_title || 'ThS'}
                         </span>
                       </td>
-                      <td>{s.department_name || 'Khoa CNTT'}</td>
+                      <td>{formatDepartmentName(s.department_name, s.department_code)}</td>
                       <td style={{ maxWidth: '260px' }}>
                         {(s as any).topic_areas?.length ? (
                           (s as any).topic_areas.map((t: string) => (
@@ -1985,8 +2058,8 @@ export const BatchesPage: React.FC = () => {
         {/* MODAL: SELECT SUPERVISORS FOR THE CURRENT BATCH */}
         {showSupervisorPicker && selectedBatchId && (
           <div className="utc-modal-backdrop">
-            <div className="utc-modal-card" style={{ maxWidth: '760px' }}>
-              <div className="utc-modal-head">
+            <div className="utc-modal-card" style={{ maxWidth: '760px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div className="utc-modal-head" style={{ flexShrink: 0 }}>
                 <div>
                   <h4>👨‍🏫 Chọn Giảng Viên Vào Đợt ĐATN</h4>
                   <p style={{ margin: '0.25rem 0 0', color: '#64748b', fontSize: '0.85rem' }}>
@@ -1995,7 +2068,7 @@ export const BatchesPage: React.FC = () => {
                 </div>
                 <button onClick={() => setShowSupervisorPicker(false)} className="utc-btn-close">✕</button>
               </div>
-              <div style={{ padding: '1rem 1.25rem', maxHeight: '55vh', overflowY: 'auto' }}>
+              <div style={{ padding: '1rem 1.25rem', overflowY: 'auto', flex: 1, minHeight: 0 }}>
                 {supervisors.length > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '0.85rem' }}>
                     <span style={{ color: '#64748b', fontSize: '0.85rem', fontWeight: 600 }}>
@@ -2028,11 +2101,12 @@ export const BatchesPage: React.FC = () => {
                             display: 'flex',
                             alignItems: 'center',
                             gap: '0.75rem',
-                            padding: '0.75rem',
+                            padding: '0.75rem 1rem',
                             border: `1px solid ${checked ? '#38bdf8' : '#e2e8f0'}`,
                             borderRadius: '10px',
                             background: checked ? '#f0f9ff' : '#fff',
                             cursor: 'pointer',
+                            transition: 'all 0.15s ease'
                           }}
                         >
                           <input
@@ -2043,11 +2117,14 @@ export const BatchesPage: React.FC = () => {
                                 ? current.filter((id) => id !== supervisor.id)
                                 : [...current, supervisor.id]
                             )}
+                            style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#0284c7' }}
                           />
                           <div style={{ flex: 1 }}>
-                            <strong>{supervisor.academic_title || ''} {supervisor.user_full_name || supervisor.username}</strong>
+                            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f172a' }}>
+                              {supervisor.academic_title ? `${supervisor.academic_title} ` : ''}{supervisor.user_full_name || supervisor.username}
+                            </div>
                             <div style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '0.15rem' }}>
-                              {supervisor.supervisor_id} · {supervisor.department_name || 'Khoa CNTT'}
+                              {supervisor.supervisor_id} · {formatDepartmentName(supervisor.department_name, supervisor.department_code)}
                             </div>
                           </div>
                         </label>
@@ -2056,9 +2133,19 @@ export const BatchesPage: React.FC = () => {
                   </div>
                 )}
               </div>
-              <div className="utc-modal-actions">
-                <span style={{ marginRight: 'auto', color: '#475569', fontWeight: 600 }}>
-                  Đã chọn: {selectedSupervisorIds.length} giảng viên
+              <div className="utc-modal-foot" style={{
+                marginTop: 0,
+                padding: '1rem 1.5rem',
+                background: '#f8fafc',
+                borderTop: '1px solid #e2e8f0',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                alignItems: 'center',
+                gap: '0.75rem',
+                flexShrink: 0
+              }}>
+                <span style={{ marginRight: 'auto', color: '#475569', fontWeight: 600, fontSize: '0.88rem' }}>
+                  Đã chọn: <strong style={{ color: '#0284c7' }}>{selectedSupervisorIds.length}</strong> giảng viên
                 </span>
                 <button type="button" onClick={() => setShowSupervisorPicker(false)} className="utc-btn-cancel">Hủy</button>
                 <button
@@ -2066,6 +2153,7 @@ export const BatchesPage: React.FC = () => {
                   onClick={handleSaveBatchSupervisors}
                   className="utc-btn-primary"
                   disabled={savingSupervisors || selectedSupervisorIds.length === 0}
+                  style={{ minWidth: '160px', justifyContent: 'center' }}
                 >
                   {savingSupervisors ? 'Đang lưu...' : 'Lưu Giảng Viên Vào Đợt'}
                 </button>
@@ -2493,15 +2581,15 @@ export const BatchesPage: React.FC = () => {
                     <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', color: '#1e293b', marginBottom: 4 }}>
                       Lớp sinh hoạt / Lớp học phần
                     </label>
-                    <div style={{ display: 'grid', gridTemplateColumns: currBatch?.classes?.length ? '1.2fr 1fr' : '1fr', gap: '0.5rem' }}>
-                      {currBatch?.classes && currBatch.classes.length > 0 && (
+                    <div style={{ display: 'grid', gridTemplateColumns: currentBatchClasses.length ? '1.2fr 1fr' : '1fr', gap: '0.5rem' }}>
+                      {currentBatchClasses.length > 0 && (
                         <select
                           className="utc-input"
                           value={addClassId}
                           onChange={(e) => {
                             const cid = e.target.value ? Number(e.target.value) : '';
                             setAddClassId(cid);
-                            const found = currBatch.classes.find((c) => c.id === cid);
+                            const found = currentBatchClasses.find((c) => c.id === cid);
                             if (found) {
                               setAddClassName(found.class_name);
                               setAddEduProgram(found.education_program as any || addEduProgram);
@@ -2509,7 +2597,7 @@ export const BatchesPage: React.FC = () => {
                           }}
                         >
                           <option value="">-- Chọn lớp có sẵn trong đợt --</option>
-                          {currBatch.classes.map((c) => (
+                          {currentBatchClasses.map((c) => (
                             <option key={c.id} value={c.id}>
                               {c.class_code} - {c.class_name} ({c.education_program})
                             </option>
@@ -2987,7 +3075,7 @@ export const BatchesPage: React.FC = () => {
                   >
                     <option value="">-- Chọn giảng viên từ danh sách toàn khoa --</option>
                     {supervisors.map((s) => {
-                      const curDeptName = s.department_name || departments.find(d => d.id === s.department_obj)?.name || 'Chưa gán bộ môn';
+                      const curDeptName = formatDepartmentName(s.department_name || departments.find(d => d.id === s.department_obj)?.name, s.department_code);
                       return (
                         <option key={s.id} value={s.id}>
                           {s.academic_title || 'ThS'} {s.user_full_name || s.username} ({s.supervisor_id}) — [Hiện tại: {curDeptName}]
@@ -3049,7 +3137,7 @@ export const BatchesPage: React.FC = () => {
                   >
                     <option value="">-- Chưa gán bộ môn --</option>
                     {departments.map((d) => (
-                      <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
+                      <option key={d.id} value={d.id}>{formatDepartmentName(d.name, d.code)} ({d.code})</option>
                     ))}
                   </select>
                 </div>

@@ -5,7 +5,7 @@ from django.db.models import Q, Count, Prefetch
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
 from rest_framework.views import APIView
-from rest_framework.generics import ListAPIView, ListCreateAPIView, RetrieveUpdateDestroyAPIView
+from rest_framework.generics import ListAPIView, ListCreateAPIView, RetrieveUpdateDestroyAPIView, RetrieveDestroyAPIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -38,6 +38,7 @@ from .models import (
     GraduationProject,
     DefenseCouncil,
     CouncilMember,
+    CouncilLiveScore,
     DefenseScheduleSlot,
     CouncilLiveScore,
     FinalGradeSummary,
@@ -584,9 +585,10 @@ class AdminUserManagementAPIView(APIView):
 
             # Handle Supervisor Profile
             elif user_type == "supervisor":
+                from .utils.department_formatter import normalize_department_name
                 spv_id = data.get("supervisor_id") or username
                 academic_title = data.get("academic_title", "").strip()
-                department_name = data.get("department_name", "Khoa CNTT - ĐHGTVT").strip()
+                department_name = normalize_department_name(data.get("department_name", "Khoa CNTT - ĐHGTVT"))
                 is_external = data.get("is_external", False)
 
                 spv = Supervisor.objects.create(
@@ -683,7 +685,8 @@ class AdminUserManagementAPIView(APIView):
             if academic_title is not None:
                 spv.academic_title = academic_title.strip()
             if department_name is not None:
-                spv.department_name = department_name.strip()
+                from .utils.department_formatter import normalize_department_name
+                spv.department_name = normalize_department_name(department_name)
             if phone_number is not None:
                 spv.phone_number = phone_number.strip()
             if is_external is not None:
@@ -1000,6 +1003,16 @@ class AcademicBatchListCreateAPIView(ListCreateAPIView):
     def get_queryset(self):
         classes_qs = CourseClass.objects.annotate(
             student_count=Count("students", distinct=True)
+        ).exclude(
+            Q(student_count=0) & (
+                Q(class_code__icontains="sheet") |
+                Q(class_code__icontains="dssv") |
+                Q(class_code__icontains="danh_sach") |
+                Q(class_code__icontains="danhsach") |
+                Q(class_code__icontains="sinh_vien") |
+                Q(class_code__icontains="sinhvien") |
+                Q(class_code__icontains="student")
+            )
         ).order_by("class_code")
 
         return AcademicBatch.objects.annotate(
@@ -1010,6 +1023,8 @@ class AcademicBatchListCreateAPIView(ListCreateAPIView):
         ).order_by("-created_at")
 
     def list(self, request, *args, **kwargs):
+        if request.query_params.get("_t") or request.query_params.get("nocache"):
+            cache.delete(BATCHES_CACHE_KEY)
         cached_data = cache.get(BATCHES_CACHE_KEY)
         if cached_data is not None:
             res = Response(cached_data, status=status.HTTP_200_OK)
@@ -1057,6 +1072,16 @@ class AcademicBatchDetailAPIView(RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         classes_qs = CourseClass.objects.annotate(
             student_count=Count("students", distinct=True)
+        ).exclude(
+            Q(student_count=0) & (
+                Q(class_code__icontains="sheet") |
+                Q(class_code__icontains="dssv") |
+                Q(class_code__icontains="danh_sach") |
+                Q(class_code__icontains="danhsach") |
+                Q(class_code__icontains="sinh_vien") |
+                Q(class_code__icontains="sinhvien") |
+                Q(class_code__icontains="student")
+            )
         ).order_by("class_code")
 
         return AcademicBatch.objects.annotate(
@@ -1077,6 +1102,23 @@ class AcademicBatchDetailAPIView(RetrieveUpdateDestroyAPIView):
         cache.delete(BATCHES_CACHE_KEY)
         invalidate_user_summary_cache()
         return response
+
+
+class CourseClassDetailAPIView(RetrieveDestroyAPIView):
+    """
+    Cho phép xem chi tiết hoặc xóa lớp học phần (chỉ khi lớp có 0 sinh viên).
+    """
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+    serializer_class = CourseClassSerializer
+    queryset = CourseClass.objects.all()
+
+    def perform_destroy(self, instance):
+        if instance.students.exists():
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("Không thể xóa lớp học phần đang có sinh viên.")
+        super().perform_destroy(instance)
+        cache.delete(BATCHES_CACHE_KEY)
+        invalidate_user_summary_cache()
 
 
 class OpenBatchAPIView(APIView):
@@ -1415,21 +1457,81 @@ class ManualSupervisorAllocationAPIView(APIView):
         if not batch:
             return Response({"detail": "Sinh viên chưa thuộc đợt đào tạo nào."}, status=status.HTTP_400_BAD_REQUEST)
 
-        proj, created = GraduationProject.objects.update_or_create(
-            student=student,
-            defaults={
-                "supervisor": supervisor,
-                "batch": batch,
-                "topic_title_vi": f"Đồ án tốt nghiệp của {student.user.get_full_name()}",
-                "status": "ALLOCATED"
-            }
+        # Validate ENGINEER doctoral requirement
+        is_engineer = (student.education_program == "ENGINEER") or (batch.program_type == "ENGINEER")
+        if is_engineer and not supervisor.is_eligible_for_engineer():
+            return Response(
+                {
+                    "detail": "Sinh viên hệ Kỹ sư bắt buộc phải được hướng dẫn bởi Giảng viên có học vị Tiến sĩ (TS) trở lên.",
+                    "error": "Sinh viên hệ Kỹ sư bắt buộc phải được hướng dẫn bởi Giảng viên có học vị Tiến sĩ (TS) trở lên.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        existing_proj = GraduationProject.objects.filter(student=student).first()
+        old_supervisor = existing_proj.supervisor if existing_proj else None
+        old_batch = existing_proj.batch if existing_proj else None
+        is_same_supervisor = (
+            old_supervisor is not None
+            and old_supervisor.id == supervisor.id
+            and old_batch is not None
+            and old_batch.id == batch.id
         )
 
-        # Update quota count
+        # Validate target supervisor quota (unless reassigning same supervisor)
         quota = SupervisorQuota.objects.filter(supervisor=supervisor, batch=batch).first()
-        if quota:
-            quota.current_assigned = GraduationProject.objects.filter(batch=batch, supervisor=supervisor).count()
-            quota.save(update_fields=["current_assigned"])
+        if quota and not is_same_supervisor:
+            actual_assigned = GraduationProject.objects.filter(batch=batch, supervisor=supervisor).count()
+            max_q = quota.max_total_quota or 0
+            if actual_assigned >= max_q:
+                sup_name = supervisor.user.get_full_name() or supervisor.user.username
+                return Response(
+                    {
+                        "detail": f"Giảng viên {sup_name} đã đạt định mức tối đa ({actual_assigned}/{max_q} sinh viên).",
+                        "error": f"Giảng viên {sup_name} đã đạt định mức tối đa ({actual_assigned}/{max_q} sinh viên).",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        # Preserve project status if already beyond ALLOCATED
+        preserved_statuses = {
+            "TOPIC_APPROVED",
+            "IN_PROGRESS",
+            "DEFENSE_READY",
+            "DEFENSE_COMPLETED",
+            "COMPLETED",
+        }
+        next_status = (
+            existing_proj.status
+            if (existing_proj and existing_proj.status in preserved_statuses)
+            else "ALLOCATED"
+        )
+
+        with transaction.atomic():
+            proj, created = GraduationProject.objects.update_or_create(
+                student=student,
+                defaults={
+                    "supervisor": supervisor,
+                    "batch": batch,
+                    "topic_title_vi": existing_proj.topic_title_vi if existing_proj else "",
+                    "status": next_status,
+                }
+            )
+
+            # Update quota count for new supervisor
+            if quota:
+                quota.current_assigned = GraduationProject.objects.filter(batch=batch, supervisor=supervisor).count()
+                quota.save(update_fields=["current_assigned"])
+
+            # Decrement / refresh quota count for previous supervisor when changing supervisor
+            if old_supervisor and (old_supervisor.id != supervisor.id or (old_batch and old_batch.id != batch.id)):
+                prev_batch = old_batch or batch
+                old_quota = SupervisorQuota.objects.filter(supervisor=old_supervisor, batch=prev_batch).first()
+                if old_quota:
+                    old_quota.current_assigned = GraduationProject.objects.filter(
+                        batch=prev_batch, supervisor=old_supervisor
+                    ).count()
+                    old_quota.save(update_fields=["current_assigned"])
 
         AuditLog.objects.create(
             user=request.user,
@@ -1476,6 +1578,28 @@ class DefenseCouncilListCreateAPIView(APIView):
 
         if not batch_id:
             return Response({"detail": "batch_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate UTC 1CT-2TK-2UV composition if members are provided on manual creation
+        if members_data:
+            valid_members = [m for m in members_data if m.get("user_id")]
+            user_ids = [m.get("user_id") for m in valid_members]
+            if len(set(user_ids)) != len(user_ids):
+                return Response(
+                    {
+                        "detail": "Danh sách thành viên Hội đồng có giảng viên bị trùng lặp.",
+                        "error": "Danh sách thành viên Hội đồng có giảng viên bị trùng lặp.",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            chair_cnt = sum(1 for m in valid_members if m.get("role") == "CHAIR")
+            sec_cnt = sum(1 for m in valid_members if m.get("role") == "SECRETARY")
+            member_cnt = sum(1 for m in valid_members if m.get("role", "MEMBER") in ("MEMBER", "EXTERNAL_MEMBER"))
+            if not (chair_cnt == 1 and sec_cnt == 2 and member_cnt == 2 and len(valid_members) == 5):
+                err_msg = (
+                    "Cơ cấu Hội đồng không đúng chuẩn UTC (1 Chủ tịch - 2 Thư ký - 2 Ủy viên, tổng 5 thành viên). "
+                    f"Hiện có: {chair_cnt} Chủ tịch, {sec_cnt} Thư ký, {member_cnt} Ủy viên (tổng {len(valid_members)})."
+                )
+                return Response({"detail": err_msg, "error": err_msg}, status=status.HTTP_400_BAD_REQUEST)
 
         batch = get_object_or_404(AcademicBatch, id=batch_id)
         council = DefenseCouncil.objects.create(
@@ -1596,7 +1720,7 @@ class GraduationProjectsAdminListAPIView(APIView):
             key_extractor=get_student_sort_name
         )
 
-        serializer = GraduationProjectAdminSerializer(projects_list, many=True)
+        serializer = GraduationProjectAdminSerializer(projects_list, many=True, context={"request": request})
         data = list(serializer.data)
 
         # Synchronize GĐ2 (Phân công GVHD) with GĐ1 (Đợt & Sinh viên):
@@ -1647,10 +1771,6 @@ class GraduationProjectsAdminListAPIView(APIView):
                     topic_title = ""
                     if survey and survey.tentative_title:
                         topic_title = survey.tentative_title
-                    elif pref and pref.topic_direction:
-                        topic_title = pref.topic_direction.name
-                    else:
-                        topic_title = f"Đề tài tốt nghiệp của {full_name}"
 
                     unassigned_item = {
                         "id": -st.id,
@@ -1949,6 +2069,7 @@ class OutlineReviewDetailAPIView(APIView):
                 project.topic_review_status = "REJECTED"
             elif review.verdict == "PENDING":
                 project.status = "OUTLINE_PENDING"
+                project.topic_review_status = "DRAFT"
             project.save()
 
         if "comments" in data:
@@ -2067,6 +2188,11 @@ class DepartmentListCreateAPIView(ListCreateAPIView):
     pagination_class = FlexibleAdminPagination
     opt_in_pagination = True
 
+    def get(self, request, *args, **kwargs):
+        from .utils.department_formatter import auto_heal_unaccented_departments
+        auto_heal_unaccented_departments()
+        return super().get(request, *args, **kwargs)
+
 
 class DepartmentDetailAPIView(RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
@@ -2102,7 +2228,8 @@ class SupervisorProfileUpdateAPIView(APIView):
         if department_id is not None:
             supervisor.department_obj = Department.objects.filter(id=department_id).first()
             if supervisor.department_obj:
-                supervisor.department_name = supervisor.department_obj.name
+                from .utils.department_formatter import normalize_department_name
+                supervisor.department_name = normalize_department_name(supervisor.department_obj.name, supervisor.department_obj.code)
         if rank_multiplier is not None:
             try:
                 supervisor.academic_rank_multiplier = float(rank_multiplier)
@@ -2414,6 +2541,7 @@ class AutoDefenseScheduleAPIView(APIView):
         slot_duration = int(request.data.get("slot_duration", 40))
         morning_start = request.data.get("morning_start", "08:00")
         afternoon_start = request.data.get("afternoon_start", "13:30")
+        start_date = request.data.get("start_date") or None
 
         if not batch_id:
             return Response({"detail": "batch_id is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -2423,6 +2551,7 @@ class AutoDefenseScheduleAPIView(APIView):
             slot_duration_minutes=slot_duration,
             morning_start_str=morning_start,
             afternoon_start_str=afternoon_start,
+            start_date=start_date,
             user=request.user
         )
 
@@ -2456,22 +2585,112 @@ class FinalizeCouncilScoresAPIView(APIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
 
     def post(self, request, pk):
-        council = get_object_or_404(DefenseCouncil, pk=pk)
-        council.is_finalized = True
-        council.save()
+        council = get_object_or_404(DefenseCouncil.objects.select_related("batch"), pk=pk)
 
-        # Finalize all summaries
-        for proj in council.projects.all():
+        non_deferred_projects = list(
+            council.projects.exclude(deferral_status="APPROVED")
+            .select_related("student__user", "final_grade_summary")
+            .order_by("student__registration_no")
+        )
+        if not non_deferred_projects:
+            msg = f"Không thể chốt điểm {council.council_name} vì hội đồng chưa có sinh viên nào đủ điều kiện chốt điểm."
+            return Response(
+                {"error": msg, "detail": msg, "missing_students": []},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        council_members = list(council.members.select_related("supervisor", "user").all())
+        missing_students = []
+        project_score_cache = {}
+
+        for proj in non_deferred_projects:
             summary = getattr(proj, "final_grade_summary", None)
-            if summary:
+            sup_score = proj.supervisor_score if proj.supervisor_score is not None else (
+                summary.supervisor_score if summary else None
+            )
+            rev_score = proj.reviewer_score if proj.reviewer_score is not None else (
+                summary.reviewer_score if summary else None
+            )
+
+            live_scores = list(CouncilLiveScore.objects.filter(project=proj))
+            scored_member_ids = {s.member_id for s in live_scores}
+
+            excluded_sup_ids = {sid for sid in (proj.supervisor_id, proj.reviewer_id) if sid is not None}
+            eligible_members = [
+                m for m in council_members
+                if m.supervisor_id is None or m.supervisor_id not in excluded_sup_ids
+            ]
+
+            missing_reasons = []
+            if sup_score is None:
+                missing_reasons.append("thiếu điểm GVHD")
+            if rev_score is None:
+                missing_reasons.append("thiếu điểm GVPB")
+
+            has_summary_council_avg = (summary is not None and summary.council_avg_score is not None)
+            if eligible_members:
+                missing_members = [m for m in eligible_members if m.id not in scored_member_ids]
+                if missing_members and not has_summary_council_avg:
+                    scored_cnt = len(eligible_members) - len(missing_members)
+                    missing_reasons.append(
+                        f"thiếu điểm chấm Hội đồng ({scored_cnt}/{len(eligible_members)} thành viên)"
+                    )
+            else:
+                if not live_scores and not has_summary_council_avg:
+                    missing_reasons.append("thiếu điểm chấm Hội đồng")
+
+            if missing_reasons:
+                std_name = proj.student.user.get_full_name() if (proj.student and proj.student.user) else ""
+                reg_no = proj.student.registration_no if proj.student else ""
+                missing_students.append({
+                    "project_id": proj.id,
+                    "registration_no": reg_no,
+                    "student_name": std_name,
+                    "missing": missing_reasons,
+                    "reason": ", ".join(missing_reasons),
+                })
+            else:
+                if live_scores:
+                    council_avg = round(sum(s.total_score for s in live_scores) / len(live_scores), 2)
+                else:
+                    council_avg = summary.council_avg_score
+                project_score_cache[proj.id] = (sup_score, rev_score, council_avg)
+
+        if missing_students:
+            err_msg = (
+                f"Không thể chốt điểm {council.council_name} vì còn "
+                f"{len(missing_students)} sinh viên chưa hoàn tất nhập điểm."
+            )
+            return Response(
+                {
+                    "error": err_msg,
+                    "detail": err_msg,
+                    "missing_students": missing_students,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        policy = EvaluationPolicy.objects.filter(batch=council.batch).first()
+
+        with transaction.atomic():
+            for proj in non_deferred_projects:
+                sup_score, rev_score, council_avg = project_score_cache[proj.id]
+                summary, _ = FinalGradeSummary.objects.get_or_create(project=proj)
+                summary.supervisor_score = sup_score
+                summary.reviewer_score = rev_score
+                summary.council_avg_score = council_avg
+                summary.calculate_and_save(policy=policy)
                 summary.is_finalized = True
                 summary.save(update_fields=["is_finalized"])
 
-        AuditLog.objects.create(
-            user=request.user,
-            action_type="evaluation_update",
-            description=f"Hội đồng {council.council_name} đã xác nhận chốt toàn bộ điểm bảo vệ."
-        )
+            council.is_finalized = True
+            council.save(update_fields=["is_finalized"])
+
+            AuditLog.objects.create(
+                user=request.user,
+                action_type="evaluation_update",
+                description=f"Hội đồng {council.council_name} đã xác nhận chốt toàn bộ điểm bảo vệ."
+            )
 
         return Response({"message": f"Đã chốt điểm thành công cho {council.council_name}."}, status=status.HTTP_200_OK)
 
@@ -2482,6 +2701,25 @@ class CloseBatchAPIView(APIView):
 
     def post(self, request, pk):
         batch = get_object_or_404(AcademicBatch, pk=pk)
+
+        councils = list(DefenseCouncil.objects.filter(batch=batch).order_by("council_number"))
+        if not councils:
+            msg = "Không thể kết thúc đợt vì chưa có Hội đồng bảo vệ nào được thành lập."
+            return Response({"error": msg, "detail": msg}, status=status.HTTP_400_BAD_REQUEST)
+
+        unfinalized = [c for c in councils if not c.is_finalized]
+        if unfinalized:
+            names = ", ".join(c.council_name for c in unfinalized)
+            msg = f"Không thể kết thúc đợt vì còn {len(unfinalized)} hội đồng chưa được xác nhận chốt điểm: {names}."
+            return Response(
+                {
+                    "error": msg,
+                    "detail": msg,
+                    "unfinalized_councils": [{"id": c.id, "council_name": c.council_name} for c in unfinalized],
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         batch.current_stage = "COMPLETED"
         batch.is_closed = True
         batch.is_active = False
@@ -2628,6 +2866,7 @@ class AcademicStaffFinalGradesAPIView(APIView):
         passed_count = 0
         failed_count = 0
         deferred_count = 0
+        ungraded_count = 0
         scores_10 = []
 
         for p in projects_qs:
@@ -2649,16 +2888,17 @@ class AcademicStaffFinalGradesAPIView(APIView):
             if is_deferred:
                 deferred_count += 1
                 verdict = "Bảo lưu"
-            elif summary and summary.is_passed:
+            elif summary is None or summary.final_score_10 is None:
+                ungraded_count += 1
+                verdict = "Chưa chấm"
+            elif summary.is_passed:
                 passed_count += 1
                 verdict = "Đạt"
-                if summary.final_score_10 is not None:
-                    scores_10.append(summary.final_score_10)
+                scores_10.append(summary.final_score_10)
             else:
                 failed_count += 1
                 verdict = "Không đạt"
-                if summary and summary.final_score_10 is not None:
-                    scores_10.append(summary.final_score_10)
+                scores_10.append(summary.final_score_10)
 
             c_code = std.course_class.class_code if std.course_class else ""
             c_name = std.course_class.class_name if std.course_class else (std.department or "CNTT")
@@ -2713,6 +2953,7 @@ class AcademicStaffFinalGradesAPIView(APIView):
                 "passed_count": passed_count,
                 "failed_count": failed_count,
                 "deferred_count": deferred_count,
+                "ungraded_count": ungraded_count,
                 "pass_rate": pass_rate,
                 "average_score": avg_score,
             }
@@ -2763,6 +3004,25 @@ class AcademicStaffCompleteBatchAPIView(APIView):
             return Response({"detail": "batch_id is required."}, status=status.HTTP_400_BAD_REQUEST)
 
         batch = get_object_or_404(AcademicBatch, id=batch_id)
+
+        councils = list(DefenseCouncil.objects.filter(batch=batch).order_by("council_number"))
+        if not councils:
+            msg = "Không thể kết thúc đợt vì chưa có Hội đồng bảo vệ nào được thành lập."
+            return Response({"error": msg, "detail": msg}, status=status.HTTP_400_BAD_REQUEST)
+
+        unfinalized = [c for c in councils if not c.is_finalized]
+        if unfinalized:
+            names = ", ".join(c.council_name for c in unfinalized)
+            msg = f"Không thể kết thúc đợt vì còn {len(unfinalized)} hội đồng chưa được xác nhận chốt điểm: {names}."
+            return Response(
+                {
+                    "error": msg,
+                    "detail": msg,
+                    "unfinalized_councils": [{"id": c.id, "council_name": c.council_name} for c in unfinalized],
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         batch.current_stage = "COMPLETED"
         batch.is_closed = True
         batch.is_active = False

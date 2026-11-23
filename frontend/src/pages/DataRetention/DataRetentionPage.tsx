@@ -2,25 +2,43 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { AdminLayout } from '../../components/layout/AdminLayout';
 import { featuresApi } from '../../api/features';
 import type { DataRetentionPreview, DataRetentionApplyResult } from '../../types';
+import './DataRetentionPage.css';
 
 const CONFIRM_TOKEN = 'XAC_NHAN_XOA';
 
-const CountRow: React.FC<{ label: string; count: number; warn?: boolean }> = ({ label, count, warn }) => (
-  <div style={{
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    padding: '7px 12px', borderBottom: '1px solid #f1f5f9',
-  }}>
-    <span style={{ fontSize: '0.86rem', color: '#475569' }}>{label}</span>
-    <span style={{
-      fontWeight: 700,
-      color: count > 0 ? (warn ? '#dc2626' : '#1e293b') : '#94a3b8',
-    }}>
-      {count}
-    </span>
-  </div>
-);
+const DELETED_COUNT_LABELS: Record<string, string> = {
+  batches: 'Số đợt đủ điều kiện',
+  projects_in_scope: 'Số đồ án nằm trong phạm vi',
+  deferral_evidence_files: 'Tệp minh chứng bảo lưu',
+  weekly_report_files: 'Tệp báo cáo tuần',
+  task_deliverable_files: 'Tệp sản phẩm nhiệm vụ',
+  submission_versions: 'Phiên bản bài nộp',
+  internship_info: 'Thông tin thực tập',
+  student_preferences: 'Nguyện vọng GVHD',
+};
+
+const CountRow: React.FC<{ label: string; count: number; warn?: boolean }> = ({
+  label,
+  count,
+  warn,
+}) => {
+  const valClass =
+    count === 0
+      ? 'dr-count-val dr-count-val--zero'
+      : warn
+        ? 'dr-count-val dr-count-val--warn'
+        : 'dr-count-val';
+
+  return (
+    <div className="dr-count-row">
+      <span className="dr-count-label">{label}</span>
+      <span className={valClass}>{count}</span>
+    </div>
+  );
+};
 
 export const DataRetentionPage: React.FC = () => {
+  const [yearsInput, setYearsInput] = useState('5');
   const [years, setYears] = useState(5);
   const [preview, setPreview] = useState<DataRetentionPreview | null>(null);
   const [loading, setLoading] = useState(false);
@@ -31,29 +49,49 @@ export const DataRetentionPage: React.FC = () => {
   const [confirmText, setConfirmText] = useState('');
   const [showApplyPanel, setShowApplyPanel] = useState(false);
 
-  const fetchPreview = useCallback(async () => {
+  const fetchPreview = useCallback(async (targetYears: number) => {
     setLoading(true);
     setError(null);
     setSuccess(null);
     setApplyResult(null);
     try {
-      const data = await featuresApi.getRetentionPreview(years);
+      const data = await featuresApi.getRetentionPreview(targetYears);
       setPreview(data);
     } catch {
-      setError('Loi tai xem truoc chinh sach luu giu du lieu.');
+      setError('Lỗi tải xem trước chính sách lưu giữ dữ liệu.');
     } finally {
       setLoading(false);
     }
-  }, [years]);
+  }, []);
 
-  useEffect(() => { fetchPreview(); }, [fetchPreview]);
+  useEffect(() => {
+    fetchPreview(5);
+  }, [fetchPreview]);
+
+  const handleCalculatePreview = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = yearsInput.trim();
+    const parsed = Number(trimmed);
+    if (!trimmed || !Number.isInteger(parsed) || parsed < 1 || parsed > 20) {
+      setError('Vui lòng nhập thời gian lưu giữ là số nguyên từ 1 đến 20 năm.');
+      return;
+    }
+    setYears(parsed);
+    fetchPreview(parsed);
+  };
 
   const handleApply = async () => {
     if (confirmText !== CONFIRM_TOKEN) {
-      setError(`Nhap chinh xac "${CONFIRM_TOKEN}" de xac nhan.`);
+      setError(`Vui lòng nhập chính xác "${CONFIRM_TOKEN}" để xác nhận.`);
       return;
     }
-    if (!window.confirm(`XAC NHAN: Thao tac nay se xoa du lieu khong the phuc hoi. Ban co chac khong?`)) return;
+    if (
+      !window.confirm(
+        'XÁC NHẬN: Thao tác này sẽ xóa vĩnh viễn dữ liệu và không thể khôi phục. Bạn có chắc chắn muốn tiếp tục?'
+      )
+    ) {
+      return;
+    }
     setApplyLoading(true);
     setError(null);
     setSuccess(null);
@@ -61,93 +99,124 @@ export const DataRetentionPage: React.FC = () => {
       const result = await featuresApi.applyRetention(years);
       setApplyResult(result);
       if (result.applied) {
-        setSuccess(`Da ap dung chinh sach luu giu du lieu thanh cong. Cutoff: ${result.cutoff}`);
+        setSuccess(
+          `Đã áp dụng chính sách lưu giữ dữ liệu thành công. Mốc thời gian: ${result.cutoff}`
+        );
         setShowApplyPanel(false);
         setConfirmText('');
-        fetchPreview();
+        fetchPreview(years);
       } else {
-        setSuccess(result.detail || 'Khong co du lieu nao can xoa.');
+        setSuccess(result.detail || 'Không có dữ liệu nào cần xóa.');
       }
     } catch (e: any) {
-      setError(e?.response?.data?.detail || 'Loi ap dung chinh sach luu giu du lieu.');
+      setError(e?.response?.data?.detail || 'Lỗi áp dụng chính sách lưu giữ dữ liệu.');
     } finally {
       setApplyLoading(false);
     }
   };
 
-  const hasData = preview && Object.values(preview.counts).some((v) => typeof v === 'number' && v > 0);
+  const hasData =
+    preview && Object.values(preview.counts).some((v) => typeof v === 'number' && v > 0);
 
   return (
     <AdminLayout>
-      <div className="utc-admin-portal">
-        <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: 8 }}>Chinh Sach Luu Giu Du Lieu</h2>
-        <p style={{ color: '#64748b', fontSize: '0.86rem', marginBottom: 24, lineHeight: 1.6 }}>
-          Theo Nghi dinh 13/2023/ND-CP: Xoa du lieu ca nhan khong con can thiet cua cac dot da dong qua
-          so nam quy dinh. Giu lai: ho so do an, diem, ban luu tru chinh thuc. Xoa: file minh chung, bao cao tuan,
-          task deliverable, phien ban bai nop (tru ban luu tru), thong tin thuc tap va nguyen vong.
-        </p>
+      <div className="dr-page">
+        <div className="dr-header">
+          <h2>Chính Sách Lưu Giữ Dữ Liệu</h2>
+          <p>
+            Theo Nghị định 13/2023/NĐ-CP: Xóa dữ liệu cá nhân không còn cần thiết của các đợt đã
+            đóng quá số năm quy định. Giữ lại: hồ sơ đồ án, điểm số, bản lưu trữ chính thức. Xóa:
+            tệp minh chứng bảo lưu, báo cáo tuần, tệp sản phẩm nhiệm vụ, phiên bản bài nộp (trừ bản
+            lưu trữ), thông tin thực tập và nguyện vọng GVHD.
+          </p>
+        </div>
 
-        {/* Years selector */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20, flexWrap: 'wrap' }}>
-          <label style={{ fontWeight: 600, fontSize: '0.88rem', color: '#475569' }}>
-            Thoi gian luu giu (nam):
+        {/* Years Selector */}
+        <form className="dr-control-bar" onSubmit={handleCalculatePreview}>
+          <label htmlFor="dr-years-input" className="dr-control-label">
+            Thời gian lưu giữ (năm):
           </label>
           <input
+            id="dr-years-input"
             type="number"
             min={1}
             max={20}
-            value={years}
-            onChange={(e) => setYears(Math.max(1, parseInt(e.target.value) || 5))}
-            style={{ width: 80, padding: '7px 10px', borderRadius: 7, border: '1px solid #cbd5e1', fontSize: '0.9rem', textAlign: 'center' }}
+            value={yearsInput}
+            onChange={(e) => setYearsInput(e.target.value)}
+            className="dr-years-input"
+            placeholder="1–20"
           />
-          <button
-            onClick={fetchPreview}
-            disabled={loading}
-            style={{ background: '#003366', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 16px', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}
-          >
-            {loading ? 'Dang tinh...' : 'Tinh truoc'}
+          <button type="submit" disabled={loading} className="dr-primary-btn">
+            {loading ? 'Đang tính...' : 'Tính trước'}
           </button>
-        </div>
+          <span className="dr-years-hint">Giá trị hợp lệ từ 1 đến 20 năm</span>
+        </form>
 
-        {error && <div style={{ background: '#fef2f2', color: '#dc2626', padding: '10px 16px', borderRadius: 8, marginBottom: 12 }}>{error}</div>}
-        {success && <div style={{ background: '#f0fdf4', color: '#16a34a', padding: '10px 16px', borderRadius: 8, marginBottom: 12 }}>{success}</div>}
+        {error && <div className="dr-alert dr-alert--error">{error}</div>}
+        {success && <div className="dr-alert dr-alert--success">{success}</div>}
 
         {preview && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 20, marginBottom: 24 }}>
+          <div className="dr-grid">
             {/* Summary */}
-            <div style={{ background: '#fff', borderRadius: 10, padding: 20, boxShadow: '0 2px 8px rgba(0,51,102,0.08)' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 12, color: '#1e293b' }}>
-                Thong ke xem truoc
-              </h3>
-              <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 7, padding: '8px 12px', marginBottom: 12, fontSize: '0.84rem', color: '#92400e' }}>
-                Nguong ngay: <strong>{preview.cutoff}</strong> ({years} nam truoc)
+            <div className="dr-card">
+              <h3 className="dr-card-title">Thống kê xem trước</h3>
+              <div className="dr-cutoff-callout">
+                Ngưỡng ngày: <strong>{preview.cutoff}</strong> ({preview.years ?? years} năm trước)
               </div>
-              <CountRow label="So dot du dieu kien" count={preview.counts.batches} warn />
-              <CountRow label="So do an nam trong pham vi" count={preview.counts.projects_in_scope} />
-              <CountRow label="File minh chung bao luu" count={preview.counts.deferral_evidence_files} warn={preview.counts.deferral_evidence_files > 0} />
-              <CountRow label="File bao cao tuan" count={preview.counts.weekly_report_files} warn={preview.counts.weekly_report_files > 0} />
-              <CountRow label="File task deliverable" count={preview.counts.task_deliverable_files} warn={preview.counts.task_deliverable_files > 0} />
-              <CountRow label="Phien ban bai nop (giu lai ban cuoi)" count={preview.counts.submission_versions} warn={preview.counts.submission_versions > 0} />
-              <CountRow label="Thong tin thuc tap" count={preview.counts.internship_info} warn={preview.counts.internship_info > 0} />
-              <CountRow label="Nguyen vong GVHD" count={preview.counts.student_preferences} warn={preview.counts.student_preferences > 0} />
+              <div className="dr-count-list">
+                <CountRow label="Số đợt đủ điều kiện" count={preview.counts.batches} warn />
+                <CountRow label="Số đồ án nằm trong phạm vi" count={preview.counts.projects_in_scope} />
+                <CountRow
+                  label="Tệp minh chứng bảo lưu"
+                  count={preview.counts.deferral_evidence_files}
+                  warn={preview.counts.deferral_evidence_files > 0}
+                />
+                <CountRow
+                  label="Tệp báo cáo tuần"
+                  count={preview.counts.weekly_report_files}
+                  warn={preview.counts.weekly_report_files > 0}
+                />
+                <CountRow
+                  label="Tệp sản phẩm nhiệm vụ"
+                  count={preview.counts.task_deliverable_files}
+                  warn={preview.counts.task_deliverable_files > 0}
+                />
+                <CountRow
+                  label="Phiên bản bài nộp (giữ lại bản cuối)"
+                  count={preview.counts.submission_versions}
+                  warn={preview.counts.submission_versions > 0}
+                />
+                <CountRow
+                  label="Thông tin thực tập"
+                  count={preview.counts.internship_info}
+                  warn={preview.counts.internship_info > 0}
+                />
+                <CountRow
+                  label="Nguyện vọng GVHD"
+                  count={preview.counts.student_preferences}
+                  warn={preview.counts.student_preferences > 0}
+                />
+              </div>
             </div>
 
             {/* Batch list */}
-            <div style={{ background: '#fff', borderRadius: 10, padding: 20, boxShadow: '0 2px 8px rgba(0,51,102,0.08)' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 12, color: '#1e293b' }}>
-                Cac dot du dieu kien ({preview.batches.length})
+            <div className="dr-card">
+              <h3 className="dr-card-title">
+                Các đợt đủ điều kiện ({preview.batches.length})
               </h3>
               {preview.batches.length === 0 ? (
-                <div style={{ color: '#16a34a', fontSize: '0.86rem', padding: '12px 0' }}>
-                  Khong co dot nao can xu ly voi nguong {years} nam.
+                <div className="dr-empty-ok">
+                  Không có đợt nào cần xử lý với ngưỡng {preview.years ?? years} năm.
                 </div>
               ) : (
-                <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+                <div className="dr-batch-list">
                   {preview.batches.map((b) => (
-                    <div key={b.id} style={{ padding: '7px 10px', borderBottom: '1px solid #f1f5f9', fontSize: '0.84rem' }}>
-                      <span style={{ fontWeight: 600, color: '#003366' }}>{b.batch_code}</span>
-                      <span style={{ color: '#64748b', marginLeft: 8 }}>{b.batch_name}</span>
-                      {b.end_date && <span style={{ color: '#94a3b8', marginLeft: 8, fontSize: '0.78rem' }}>Ket thuc: {b.end_date}</span>}
+                    <div key={b.id} className="dr-batch-item">
+                      <span className="dr-batch-code">{b.batch_code}</span>
+                      <span className="dr-batch-name">{b.batch_name}</span>
+                      {b.end_date && (
+                        <span className="dr-batch-date">Kết thúc: {b.end_date}</span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -158,46 +227,44 @@ export const DataRetentionPage: React.FC = () => {
 
         {/* Apply Panel */}
         {preview && hasData && (
-          <div style={{ background: '#fff', borderRadius: 10, padding: 20, boxShadow: '0 2px 8px rgba(0,51,102,0.08)', borderLeft: '4px solid #dc2626' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#dc2626', margin: 0 }}>
-                Ap dung chinh sach (KHONG the hoan tac)
+          <div className="dr-danger-card">
+            <div className="dr-danger-header">
+              <h3 className="dr-danger-title">
+                Áp dụng chính sách (KHÔNG thể hoàn tác)
               </h3>
               <button
+                type="button"
                 onClick={() => setShowApplyPanel((v) => !v)}
-                style={{ background: 'none', border: '1px solid #fca5a5', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', color: '#dc2626', fontSize: '0.82rem', fontWeight: 600 }}
+                className="dr-danger-toggle"
               >
-                {showApplyPanel ? 'An' : 'Hien thi panel xac nhan'}
+                {showApplyPanel ? 'Ẩn' : 'Hiển thị bảng xác nhận'}
               </button>
             </div>
 
             {showApplyPanel && (
-              <div>
-                <p style={{ fontSize: '0.84rem', color: '#7f1d1d', marginBottom: 12 }}>
-                  Nhap <strong>{CONFIRM_TOKEN}</strong> de xac nhan xoa du lieu:
+              <div className="dr-confirm-body">
+                <p className="dr-confirm-desc">
+                  Nhập chính xác <strong>{CONFIRM_TOKEN}</strong> để xác nhận xóa dữ liệu:
                 </p>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div className="dr-confirm-row">
                   <input
                     type="text"
                     value={confirmText}
                     onChange={(e) => setConfirmText(e.target.value)}
                     placeholder={CONFIRM_TOKEN}
-                    style={{
-                      padding: '8px 12px', borderRadius: 7, border: `2px solid ${confirmText === CONFIRM_TOKEN ? '#16a34a' : '#fca5a5'}`,
-                      fontSize: '0.9rem', fontFamily: 'monospace', width: 200,
-                    }}
+                    className={
+                      confirmText === CONFIRM_TOKEN
+                        ? 'dr-confirm-input dr-confirm-input--valid'
+                        : 'dr-confirm-input'
+                    }
                   />
                   <button
+                    type="button"
                     onClick={handleApply}
                     disabled={applyLoading || confirmText !== CONFIRM_TOKEN}
-                    style={{
-                      background: confirmText === CONFIRM_TOKEN ? '#dc2626' : '#fca5a5',
-                      color: '#fff', border: 'none', borderRadius: 7, padding: '8px 20px',
-                      cursor: confirmText === CONFIRM_TOKEN ? 'pointer' : 'not-allowed',
-                      fontWeight: 700, fontSize: '0.86rem',
-                    }}
+                    className="dr-apply-btn"
                   >
-                    {applyLoading ? 'Dang xu ly...' : 'XAC NHAN XOA DU LIEU'}
+                    {applyLoading ? 'Đang xử lý...' : 'XÁC NHẬN XÓA DỮ LIỆU'}
                   </button>
                 </div>
               </div>
@@ -206,19 +273,22 @@ export const DataRetentionPage: React.FC = () => {
         )}
 
         {preview && !hasData && (
-          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '16px 20px', color: '#16a34a', fontWeight: 600 }}>
-            Khong co du lieu nao can xu ly voi nguong {years} nam.
+          <div className="dr-clean-banner">
+            Không có dữ liệu nào cần xử lý với ngưỡng {preview.years ?? years} năm.
           </div>
         )}
 
         {applyResult && applyResult.applied && applyResult.deleted_counts && (
-          <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10, padding: '16px 20px', marginTop: 16 }}>
-            <h4 style={{ color: '#dc2626', marginBottom: 8, fontSize: '0.9rem' }}>Ket qua xoa du lieu:</h4>
-            {Object.entries(applyResult.deleted_counts).map(([k, v]) => (
-              <div key={k} style={{ fontSize: '0.84rem', color: '#7f1d1d' }}>
-                {k}: <strong>{v}</strong>
-              </div>
-            ))}
+          <div className="dr-result-card">
+            <h4 className="dr-result-title">Kết quả xóa dữ liệu:</h4>
+            <div className="dr-result-grid">
+              {Object.entries(applyResult.deleted_counts).map(([key, value]) => (
+                <div key={key} className="dr-result-row">
+                  <span>{DELETED_COUNT_LABELS[key] ?? key}</span>
+                  <strong>{value}</strong>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>

@@ -424,7 +424,14 @@ class DocumentGenerationService:
             summary = getattr(proj, 'final_grade_summary', None)
             is_deferred = (proj.deferral_status == "APPROVED")
             
-            verdict = "Bảo lưu" if is_deferred else ("Đạt" if (summary and summary.is_passed) else "Không đạt")
+            if is_deferred:
+                verdict = "Bảo lưu"
+            elif summary is None or summary.final_score_10 is None:
+                verdict = "Chưa chấm"
+            elif summary.is_passed:
+                verdict = "Đạt"
+            else:
+                verdict = "Không đạt"
             note = f"Đơn bảo lưu: {proj.deferral_reason}" if is_deferred else (proj.ineligibility_reason or "")
 
             row_data = [
@@ -580,7 +587,10 @@ class DocumentGenerationService:
                     deferred_count += 1
                     verdict = "Bảo lưu"
                     note = f"Đơn bảo lưu: {proj.deferral_reason or 'Đã duyệt'}"
-                elif summary and summary.is_passed:
+                elif summary is None or summary.final_score_10 is None:
+                    verdict = "Chưa chấm"
+                    note = proj.ineligibility_reason or ""
+                elif summary.is_passed:
                     passed_count += 1
                     verdict = "Đạt"
                     note = proj.ineligibility_reason or ""

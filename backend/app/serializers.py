@@ -20,12 +20,15 @@ from .models import (
     OutlineReview,
     AcademicStaff
 )
+from .utils.department_formatter import normalize_department_name
 
 class DepartmentSupervisorSerializer(serializers.ModelSerializer):
     user_full_name = serializers.SerializerMethodField()
     username = serializers.CharField(source="user.username", read_only=True, default="")
     email = serializers.CharField(source="user.email", read_only=True, default="")
     topic_areas = serializers.SerializerMethodField()
+    department_name = serializers.SerializerMethodField()
+    department_code = serializers.CharField(source="department_obj.code", read_only=True, default="")
 
     class Meta:
         model = Supervisor
@@ -36,12 +39,19 @@ class DepartmentSupervisorSerializer(serializers.ModelSerializer):
             "username",
             "email",
             "academic_title",
+            "department_name",
+            "department_code",
             "phone_number",
             "research_interest",
             "academic_rank_multiplier",
             "is_active",
             "topic_areas",
         ]
+
+    def get_department_name(self, obj):
+        raw = getattr(obj, "department_name", None) or (obj.department_obj.name if getattr(obj, "department_obj", None) else "")
+        code = obj.department_obj.code if getattr(obj, "department_obj", None) else None
+        return normalize_department_name(raw, code)
 
     def get_user_full_name(self, obj):
         if obj.user:
@@ -61,10 +71,14 @@ class DepartmentSupervisorSerializer(serializers.ModelSerializer):
 class DepartmentSerializer(serializers.ModelSerializer):
     supervisor_count = serializers.IntegerField(source="supervisors.count", read_only=True)
     supervisors = DepartmentSupervisorSerializer(many=True, read_only=True)
+    name = serializers.SerializerMethodField()
 
     class Meta:
         model = Department
         fields = ["id", "code", "name", "description", "supervisor_count", "supervisors"]
+
+    def get_name(self, obj):
+        return normalize_department_name(obj.name, obj.code)
 
 
 class ProjectTopicAreaSerializer(serializers.ModelSerializer):
@@ -143,7 +157,13 @@ class OutlineReviewSerializer(serializers.ModelSerializer):
         return f"{prefix}{obj.reviewer.user.get_full_name() or obj.reviewer.user.username}".strip()
 
     def get_outline_file_url(self, obj):
-        return obj.outline_file.url if obj.outline_file else ""
+        if not obj.outline_file:
+            return ""
+        url = obj.outline_file.url
+        request = self.context.get("request")
+        if request and not (url.startswith("http://") or url.startswith("https://")):
+            return request.build_absolute_uri(url)
+        return url
 
 
 class StudentDetailSerializer(serializers.ModelSerializer):
@@ -230,6 +250,7 @@ class SupervisorDetailSerializer(serializers.ModelSerializer):
     email = serializers.CharField(source="user.email", read_only=True, default="")
     topic_area_ids = serializers.SerializerMethodField()
     topic_areas = serializers.SerializerMethodField()
+    department_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Supervisor
@@ -253,6 +274,11 @@ class SupervisorDetailSerializer(serializers.ModelSerializer):
             "topic_areas",
             "quota_info"
         ]
+
+    def get_department_name(self, obj):
+        raw = getattr(obj, "department_name", None) or (obj.department_obj.name if getattr(obj, "department_obj", None) else "")
+        code = obj.department_obj.code if getattr(obj, "department_obj", None) else None
+        return normalize_department_name(raw, code)
 
     def get_user_full_name(self, obj):
         if not obj.user:
@@ -298,7 +324,7 @@ class CouncilRoleDetailSerializer(serializers.ModelSerializer):
 
 
 class AcademicStaffDetailSerializer(serializers.ModelSerializer):
-    department_name = serializers.CharField(source="department.name", read_only=True)
+    department_name = serializers.SerializerMethodField()
     department_code = serializers.CharField(source="department.code", read_only=True)
 
     class Meta:
@@ -313,6 +339,11 @@ class AcademicStaffDetailSerializer(serializers.ModelSerializer):
             "department_code",
             "created_at",
         ]
+
+    def get_department_name(self, obj):
+        if obj.department:
+            return normalize_department_name(obj.department.name, obj.department.code)
+        return "Khoa CNTT"
 
 
 class AdminUserSerializer(serializers.ModelSerializer):
@@ -519,6 +550,7 @@ class SupervisorQuotaSerializer(serializers.ModelSerializer):
     academic_title = serializers.CharField(source="supervisor.academic_title", read_only=True)
     phone_number = serializers.CharField(source="supervisor.phone_number", read_only=True)
     current_assigned = serializers.SerializerMethodField()
+    department = serializers.SerializerMethodField()
 
     class Meta:
         model = SupervisorQuota
@@ -538,6 +570,9 @@ class SupervisorQuotaSerializer(serializers.ModelSerializer):
             "max_total_quota",
             "current_assigned"
         ]
+
+    def get_department(self, obj):
+        return normalize_department_name(obj.department)
 
     def get_student_name(self, obj):
         if obj.student and obj.student.user:
@@ -651,6 +686,7 @@ class GraduationProjectAdminSerializer(serializers.ModelSerializer):
     council_name = serializers.CharField(source="council.council_name", read_only=True, default="")
     topic_category_name = serializers.CharField(source="topic_category.name", read_only=True, default="")
     schedule_slot_info = serializers.SerializerMethodField()
+    outline_file_url = serializers.SerializerMethodField()
 
     final_score_10 = serializers.FloatField(source="final_grade_summary.final_score_10", read_only=True, default=None)
     final_score_4 = serializers.FloatField(source="final_grade_summary.final_score_4", read_only=True, default=None)
@@ -677,6 +713,7 @@ class GraduationProjectAdminSerializer(serializers.ModelSerializer):
             "topic_review_status",
             "topic_revision_notes",
             "outline_pdf_path",
+            "outline_file_url",
             "initial_eligibility",
             "ineligibility_reason",
             "gpa_score",
@@ -735,7 +772,7 @@ class GraduationProjectAdminSerializer(serializers.ModelSerializer):
         return f"{prefix}{obj.reviewer.user.get_full_name()}".strip()
 
     def get_schedule_slot_info(self, obj):
-        slot = getattr(obj, "scheduled_defense_slot", None)
+        slot = getattr(obj, "schedule_slot", None)
         if slot:
             return {
                 "order": slot.order_number,
@@ -745,3 +782,35 @@ class GraduationProjectAdminSerializer(serializers.ModelSerializer):
                 "room": slot.room
             }
         return None
+
+    def get_outline_file_url(self, obj):
+        if obj.outline_pdf_path:
+            url = obj.outline_pdf_path.url if hasattr(obj.outline_pdf_path, 'url') else str(obj.outline_pdf_path)
+            request = self.context.get('request')
+            if request and not url.startswith('http'):
+                return request.build_absolute_uri(url)
+            return url
+        return None
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        title = (data.get("topic_title_vi") or "").strip()
+        if title.startswith("Đồ án tốt nghiệp của") or title.startswith("Đề tài tốt nghiệp của"):
+            data["topic_title_vi"] = ""
+        return data
+
+    def get_outline_file_url(self, obj):
+        if obj.outline_pdf_path:
+            url = obj.outline_pdf_path.url if hasattr(obj.outline_pdf_path, 'url') else str(obj.outline_pdf_path)
+            request = self.context.get('request')
+            if request and not url.startswith('http'):
+                return request.build_absolute_uri(url)
+            return url
+        return None
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        title = (data.get("topic_title_vi") or "").strip()
+        if title.startswith("Đồ án tốt nghiệp của") or title.startswith("Đề tài tốt nghiệp của"):
+            data["topic_title_vi"] = ""
+        return data

@@ -197,6 +197,13 @@ class SixPhasesWorkflowTests(TestCase):
         p2 = GraduationProject.objects.get(student=self.sv2)
         self.assertEqual(p2.supervisor, self.sup2)
 
+        # Kiểm tra nếu chưa chốt phân công mà bấm Công bố -> Bị chặn 400 Bad Request
+        early_pub_resp = self.client.post("/admin/allocations/publish/", {
+            "batch_id": self.batch.id
+        }, format="json")
+        self.assertEqual(early_pub_resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("error", early_pub_resp.data)
+
         # Khoa chốt phân công
         finalize_resp = self.client.post("/admin/allocations/finalize/", {
             "batch_id": self.batch.id

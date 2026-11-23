@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AdminLayout } from '../../components/layout/AdminLayout';
 import { apiClient } from '../../api/client';
-import { formatFullName } from '../../utils/nameHelper';
+import { formatFullName, formatDepartmentName } from '../../utils/nameHelper';
 import './OutlineManagementPage.css';
 
 interface OutlineGroup {
@@ -145,7 +145,7 @@ export const OutlineManagementPage: React.FC = () => {
           supervisor_id_db: u.supervisor_profile.id,
           name: u.full_name || u.username,
           title: u.supervisor_profile.academic_title || 'ThS.',
-          department: u.supervisor_profile.department_name || '',
+          department: formatDepartmentName(u.supervisor_profile.department_name),
         }));
       setSupervisors(parsed);
     } catch (err) {
@@ -200,11 +200,11 @@ export const OutlineManagementPage: React.FC = () => {
     // Filter by Verdict / Two-Level Status
     if (verdictFilter === 'GV_CONFIRMED') {
       result = result.filter(
-        (r) => r.project_status !== 'OUTLINE_APPROVED' && (r.topic_review_status === 'GV_CONFIRMED' || r.verdict === 'APPROVED')
+        (r) => r.project_status !== 'OUTLINE_APPROVED' && r.verdict === 'APPROVED'
       );
     } else if (verdictFilter === 'WAITING_SUPERVISOR') {
       result = result.filter(
-        (r) => r.project_status !== 'OUTLINE_APPROVED' && r.topic_review_status !== 'GV_CONFIRMED' && r.verdict !== 'APPROVED' && r.verdict !== 'REVISION_REQUIRED'
+        (r) => r.project_status !== 'OUTLINE_APPROVED' && r.verdict !== 'APPROVED' && r.verdict !== 'REVISION_REQUIRED'
       );
     } else if (verdictFilter === 'APPROVED') {
       result = result.filter((r) => r.project_status === 'OUTLINE_APPROVED');
@@ -239,11 +239,11 @@ export const OutlineManagementPage: React.FC = () => {
     const total = reviews.length;
     // Chờ GVHD xem xét & duyệt
     const waitingSupervisor = reviews.filter(
-      (r) => r.project_status !== 'OUTLINE_APPROVED' && r.topic_review_status !== 'GV_CONFIRMED' && r.verdict !== 'APPROVED' && r.verdict !== 'REVISION_REQUIRED'
+      (r) => r.project_status !== 'OUTLINE_APPROVED' && r.verdict !== 'APPROVED' && r.verdict !== 'REVISION_REQUIRED'
     ).length;
     // GVHD đã chốt duyệt -> Sẵn sàng chờ Khoa phê duyệt chính thức
     const gvConfirmed = reviews.filter(
-      (r) => r.project_status !== 'OUTLINE_APPROVED' && (r.topic_review_status === 'GV_CONFIRMED' || r.verdict === 'APPROVED')
+      (r) => r.project_status !== 'OUTLINE_APPROVED' && r.verdict === 'APPROVED'
     ).length;
     // Khoa đã phê duyệt (Đã mở Giai đoạn 4)
     const approved = reviews.filter((r) => r.project_status === 'OUTLINE_APPROVED').length;
@@ -370,7 +370,7 @@ export const OutlineManagementPage: React.FC = () => {
 
   // Quick Approve Single Outline
   const handleQuickApprove = async (review: OutlineReviewItem) => {
-    const isGvDone = review.topic_review_status === 'GV_CONFIRMED' || review.verdict === 'APPROVED';
+    const isGvDone = review.verdict === 'APPROVED';
     const confirmMsg = isGvDone
       ? `Xác nhận: Khoa phê duyệt đề cương của sinh viên ${review.student_name} (${review.student_reg_no})?\n\nSau khi Khoa duyệt, đề tài sẽ đạt chuẩn và mở khóa Giai đoạn 4 (Báo cáo tuần & Thực hiện đồ án) cho sinh viên.`
       : `⚠️ Chú ý: Giảng viên hướng dẫn (${review.supervisor_name || 'chưa phân công'}) chưa chốt duyệt đề cương này.\n\nBạn có chắc chắn Khoa muốn duyệt ngay bây giờ để mở khóa Giai đoạn 4 cho sinh viên không?`;
@@ -813,7 +813,7 @@ export const OutlineManagementPage: React.FC = () => {
                             <span className="utc-badge approved" style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                               🎉 Khoa đã duyệt (Mở GĐ4)
                             </span>
-                          ) : (r.topic_review_status === 'GV_CONFIRMED' || r.verdict === 'APPROVED') ? (
+                          ) : r.verdict === 'APPROVED' ? (
                             <span className="utc-badge pending" style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                               🟢 GVHD đã chốt ➔ Chờ Khoa
                             </span>
@@ -889,7 +889,7 @@ export const OutlineManagementPage: React.FC = () => {
                     <div className="utc-outline-card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div>
                         <h4 className="utc-outline-title">{g.name}</h4>
-                        <span className="utc-outline-dept">{g.department}</span>
+                        <span className="utc-outline-dept">{formatDepartmentName(g.department)}</span>
                       </div>
                       <div style={{ display: 'flex', gap: '0.3rem' }}>
                         <button
@@ -1027,7 +1027,7 @@ export const OutlineManagementPage: React.FC = () => {
                           }}
                         />
                         <span style={{ fontSize: '0.85rem' }}>
-                          <strong>{spv.title} {spv.name}</strong> {spv.department ? `(${spv.department})` : ''}
+                          <strong>{spv.title} {spv.name}</strong> {spv.department ? `(${formatDepartmentName(spv.department)})` : ''}
                         </span>
                       </label>
                     );
@@ -1067,7 +1067,7 @@ export const OutlineManagementPage: React.FC = () => {
                 >
                   {groups.map((g) => (
                     <option key={g.id} value={g.id}>
-                      {g.name} ({g.department}) - Đã có {g.total_projects} đề tài
+                      {g.name} ({formatDepartmentName(g.department)}) - Đã có {g.total_projects} đề tài
                     </option>
                   ))}
                 </select>
