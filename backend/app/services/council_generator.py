@@ -175,6 +175,12 @@ class CouncilGeneratorEngine:
         )
 
         if not projects:
+            # Phân biệt đợt trống (chưa có đề tài) với đợt mà mọi đề tài đã chốt Hội đồng/bảo lưu.
+            if not GraduationProject.objects.filter(batch=batch).exists():
+                return {
+                    "success": False,
+                    "error": "Đợt này chưa có đề tài nào để thành lập Hội đồng.",
+                }
             return {
                 "success": False,
                 "error": "Đợt này không còn đề tài nào chưa chốt Hội đồng để thành lập Hội đồng.",

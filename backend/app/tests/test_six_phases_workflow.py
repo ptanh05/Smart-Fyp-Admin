@@ -20,6 +20,7 @@ from app.models import (
     DefenseScheduleSlot,
     WeeklyProgressReport,
     EvaluationPolicy,
+    FinalGradeSummary,
     AuditLog
 )
 from app.services.batch_progress import compute_batch_progress
@@ -313,8 +314,11 @@ class SixPhasesWorkflowTests(TestCase):
             student=self.sv1, batch=self.batch, supervisor=self.sup1,
             topic_title_vi="Đồ án Đạt Chuẩn", supervisor_defense_confirmed=True,
             final_academic_eligibility="ELIGIBLE", is_eligible_for_defense=True,
-            status="DEFENSE_READY", council=council
+            status="DEFENSE_READY", council=council,
+            supervisor_score=8.0, reviewer_score=7.5,
         )
+        # Từ commit 9b266dc: chỉ chốt điểm khi đủ điểm GVHD, GVPB và điểm Hội đồng.
+        FinalGradeSummary.objects.create(project=proj_pass, council_avg_score=8.0)
 
         proj_defer = GraduationProject.objects.create(
             student=self.sv2, batch=self.batch, supervisor=self.sup2,

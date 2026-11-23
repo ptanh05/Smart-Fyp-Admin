@@ -15,6 +15,7 @@ from app.models import (
     GraduationProject,
     FinalGradeSummary,
     AuditLog,
+    DefenseCouncil,
 )
 from app.services.excel_importer import ExcelImportService
 
@@ -305,6 +306,10 @@ class AcademicStaffModuleTestCase(TestCase):
     def test_academic_staff_complete_batch(self):
         """Giáo vụ hoàn tất và khóa sổ đợt đồ án tốt nghiệp"""
         self.client.force_authenticate(user=self.academic_staff_user)
+        # Từ commit 9b266dc: đợt chỉ được đóng khi mọi Hội đồng đã chốt điểm.
+        DefenseCouncil.objects.create(
+            batch=self.batch, council_number=1, council_name="Hội đồng 01", is_finalized=True,
+        )
 
         res = self.client.post("/app/admin/academic-staff/complete-batch/", {
             "batch_id": self.batch.id,

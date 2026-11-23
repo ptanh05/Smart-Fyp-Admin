@@ -1698,7 +1698,8 @@ class GraduationProjectsAdminListAPIView(APIView):
             "reviewer__user",
             "council",
             "topic_category",
-            "final_grade_summary"
+            "final_grade_summary",
+            "schedule_slot",
         )
 
         if batch_id:

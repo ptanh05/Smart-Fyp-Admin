@@ -278,6 +278,17 @@ class AutoGenerateCouncilTests(TestCase):
         self.assertFalse(res["success"])
         self.assertIn("chưa có đề tài", res["error"])
 
+    def test_generate_councils_rejects_batch_when_all_projects_finalized(self):
+        """Mọi đề tài đã nằm trong Hội đồng đã chốt -> báo lỗi khác với đợt trống"""
+        locked = DefenseCouncil.objects.create(
+            batch=self.batch, council_number=99, council_name="HĐ đã chốt", is_finalized=True,
+        )
+        GraduationProject.objects.filter(batch=self.batch).update(council=locked)
+        res = CouncilGeneratorEngine.generate_councils_for_batch(batch_id=self.batch.id)
+        self.assertFalse(res["success"])
+        self.assertIn("không còn đề tài nào chưa chốt", res["error"])
+        self.assertEqual(DefenseCouncil.objects.filter(batch=self.batch).count(), 1)
+
     def test_generate_councils_replaces_previous_unfinalized_councils(self):
         """Bấm lại nút thay thế hội đồng cũ chưa chấm điểm"""
         self.client.force_authenticate(user=self.admin)

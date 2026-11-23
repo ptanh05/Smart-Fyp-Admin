@@ -13,7 +13,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework import status
 
-from app.models import AcademicBatch, CustomUser, Student
+from app.models import AcademicBatch, AuditLog, CustomUser, DefenseCouncil, Student
 
 
 class BatchArchiveWorkflowTests(TestCase):
@@ -49,6 +49,40 @@ class BatchArchiveWorkflowTests(TestCase):
             registration_no="201200021",
             academic_batch=self.batch,
             education_program="ENGINEER",
+        )
+
+        # Từ commit 9b266dc: chỉ được kết thúc đợt khi mọi Hội đồng đã chốt điểm.
+        self.council = DefenseCouncil.objects.create(
+            batch=self.batch,
+            council_number=1,
+            council_name="Hội đồng 01",
+            is_finalized=True,
+        )
+
+    # ------------------------------------------------------------------
+    # 0. Điều kiện chặn kết thúc đợt (hồi quy cho quy tắc mới)
+    # ------------------------------------------------------------------
+    def test_close_batch_rejected_without_any_council(self):
+        self.council.delete()
+        resp = self.client.post(f"/admin/batches/{self.batch.id}/close/")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("chưa có Hội đồng", resp.data["error"])
+        self.batch.refresh_from_db()
+        self.assertFalse(self.batch.is_closed)
+        self.assertTrue(self.batch.is_active)
+        self.assertEqual(self.batch.current_stage, "PHASE_5_IN_PROGRESS")
+
+    def test_close_batch_rejected_when_council_not_finalized(self):
+        pending = DefenseCouncil.objects.create(
+            batch=self.batch, council_number=2, council_name="Hội đồng 02", is_finalized=False,
+        )
+        resp = self.client.post(f"/admin/batches/{self.batch.id}/close/")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual([c["id"] for c in resp.data["unfinalized_councils"]], [pending.id])
+        self.batch.refresh_from_db()
+        self.assertFalse(self.batch.is_closed)
+        self.assertFalse(
+            AuditLog.objects.filter(user=self.admin, action_type="group_status_change").exists()
         )
 
     # ------------------------------------------------------------------
