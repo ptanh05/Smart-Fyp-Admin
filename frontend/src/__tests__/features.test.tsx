@@ -69,7 +69,7 @@ describe('FacultyAnalyticsPage', () => {
 
   it('renders heading', () => {
     renderWithRouter(<FacultyAnalyticsPage />);
-    expect(screen.getByText(/Phan Tich Giang Vien/i)).toBeInTheDocument();
+    expect(screen.getByText(/Phân Tích Giảng Viên/i)).toBeInTheDocument();
   });
 
   it('shows KPI tiles after load', async () => {
@@ -90,7 +90,7 @@ describe('FacultyAnalyticsPage', () => {
 
   it('shows no-discrepancy message when section expanded', async () => {
     renderWithRouter(<FacultyAnalyticsPage />);
-    await waitFor(() => expect(screen.getByText(/Phat hien lech diem/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Phát hiện lệch điểm \(/i)).toBeInTheDocument());
   });
 });
 
@@ -125,7 +125,7 @@ describe('RubricManagementPage', () => {
 
   it('renders heading', () => {
     renderWithRouter(<RubricManagementPage />);
-    expect(screen.getByText(/Quan Ly Rubric/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Quản Lý Rubric/i })).toBeInTheDocument();
   });
 
   it('displays rubrics after load', async () => {
@@ -139,8 +139,8 @@ describe('RubricManagementPage', () => {
   it('shows active/inactive badges', async () => {
     renderWithRouter(<RubricManagementPage />);
     await waitFor(() => {
-      expect(screen.getByText('Hoat dong')).toBeInTheDocument();
-      expect(screen.getByText('Vo hieu hoa')).toBeInTheDocument();
+      expect(screen.getByText('Hoạt động')).toBeInTheDocument();
+      expect(screen.getByText('Vô hiệu hóa')).toBeInTheDocument();
     });
   });
 });
@@ -201,7 +201,7 @@ describe('ThesisArchivePage', () => {
 
   it('renders heading', () => {
     renderWithRouter(<ThesisArchivePage />);
-    expect(screen.getByText(/Kho Luu Tru Do An/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Kho Lưu Trữ Đồ Án/i })).toBeInTheDocument();
   });
 
   it('displays archive results', async () => {
@@ -246,7 +246,7 @@ describe('DataRetentionPage', () => {
 
   it('renders heading', () => {
     renderWithRouter(<DataRetentionPage />);
-    expect(screen.getByText(/Chinh Sach Luu Giu Du Lieu/i)).toBeInTheDocument();
+    expect(screen.getByText(/Chính Sách Lưu Giữ Dữ Liệu/i)).toBeInTheDocument();
   });
 
   it('shows preview counts', async () => {
@@ -259,7 +259,7 @@ describe('DataRetentionPage', () => {
   it('shows confirm panel when data exists', async () => {
     renderWithRouter(<DataRetentionPage />);
     await waitFor(() => {
-      expect(screen.getByText(/Ap dung chinh sach/i)).toBeInTheDocument();
+      expect(screen.getByText(/Áp dụng chính sách/i)).toBeInTheDocument();
     });
   });
 
@@ -316,7 +316,7 @@ describe('FeatureAuditLogsPage', () => {
 
   it('renders heading', () => {
     renderWithRouter(<FeatureAuditLogsPage />);
-    expect(screen.getByText(/Nhat Ky Hanh Dong Quan Tri/i)).toBeInTheDocument();
+    expect(screen.getByText(/Nhật Ký Hành Động Quản Trị/i)).toBeInTheDocument();
   });
 
   it('shows audit log entries', async () => {
@@ -330,7 +330,7 @@ describe('FeatureAuditLogsPage', () => {
   it('shows action type badge', async () => {
     renderWithRouter(<FeatureAuditLogsPage />);
     await waitFor(() => {
-      expect(screen.getAllByText('Tao rubric').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Tạo rubric').length).toBeGreaterThan(0);
     });
   });
 });

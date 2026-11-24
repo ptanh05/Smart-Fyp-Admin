@@ -1,4 +1,5 @@
 import collections
+from typing import Any
 from django.db import transaction
 from django.utils import timezone
 from app.models import (
@@ -63,7 +64,7 @@ class MinCostMaxFlowAllocationEngine:
             self.rev = rev
 
     @classmethod
-    def allocate_supervisors_for_batch(cls, batch_id):
+    def allocate_supervisors_for_batch(cls, batch_id) -> dict[str, Any]:
         try:
             batch = AcademicBatch.objects.get(id=batch_id)
         except AcademicBatch.DoesNotExist:

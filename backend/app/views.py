@@ -40,6 +40,7 @@ from .models import (
     CouncilMember,
     CouncilLiveScore,
     DefenseScheduleSlot,
+    CouncilLiveScore,
     FinalGradeSummary,
     EvaluationPolicy
 )
@@ -1431,7 +1432,9 @@ class AutoSupervisorAllocationAPIView(APIView):
         )
 
         if not res.get("success") and "detail" not in res:
-            res["detail"] = res.get("error")
+            error_msg = res.get("error")
+            if error_msg is not None:
+                res["detail"] = error_msg
 
         return Response(res, status=status.HTTP_200_OK if res.get("success") else status.HTTP_400_BAD_REQUEST)
 
@@ -1996,7 +1999,8 @@ class GraduationProjectsAdminListAPIView(APIView):
             "reviewer__user",
             "council",
             "topic_category",
-            "final_grade_summary"
+            "final_grade_summary",
+            "schedule_slot",
         )
 
         if batch_id:
@@ -2367,6 +2371,7 @@ class OutlineReviewDetailAPIView(APIView):
                 project.topic_review_status = "REJECTED"
             elif review.verdict == "PENDING":
                 project.status = "OUTLINE_PENDING"
+                project.topic_review_status = "DRAFT"
             project.save()
 
         if "comments" in data:
@@ -2711,9 +2716,30 @@ class EligibilityDecisionAPIView(APIView):
         return self.handle_decision(request, pk)
 
     def handle_decision(self, request, pk):
-        project = GraduationProject.objects.filter(Q(pk=pk) | Q(student_id=pk) | Q(student__user_id=pk)).first()
+        try:
+            abs_pk = abs(int(pk))
+        except (ValueError, TypeError):
+            abs_pk = pk
+
+        project = GraduationProject.objects.filter(
+            Q(pk=abs_pk) | Q(student_id=abs_pk) | Q(student__user_id=abs_pk)
+        ).first()
+
         if not project:
-            return Response({"detail": "Không tìm thấy hồ sơ đồ án hoặc sinh viên tương ứng."}, status=status.HTTP_404_NOT_FOUND)
+            # If student has not been allocated a GraduationProject yet (e.g. unassigned student)
+            student = Student.objects.filter(Q(pk=abs_pk) | Q(user_id=abs_pk)).first()
+            if student:
+                project = GraduationProject.objects.filter(student=student).first()
+                if not project:
+                    batch = student.academic_batch or AcademicBatch.objects.filter(is_active=True).first()
+                    project = GraduationProject.objects.create(
+                        student=student,
+                        batch=batch,
+                        status="ALLOCATED",
+                        initial_eligibility="PENDING",
+                    )
+            else:
+                return Response({"detail": "Không tìm thấy hồ sơ đồ án hoặc sinh viên tương ứng."}, status=status.HTTP_404_NOT_FOUND)
         decision = (request.data.get("decision") or "FORCE_APPROVE").strip().upper()
         reason = request.data.get("reason", "")
 

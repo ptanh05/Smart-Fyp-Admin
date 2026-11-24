@@ -208,6 +208,12 @@ class CouncilGeneratorEngine:
         skipped_ineligible_count = max(0, total_batch_projects - len(projects))
 
         if not projects:
+            # Phân biệt đợt trống (chưa có đề tài) với đợt mà mọi đề tài đã chốt Hội đồng/bảo lưu.
+            if not GraduationProject.objects.filter(batch=batch).exists():
+                return {
+                    "success": False,
+                    "error": "Đợt này chưa có đề tài nào để thành lập Hội đồng.",
+                }
             # Xóa các hội đồng chưa chốt rỗng nếu không có SV nào đủ điều kiện
             old_unfinalized = DefenseCouncil.objects.filter(batch=batch, is_finalized=False)
             if old_unfinalized.exists():
