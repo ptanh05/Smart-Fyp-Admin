@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 from django.utils import timezone
 from django.db import transaction
 from django.db.models import Q, Count, Prefetch
@@ -2081,7 +2082,8 @@ class GraduationProjectsAdminListAPIView(APIView):
                     if survey and survey.tentative_title:
                         topic_title = survey.tentative_title
 
-                    unassigned_item = {
+                    unassigned_workflow = compute_project_progress(None, st.academic_batch)
+                    unassigned_item: dict[str, Any] = {
                         "id": -st.id,
                         "student": st.id,
                         "student_name": full_name,
@@ -2126,10 +2128,9 @@ class GraduationProjectsAdminListAPIView(APIView):
                         "preference_1_name": p1_name,
                         "preference_2_name": p2_name,
                         "preference_3_name": p3_name,
+                        "workflow": unassigned_workflow,
+                        "workflow_stage_number": unassigned_workflow["current_stage_number"],
                     }
-                    unassigned_workflow = compute_project_progress(None, st.academic_batch)
-                    unassigned_item["workflow"] = unassigned_workflow
-                    unassigned_item["workflow_stage_number"] = unassigned_workflow["current_stage_number"]
                     data.append(unassigned_item)
 
         from .paginators import paginate_data_or_list
