@@ -88,14 +88,14 @@ const NAV_ITEMS: NavItem[] = [
   {
     to: '/eligibility',
     icon: '⚖️',
-    label: 'GĐ4: Xét ĐK & Force Approve',
+        label: 'GĐ4: Bản Nháp & Xét ĐK',
     roles: ['admin', 'academic_staff'],
     group: 'workflow',
   },
   {
     to: '/progress',
     icon: '📈',
-    label: 'GĐ5: Giám Sát Tiến Độ',
+        label: 'GĐ5: Thực Hiện & Báo Cáo',
     roles: ['admin', 'academic_staff'],
     group: 'workflow',
   },

@@ -59,8 +59,8 @@ PROJECT_STAGES = (
     {"number": 1, "key": "project", "label": "Đề tài & phân công GVHD"},
     {"number": 2, "key": "survey", "label": "Khảo sát nguyện vọng"},
     {"number": 3, "key": "outline", "label": "Đề cương ĐATN & ký duyệt"},
-    {"number": 4, "key": "weekly", "label": "Báo cáo tiến độ tuần"},
-    {"number": 5, "key": "supervision", "label": "Task board & nhật ký hướng dẫn"},
+    {"number": 4, "key": "weekly", "label": "Nộp bản nháp đồ án"},
+    {"number": 5, "key": "supervision", "label": "Thực hiện đồ án & báo cáo tiến độ"},
     {"number": 6, "key": "grade", "label": "Đánh giá & bảo vệ"},
 )
 

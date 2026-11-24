@@ -9,6 +9,7 @@ Lưu ý: Hai backend (smart-fyp-management & Smart-Fyp-Admin) dùng CHUNG một 
 Neon, nên file này được nhân bản giống hệt ở cả hai bên để logic luôn nhất quán.
 """
 
+from django.db import connection
 from django.db.models import Count, Q
 
 # ---------------------------------------------------------------------------
@@ -50,7 +51,7 @@ BATCH_STAGE_DEFINITIONS = [
         "key": "eligibility",
         "code": "PHASE_4_ELIGIBILITY",
         "label": "GĐ 4: Xét Điều Kiện & Báo Cáo Tiến Độ Tuần",
-        "short_label": "Xét ĐK & báo cáo tuần",
+        "short_label": "Nộp bản nháp đồ án",
         "icon": "📋",
         "description": "Khoa xét điều kiện làm đồ án / đặc cách, SV nộp báo cáo tiến độ tuần, GVHD nhận xét",
         "role_hint": "Khoa / Sinh viên ↔ GVHD",
@@ -60,7 +61,7 @@ BATCH_STAGE_DEFINITIONS = [
         "key": "progress",
         "code": "PHASE_5_IN_PROGRESS",
         "label": "GĐ 5: Thực Hiện Đồ Án (Task & Nhật Ký)",
-        "short_label": "Thực hiện đồ án",
+        "short_label": "Task, nhật ký & báo cáo tuần",
         "icon": "🧭",
         "description": "GVHD giao Task/Deadline, ghi nhật ký hướng dẫn, SV nộp kết quả, GVHD xác nhận hoàn thành",
         "role_hint": "GVHD ↔ Sinh viên",
@@ -133,6 +134,7 @@ def compute_batch_progress(batch):
         SupervisionTask,
         WeeklyProgressReport,
     )
+    from app.feature_models import SubmissionVersion
 
     batch_id = batch.id
     current_number = DB_STAGE_TO_NUMBER.get(batch.current_stage, 1)
@@ -168,6 +170,13 @@ def compute_batch_progress(batch):
     reviewed_weekly = WeeklyProgressReport.objects.filter(
         project__batch_id=batch_id
     ).exclude(supervisor_rating="PENDING").count()
+    if SubmissionVersion._meta.db_table in connection.introspection.table_names():
+        projects_with_draft = SubmissionVersion.objects.filter(
+            project__batch_id=batch_id, kind="REPORT"
+        ).values("project_id").distinct().count()
+    else:
+        # Một số môi trường test/triển khai cũ chưa có bảng feature extension.
+        projects_with_draft = 0
 
     defense_ready = GraduationProject.objects.filter(
         batch_id=batch_id, is_eligible_for_defense=True
@@ -276,38 +285,38 @@ def compute_batch_progress(batch):
         }
     )
 
-    # GĐ4 - Xét điều kiện & báo cáo tiến độ tuần
-    g4_total = (total_projects + total_weekly) or 1
-    g4_percent = _pct(eligible_projects + reviewed_weekly, g4_total)
+    # GĐ4 - Sinh viên nộp phiên bản bản nháp báo cáo/quyển đồ án
+    g4_total = total_projects or 1
+    g4_percent = _pct(projects_with_draft, g4_total)
     stages.append(
         {
             **_DEFINITIONS_BY_NUMBER[4],
             "percent": g4_percent,
             "stats": {
-                "Đủ ĐK làm đồ án": f"{eligible_projects}/{total_projects}",
-                "Báo cáo tuần đã duyệt": f"{reviewed_weekly}/{total_weekly}",
+                "Đã nộp bản nháp": f"{projects_with_draft}/{total_projects}",
             },
             "action_hint": (
-                "Xét điều kiện làm đồ án & GVHD nhận xét báo cáo tuần"
+                "Sinh viên nộp bản nháp báo cáo/quyển đồ án"
                 if g4_percent < 100
-                else "Đã xét điều kiện, chuyển đợt sang giai đoạn thực hiện"
+                else "Đã nhận đủ bản nháp, có thể chuyển đợt sang giai đoạn thực hiện"
             ),
         }
     )
 
-    # GĐ5 - Thực hiện đồ án (task board & nhật ký)
-    g5_total = (total_tasks + total_projects) or 1
-    g5_percent = _pct(completed_tasks + defense_ready, g5_total)
+    # GĐ5 - Thực hiện đồ án (task board, nhật ký và báo cáo tuần)
+    g5_total = (total_tasks + total_projects + total_weekly) or 1
+    g5_percent = _pct(completed_tasks + defense_ready + reviewed_weekly, g5_total)
     stages.append(
         {
             **_DEFINITIONS_BY_NUMBER[5],
             "percent": g5_percent,
             "stats": {
                 "Task hoàn thành": f"{completed_tasks}/{total_tasks}",
+                "Báo cáo tuần đã duyệt": f"{reviewed_weekly}/{total_weekly}",
                 "GVHD xác nhận hoàn thành": f"{defense_ready}/{total_projects}",
             },
             "action_hint": (
-                "GVHD giao task, ghi nhật ký & xác nhận hoàn thành GĐ5"
+                "GVHD giao task, nhận xét báo cáo tuần, ghi nhật ký & xác nhận hoàn thành GĐ5"
                 if g5_percent < 100
                 else "Đã hoàn tất thực hiện, chuyển sang đánh giá & bảo vệ"
             ),

@@ -45,8 +45,8 @@ export const STAGE_SHORT_LABELS: Record<number, string> = {
   1: 'Đề tài & GVHD',
   2: 'Khảo sát nguyện vọng',
   3: 'Đề cương & ký số',
-  4: 'Báo cáo tuần',
-  5: 'Task board & nhật ký',
+  4: 'Nộp bản nháp đồ án',
+  5: 'Thực hiện đồ án & báo cáo tiến độ',
   6: 'Đánh giá & bảo vệ',
 };
 
@@ -80,7 +80,7 @@ export function isDeferred(project: WorkflowCarrier): boolean {
   return project.status === 'DEFERRED';
 }
 
-/** Đang triển khai = GĐ4 (báo cáo tuần) hoặc GĐ5 (thực hiện), không bị dừng. */
+/** Đang triển khai = GĐ4 (bản nháp) hoặc GĐ5 (thực hiện & báo cáo), không bị dừng. */
 export function isInExecution(project: WorkflowCarrier): boolean {
   if (project.workflow) {
     const n = project.workflow.current_stage_number;

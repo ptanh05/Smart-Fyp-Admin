@@ -30,7 +30,7 @@ describe('Admin – hiển thị giai đoạn theo workflow backend (kịch bả
   });
 
   it('dùng workflow_stage_number khi không có object workflow, rồi mới tới status', () => {
-    expect(formatWorkflowStage({ status: 'IN_PROGRESS', workflow_stage_number: 5 })).toBe('GĐ5: Task board & nhật ký');
+    expect(formatWorkflowStage({ status: 'IN_PROGRESS', workflow_stage_number: 5 })).toBe('GĐ5: Thực hiện đồ án & báo cáo tiến độ');
     expect(formatWorkflowStage({ status: 'IN_PROGRESS' })).toBe('IN_PROGRESS');
   });
 

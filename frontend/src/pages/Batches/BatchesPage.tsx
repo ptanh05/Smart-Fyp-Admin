@@ -867,6 +867,26 @@ export const BatchesPage: React.FC = () => {
     }
   };
 
+  const handleOpenStage5 = async (batchId: number, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!confirm(
+      'Mở GĐ5 cho đợt này? Sau khi mở, GVHD có thể giao task và nhận xét báo cáo tuần; sinh viên có thể thực hiện task và nộp báo cáo tiến độ.'
+    )) return;
+
+    try {
+      await apiClient.patch(`/admin/batches/${batchId}/`, {
+        current_stage: 'PHASE_5_IN_PROGRESS',
+      });
+      setBatches((prev) => prev.map((batch) => (
+        batch.id === batchId ? { ...batch, current_stage: 'PHASE_5_IN_PROGRESS' } : batch
+      )));
+      showToast('✓ Đã mở GĐ5 – Thực hiện đồ án & Báo cáo tiến độ.', 'success');
+      fetchBatches();
+    } catch (err: any) {
+      showToast(`❌ Không thể mở GĐ5: ${err.response?.data?.detail || err.message}`, 'error');
+    }
+  };
+
   // Filter students for table display
   const filteredStudents = students.filter((s) => {
     if (!studentSearch.trim()) return true;
@@ -1115,6 +1135,17 @@ export const BatchesPage: React.FC = () => {
                             >
                               <span>{(batch.student_count || 0) === 0 ? '🔒' : '🔓'}</span>
                               <span>{(batch.student_count || 0) === 0 ? 'Chưa có SV' : 'Mở đợt (OPEN)'}</span>
+                            </button>
+                          )}
+                          {['PHASE_3_TOPIC', 'PHASE_4_ELIGIBILITY'].includes(batch.current_stage) && (
+                            <button
+                              type="button"
+                              onClick={(e) => handleOpenStage5(batch.id, e)}
+                              className="utc-btn-open-batch"
+                              title="Mở Task Board, nhật ký và báo cáo tuần cho sinh viên/GVHD"
+                            >
+                              <span>🚀</span>
+                              <span>Mở GĐ5</span>
                             </button>
                           )}
                           <button
