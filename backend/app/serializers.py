@@ -741,7 +741,12 @@ class GraduationProjectAdminSerializer(serializers.ModelSerializer):
 
     def get_student_name(self, obj):
         if obj.student and obj.student.user:
-            return obj.student.user.get_full_name() or obj.student.user.username
+            user = obj.student.user
+            # Dữ liệu import UTC lưu họ + tên đệm trong ``last_name`` và tên
+            # gọi trong ``first_name``. Django get_full_name() ghép theo thứ tự
+            # phương Tây (first_name + last_name), làm tên sinh viên bị đảo.
+            vietnamese_name = f"{user.last_name or ''} {user.first_name or ''}".strip()
+            return vietnamese_name or user.username
         return ""
 
     def get_student_reg_no(self, obj):

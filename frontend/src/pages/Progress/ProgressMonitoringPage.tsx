@@ -186,7 +186,9 @@ export const ProgressMonitoringPage: React.FC = () => {
                     <tr key={p.id}>
                       <td className="font-bold">{p.student_reg_no}</td>
                       <td>
-                        <div className="font-semibold">{formatFullName(p.student_name)}</div>
+                        {/* API đã trả tên theo chuẩn Việt Nam; không chạy heuristic
+                            lần hai vì các tên như "Phan Anh Hà" sẽ bị đảo sai. */}
+                        <div className="font-semibold">{p.student_name}</div>
                         <div className="text-xs text-muted">{p.student_class}</div>
                       </td>
                       <td>
