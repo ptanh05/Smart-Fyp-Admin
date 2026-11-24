@@ -7,7 +7,7 @@ import string
 import unicodedata
 from django.db import transaction
 from django.db.models import Q
-from django.contrib.auth.hashers import make_password
+from django.contrib.auth.hashers import get_hasher, make_password
 from app.models import (
     CustomUser,
     Student,
@@ -18,6 +18,24 @@ from app.models import (
     GraduationProject,
     AuditLog
 )
+
+BULK_IMPORT_PBKDF2_ITERATIONS = 100_000
+
+
+def _hash_import_password(plain_password: str) -> str:
+    """Hash initial student password with PBKDF2-SHA256 (100k iterations) during bulk import.
+
+    Prevents 600k-iteration PBKDF2 across hundreds of rows from hitting Render's 100-second
+    reverse-proxy timeout on 0.1 vCPU instances while keeping strong salted PBKDF2-SHA256
+    hashing (and respecting test PASSWORD_HASHERS overrides).
+    """
+    hasher = get_hasher()
+    if (
+        getattr(hasher, "algorithm", "") == "pbkdf2_sha256"
+        and getattr(hasher, "iterations", 0) > BULK_IMPORT_PBKDF2_ITERATIONS
+    ):
+        return hasher.encode(plain_password, hasher.salt(), iterations=BULK_IMPORT_PBKDF2_ITERATIONS)
+    return make_password(plain_password)
 
 def generate_random_password(length=8):
     chars = string.ascii_letters + string.digits + "!@#"
@@ -524,6 +542,24 @@ class ExcelImportService:
         errors = []
         created_accounts = []
 
+        # Pre-fetch existing users, students, and classes ONCE across the whole workbook
+        # so importing 100-500 students over remote PostgreSQL (Neon) uses ~6 bulk queries
+        # instead of 1,500+ per-row queries and savepoints.
+        existing_users = (
+            {u.username: u for u in CustomUser.objects.filter(username__in=workbook_mssvs)}
+            if workbook_mssvs
+            else {}
+        )
+        existing_students = (
+            {s.registration_no: s for s in Student.objects.filter(registration_no__in=workbook_mssvs).select_related("user")}
+            if workbook_mssvs
+            else {}
+        )
+        existing_students_by_uid = {
+            s.user_id: s for s in existing_students.values() if s.user_id
+        }
+        cached_classes = {c.class_code: c for c in CourseClass.objects.filter(batch=batch)}
+
         for sheet_name in wb.sheetnames:
             ws = wb[sheet_name]
             if ws.max_row < 2:
@@ -562,7 +598,7 @@ class ExcelImportService:
 
             course_class = None
             if not is_generic_sheet:
-                course_class = CourseClass.objects.filter(batch=batch, class_code=class_code).first()
+                course_class = cached_classes.get(class_code)
                 if not course_class:
                     course_class = CourseClass.objects.create(
                         batch=batch,
@@ -578,8 +614,8 @@ class ExcelImportService:
                     course_class.program_type = program_type
                     course_class.education_program = education_program
                     course_class.save()
+                cached_classes[class_code] = course_class
 
-            # First pass: collect valid rows to pre-fetch in batch (drastically accelerates import)
             valid_rows = []
             data_start_row = (header_row_idx or 0) + 1
             for r in range(data_start_row, ws.max_row + 1):
@@ -590,13 +626,9 @@ class ExcelImportService:
                 if mssv.endswith('.0'):
                     mssv = mssv[:-2]
 
-                # TC: Validate UTC Student Code (Must be exactly 9 digits)
                 if not re.match(r"^\d{9}$", mssv):
-                    # Ô chứa chữ (không phải số) => nhiều khả năng là dòng tiêu đề lặp lại
-                    # hoặc dòng ghi chú ở cuối bảng -> bỏ qua im lặng.
                     if not re.match(r"^\d+$", mssv):
                         continue
-                    # Bỏ qua dòng tiêu đề lặp lại / dòng tổng kết, không báo lỗi.
                     low = mssv.lower()
                     if low in ("stt", "mssv", "mã sv", "mã sinh viên", "tổng", "total"):
                         continue
@@ -613,202 +645,243 @@ class ExcelImportService:
                 )
                 continue
 
-            # Pre-fetch existing users, students, and course classes in single queries
-            all_valid_mssvs = [v[1] for v in valid_rows]
-            existing_users = {u.username: u for u in CustomUser.objects.filter(username__in=all_valid_mssvs)}
-            existing_students = {s.registration_no: s for s in Student.objects.filter(registration_no__in=all_valid_mssvs).select_related('user')}
-            cached_classes = {c.class_code: c for c in CourseClass.objects.filter(batch=batch)}
+            course_cls_name = course_class.class_name if course_class else ""
+            parsed_entries = []
+            pending_class_specs = {}
 
             for r, mssv in valid_rows:
                 total_count += 1
-                try:
-                    with transaction.atomic():
-                        first_name = ""
-                        last_name = ""
-                        if col_full_name and ws.cell(r, col_full_name).value:
-                            full_name = str(ws.cell(r, col_full_name).value).strip()
-                            parts = full_name.split()
-                            if len(parts) > 1:
-                                last_name = " ".join(parts[:-1])
-                                first_name = parts[-1]
-                            else:
-                                first_name = full_name
-                        else:
-                            if col_last_name and ws.cell(r, col_last_name).value:
-                                last_name = str(ws.cell(r, col_last_name).value).strip()
-                            if col_first_name and ws.cell(r, col_first_name).value:
-                                first_name = str(ws.cell(r, col_first_name).value).strip()
+                first_name = ""
+                last_name = ""
+                if col_full_name and ws.cell(r, col_full_name).value:
+                    full_name = str(ws.cell(r, col_full_name).value).strip()
+                    parts = full_name.split()
+                    if len(parts) > 1:
+                        last_name = " ".join(parts[:-1])
+                        first_name = parts[-1]
+                    else:
+                        first_name = full_name
+                else:
+                    if col_last_name and ws.cell(r, col_last_name).value:
+                        last_name = str(ws.cell(r, col_last_name).value).strip()
+                    if col_first_name and ws.cell(r, col_first_name).value:
+                        first_name = str(ws.cell(r, col_first_name).value).strip()
 
-                        if not first_name and not last_name:
-                            skipped_count += 1
-                            errors.append(f"Dòng {r}: Thiếu họ và tên sinh viên (MSSV: {mssv}).")
-                            continue
+                if not first_name and not last_name:
+                    skipped_count += 1
+                    errors.append(f"Dòng {r}: Thiếu họ và tên sinh viên (MSSV: {mssv}).")
+                    continue
 
-                        student_class_name = ""
-                        if col_class and ws.cell(r, col_class).value:
-                            student_class_name = str(ws.cell(r, col_class).value).strip()
+                student_class_name = ""
+                if col_class and ws.cell(r, col_class).value:
+                    student_class_name = str(ws.cell(r, col_class).value).strip()
 
-                        phone_number = ""
-                        if col_phone and ws.cell(r, col_phone).value:
-                            phone_number = str(ws.cell(r, col_phone).value).strip()
+                phone_number = ""
+                if col_phone and ws.cell(r, col_phone).value:
+                    phone_number = str(ws.cell(r, col_phone).value).strip()
 
-                        email = ""
-                        if col_email and ws.cell(r, col_email).value:
-                            email = str(ws.cell(r, col_email).value).strip()
-                        if not email:
-                            email = f"{mssv}@sv.utc.edu.vn"
+                email = ""
+                if col_email and ws.cell(r, col_email).value:
+                    email = str(ws.cell(r, col_email).value).strip()
+                if not email:
+                    email = f"{mssv}@sv.utc.edu.vn"
 
-                        username = mssv
+                detected_major = default_major
+                if col_major and ws.cell(r, col_major).value:
+                    maj_val = str(ws.cell(r, col_major).value).strip().lower()
+                    if "khoa học máy tính" in maj_val or "khmt" in maj_val:
+                        detected_major = "KHMT"
+                    else:
+                        detected_major = "CNTT"
 
-                        detected_major = default_major
-                        if col_major and ws.cell(r, col_major).value:
-                            maj_val = str(ws.cell(r, col_major).value).strip().lower()
-                            if "khoa học máy tính" in maj_val or "khmt" in maj_val:
-                                detected_major = "KHMT"
-                            else:
-                                detected_major = "CNTT"
+                student_edu = education_program
+                explicit_education = ""
+                if col_education_program and ws.cell(r, col_education_program).value:
+                    explicit_education = str(ws.cell(r, col_education_program).value).strip().lower()
+                detected_education = _detect_education_program(explicit_education)
+                if not detected_education:
+                    detected_education = _detect_education_program(
+                        f"{student_class_name} {course_cls_name}"
+                    )
+                if detected_education:
+                    student_edu = detected_education
 
-                        # Determine education program (Kỹ sư vs Cử nhân). The
-                        # explicit Excel tag has priority; class/sheet text is
-                        # the fallback for files exported by the UTC portal.
-                        student_edu = education_program
-                        course_cls_name = course_class.class_name if course_class else ""
-                        explicit_education = ""
-                        if col_education_program and ws.cell(r, col_education_program).value:
-                            explicit_education = str(ws.cell(r, col_education_program).value).strip().lower()
-                        # The row tag wins. If absent, infer from class/course
-                        # text (e.g. "CNTT Kỹ sư 1 - K62").
-                        detected_education = _detect_education_program(explicit_education)
-                        if not detected_education:
-                            detected_education = _detect_education_program(
-                                f"{student_class_name} {course_cls_name}"
-                            )
-                        if detected_education:
-                            student_edu = detected_education
+                if batch.program_type in ("BACHELOR", "ENGINEER") and student_edu != batch.program_type:
+                    skipped_count += 1
+                    expected_label = "Cử nhân" if batch.program_type == "BACHELOR" else "Kỹ sư"
+                    actual_label = "Kỹ sư" if student_edu == "ENGINEER" else "Cử nhân"
+                    errors.append(
+                        f"Dòng {r}, MSSV {mssv}: Bỏ qua sinh viên hệ {actual_label} "
+                        f"vì đợt '{batch.batch_name}' chỉ dành cho hệ {expected_label}."
+                    )
+                    continue
 
-                        # A single-program batch accepts only matching rows.
-                        # BOTH intentionally bypasses this filter.
-                        if batch.program_type in ("BACHELOR", "ENGINEER") and student_edu != batch.program_type:
-                            skipped_count += 1
-                            expected_label = "Cử nhân" if batch.program_type == "BACHELOR" else "Kỹ sư"
-                            actual_label = "Kỹ sư" if student_edu == "ENGINEER" else "Cử nhân"
-                            errors.append(
-                                f"Dòng {r}, MSSV {mssv}: Bỏ qua sinh viên hệ {actual_label} "
-                                f"vì đợt '{batch.batch_name}' chỉ dành cho hệ {expected_label}."
-                            )
-                            continue
+                if student_class_name:
+                    cls_prog = "DAI_TRA"
+                    sc_lower = student_class_name.lower()
+                    if "việt anh" in sc_lower or "việt - anh" in sc_lower:
+                        cls_prog = "VIET_ANH"
+                    elif "khmt" in sc_lower or "khoa học máy tính" in sc_lower or detected_major == "KHMT":
+                        cls_prog = "KHMT"
+                    target_cls_code = student_class_name
+                    if target_cls_code not in cached_classes and target_cls_code not in pending_class_specs:
+                        pending_class_specs[target_cls_code] = CourseClass(
+                            batch=batch,
+                            class_code=target_cls_code,
+                            class_name=student_class_name,
+                            class_group="",
+                            program_type=cls_prog,
+                            education_program=student_edu,
+                        )
+                elif course_class:
+                    target_cls_code = course_class.class_code
+                else:
+                    target_cls_code = f"CNTT_{batch.batch_code}"
+                    if target_cls_code not in cached_classes and target_cls_code not in pending_class_specs:
+                        pending_class_specs[target_cls_code] = CourseClass(
+                            batch=batch,
+                            class_code=target_cls_code,
+                            class_name=f"Lớp {target_cls_code}",
+                            class_group="",
+                            program_type="DAI_TRA",
+                            education_program=student_edu,
+                        )
 
-                        # Map to administrative class (Lớp sinh hoạt) if specified
-                        assigned_course_class = course_class
-                        if student_class_name:
-                            cls_prog = "DAI_TRA"
-                            sc_lower = student_class_name.lower()
-                            if "việt anh" in sc_lower or "việt - anh" in sc_lower:
-                                cls_prog = "VIET_ANH"
-                            elif "khmt" in sc_lower or "khoa học máy tính" in sc_lower or detected_major == "KHMT":
-                                cls_prog = "KHMT"
+                if password_strategy == "FIXED" and custom_fixed_password:
+                    plain_password = custom_fixed_password.strip()
+                elif password_strategy == "RANDOM":
+                    plain_password = generate_random_password(8)
+                else:
+                    plain_password = mssv
 
-                            assigned_course_class = cached_classes.get(student_class_name)
-                            if not assigned_course_class:
-                                assigned_course_class = CourseClass.objects.filter(batch=batch, class_code=student_class_name).first()
-                                if not assigned_course_class:
-                                    assigned_course_class = CourseClass.objects.create(
-                                        batch=batch,
-                                        class_code=student_class_name,
-                                        class_name=student_class_name,
-                                        class_group="",
-                                        program_type=cls_prog,
-                                        education_program=student_edu
-                                    )
-                                cached_classes[student_class_name] = assigned_course_class
-                        elif not assigned_course_class:
-                            cls_code = f"CNTT_{batch.batch_code}"
-                            assigned_course_class = cached_classes.get(cls_code)
-                            if not assigned_course_class:
-                                assigned_course_class = CourseClass.objects.filter(batch=batch, class_code=cls_code).first()
-                                if not assigned_course_class:
-                                    assigned_course_class = CourseClass.objects.create(
-                                        batch=batch,
-                                        class_code=cls_code,
-                                        class_name=f"Lớp {cls_code}",
-                                        class_group="",
-                                        program_type="DAI_TRA",
-                                        education_program=student_edu
-                                    )
-                                cached_classes[cls_code] = assigned_course_class
+                parsed_entries.append({
+                    "row": r,
+                    "mssv": mssv,
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "student_class_name": student_class_name,
+                    "target_cls_code": target_cls_code,
+                    "phone_number": phone_number,
+                    "email": email,
+                    "detected_major": detected_major,
+                    "student_edu": student_edu,
+                    "plain_password": plain_password,
+                })
 
-                        if password_strategy == "FIXED" and custom_fixed_password:
-                            plain_password = custom_fixed_password.strip()
-                        elif password_strategy == "RANDOM":
-                            plain_password = generate_random_password(8)
-                        else:
-                            plain_password = mssv
+            if not parsed_entries:
+                continue
 
-                        user = existing_users.get(username)
-                        user_created = False
-                        if not user:
-                            user = CustomUser.objects.filter(username=username).first()
-                        if not user:
-                            user = CustomUser.objects.create(
-                                username=username,
-                                email=email,
-                                first_name=first_name,
-                                last_name=last_name,
+            # Pre-hash passwords outside the DB transaction so we never hold DB locks during CPU work
+            hashed_passwords = {}
+            seen_new_usernames = set()
+            for entry in parsed_entries:
+                uname = entry["mssv"]
+                if uname not in existing_users and uname not in seen_new_usernames:
+                    seen_new_usernames.add(uname)
+                    hashed_passwords[uname] = _hash_import_password(entry["plain_password"])
+
+            try:
+                with transaction.atomic():
+                    if pending_class_specs:
+                        CourseClass.objects.bulk_create(list(pending_class_specs.values()), ignore_conflicts=True)
+                        for c in CourseClass.objects.filter(batch=batch, class_code__in=list(pending_class_specs.keys())):
+                            cached_classes[c.class_code] = c
+
+                    new_users_to_create = []
+                    users_to_update_map = {}
+                    created_usernames_in_sheet = set()
+
+                    for entry in parsed_entries:
+                        uname = entry["mssv"]
+                        user = existing_users.get(uname)
+                        if user is None and uname not in created_usernames_in_sheet:
+                            new_user = CustomUser(
+                                username=uname,
+                                email=entry["email"],
+                                first_name=entry["first_name"],
+                                last_name=entry["last_name"],
                                 user_type="student",
                                 is_staff=False,
                                 is_active=True,
-                                password=make_password(plain_password)
+                                password=hashed_passwords[uname],
                             )
-                            user_created = True
-                            existing_users[username] = user
-                        else:
-                            fields_to_update = []
-                            if not user.first_name and first_name:
-                                user.first_name = first_name
-                                fields_to_update.append("first_name")
-                            if not user.last_name and last_name:
-                                user.last_name = last_name
-                                fields_to_update.append("last_name")
-                            if fields_to_update:
-                                user.save(update_fields=fields_to_update)
+                            new_users_to_create.append(new_user)
+                            created_usernames_in_sheet.add(uname)
+                        elif user is not None:
+                            changed = False
+                            if not user.first_name and entry["first_name"]:
+                                user.first_name = entry["first_name"]
+                                changed = True
+                            if not user.last_name and entry["last_name"]:
+                                user.last_name = entry["last_name"]
+                                changed = True
+                            if changed:
+                                users_to_update_map[user.id] = user
 
-                        dept_name = student_class_name or (assigned_course_class.class_name if assigned_course_class else f"Lớp CNTT_{batch.batch_code}")
-                        student = existing_students.get(mssv)
+                    if new_users_to_create:
+                        created_user_objs = CustomUser.objects.bulk_create(new_users_to_create, batch_size=500)
+                        if any(u.id is None for u in created_user_objs):
+                            created_user_objs = list(
+                                CustomUser.objects.filter(username__in=list(created_usernames_in_sheet))
+                            )
+                        for u in created_user_objs:
+                            existing_users[u.username] = u
+
+                    if users_to_update_map:
+                        CustomUser.objects.bulk_update(
+                            list(users_to_update_map.values()),
+                            ["first_name", "last_name"],
+                            batch_size=500,
+                        )
+
+                    new_students_to_create = []
+                    students_to_update_map = {}
+                    created_regs_in_sheet = set()
+
+                    for entry in parsed_entries:
+                        mssv = entry["mssv"]
+                        user = existing_users[mssv]
+                        user_created = mssv in created_usernames_in_sheet
+                        assigned_course_class = cached_classes.get(entry["target_cls_code"]) or course_class
+                        dept_name = (
+                            entry["student_class_name"]
+                            or (assigned_course_class.class_name if assigned_course_class else f"Lớp CNTT_{batch.batch_code}")
+                        )
+
+                        student = existing_students.get(mssv) or existing_students_by_uid.get(user.id)
                         std_created = False
-                        if not student:
-                            student = Student.objects.filter(registration_no=mssv).first()
-                        if not student:
-                            student = Student.objects.filter(user=user).first()
-
-                        if not student:
-                            student = Student.objects.create(
+                        if student is None and mssv not in created_regs_in_sheet:
+                            student = Student(
                                 user=user,
                                 registration_no=mssv,
                                 department=dept_name,
                                 course_class=assigned_course_class,
                                 academic_batch=batch,
-                                batch_no=student_class_name,
-                                phone_number=phone_number,
-                                education_program=student_edu
+                                batch_no=entry["student_class_name"],
+                                phone_number=entry["phone_number"],
+                                education_program=entry["student_edu"],
                             )
-                            std_created = True
+                            new_students_to_create.append(student)
                             existing_students[mssv] = student
-                        else:
+                            existing_students_by_uid[user.id] = student
+                            created_regs_in_sheet.add(mssv)
+                            std_created = True
+                        elif student is not None:
                             student.user = user
                             student.academic_batch = batch
                             if assigned_course_class:
                                 student.course_class = assigned_course_class
                             if dept_name:
                                 student.department = dept_name
-                            if student_class_name:
-                                student.batch_no = student_class_name
-                            if phone_number:
-                                student.phone_number = phone_number
-                            student.education_program = student_edu
-                            student.save()
-                            existing_students[mssv] = student
+                            if entry["student_class_name"]:
+                                student.batch_no = entry["student_class_name"]
+                            if entry["phone_number"]:
+                                student.phone_number = entry["phone_number"]
+                            student.education_program = entry["student_edu"]
+                            if student.id is not None:
+                                students_to_update_map[student.id] = student
 
-                        action_status = "created" if (user_created or std_created) else "updated"
+                        action_status = "created" if (user_created or (mssv in created_regs_in_sheet and std_created)) else "updated"
                         if action_status == "created":
                             created_count += 1
                         else:
@@ -816,21 +889,38 @@ class ExcelImportService:
 
                         created_accounts.append({
                             "id": user.id,
-                            "username": username,
-                            "full_name": f"{last_name} {first_name}".strip(),
-                            "email": email,
+                            "username": mssv,
+                            "full_name": f"{entry['last_name']} {entry['first_name']}".strip(),
+                            "email": entry["email"],
                             "role": "student",
-                            "major": detected_major,
+                            "major": entry["detected_major"],
                             "program_type": program_type,
-                            "education_program": student_edu,
+                            "education_program": entry["student_edu"],
                             "class_name": dept_name,
-                            "plain_password": plain_password if user_created else "(Không đổi)",
-                            "status": action_status
+                            "plain_password": entry["plain_password"] if user_created else "(Không đổi)",
+                            "status": action_status,
                         })
 
-                except Exception as ex:
-                    errors.append(f"Sheet '{sheet_name}', Dòng {r}, MSSV {mssv}: {str(ex)}")
-                    skipped_count += 1
+                        # Prevent duplicate creation if the same MSSV appears twice in the same sheet
+                        if user_created:
+                            created_usernames_in_sheet.discard(mssv)
+
+                    if new_students_to_create:
+                        created_std_objs = Student.objects.bulk_create(new_students_to_create, batch_size=500)
+                        if any(s.id is None for s in created_std_objs):
+                            for s in Student.objects.filter(registration_no__in=[x.registration_no for x in new_students_to_create]):
+                                existing_students[s.registration_no] = s
+                                existing_students_by_uid[s.user_id] = s
+
+                    if students_to_update_map:
+                        Student.objects.bulk_update(
+                            list(students_to_update_map.values()),
+                            ["user", "academic_batch", "course_class", "department", "batch_no", "phone_number", "education_program"],
+                            batch_size=500,
+                        )
+            except Exception as ex:
+                errors.append(f"Sheet '{sheet_name}': {str(ex)}")
+                skipped_count += len(parsed_entries)
 
         # Nếu không import được dòng nào -> báo rõ nguyên nhân để Admin không bị "im lặng"
         if total_count == 0:
