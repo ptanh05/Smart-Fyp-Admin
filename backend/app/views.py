@@ -1627,6 +1627,307 @@ class DefenseCouncilListCreateAPIView(APIView):
         return Response(DefenseCouncilSerializer(council).data, status=status.HTTP_201_CREATED)
 
 
+class DefenseCouncilDetailAPIView(APIView):
+    """Cập nhật thành viên / thông tin Hội đồng hoặc xóa Hội đồng chưa chốt điểm (Điều chỉnh thủ công GĐ6)"""
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def patch(self, request, pk):
+        council = get_object_or_404(DefenseCouncil, pk=pk)
+        if council.is_finalized:
+            msg = f"{council.council_name} đã chốt điểm nên không thể chỉnh sửa."
+            return Response({"detail": msg, "error": msg}, status=status.HTTP_400_BAD_REQUEST)
+
+        data = request.data
+        members_data = data.get("members")
+
+        if members_data is not None:
+            valid_members = [m for m in members_data if m.get("user_id")]
+            user_ids = [int(m.get("user_id")) for m in valid_members]
+            if len(set(user_ids)) != len(user_ids):
+                msg = "Danh sách thành viên Hội đồng có giảng viên bị trùng lặp."
+                return Response({"detail": msg, "error": msg}, status=status.HTTP_400_BAD_REQUEST)
+
+            chair_cnt = sum(1 for m in valid_members if m.get("role") == "CHAIR")
+            sec_cnt = sum(1 for m in valid_members if m.get("role") == "SECRETARY")
+            member_cnt = sum(1 for m in valid_members if m.get("role", "MEMBER") in ("MEMBER", "EXTERNAL_MEMBER"))
+            if not (chair_cnt == 1 and sec_cnt == 2 and member_cnt == 2 and len(valid_members) == 5):
+                err_msg = (
+                    "Cơ cấu Hội đồng không đúng chuẩn UTC (1 Chủ tịch - 2 Thư ký - 2 Ủy viên, tổng 5 thành viên). "
+                    f"Hiện có: {chair_cnt} Chủ tịch, {sec_cnt} Thư ký, {member_cnt} Ủy viên (tổng {len(valid_members)})."
+                )
+                return Response({"detail": err_msg, "error": err_msg}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Kiểm tra xung đột GVHD với các sinh viên đang thuộc Hội đồng này
+            assigned_sup_user_ids = set(
+                council.projects.filter(supervisor__isnull=False)
+                .values_list("supervisor__user_id", flat=True)
+            )
+            conflict_user_ids = set(user_ids) & assigned_sup_user_ids
+            if conflict_user_ids:
+                conflict_user = CustomUser.objects.filter(id__in=conflict_user_ids).first()
+                cname = conflict_user.get_full_name() if conflict_user else "Giảng viên"
+                err_msg = (
+                    f"Xung đột lợi ích (COI): {cname} đang là Giảng viên hướng dẫn của sinh viên thuộc {council.council_name}. "
+                    "Vui lòng chuyển sinh viên sang Hội đồng khác trước khi thêm giảng viên này vào Hội đồng."
+                )
+                return Response({"detail": err_msg, "error": err_msg}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            if "council_number" in data and data.get("council_number"):
+                council.council_number = int(data.get("council_number"))
+            if "council_name" in data and data.get("council_name"):
+                council.council_name = str(data.get("council_name")).strip()
+            if "defense_room" in data:
+                council.defense_room = str(data.get("defense_room") or "").strip()
+            if "session_date" in data:
+                council.session_date = data.get("session_date") or None
+            if "session_time" in data and data.get("session_time"):
+                council.session_time = data.get("session_time")
+            council.save()
+
+            if members_data is not None:
+                council.members.all().delete()
+                for m in members_data:
+                    user_id = m.get("user_id")
+                    role = m.get("role", "MEMBER")
+                    ext = m.get("external_institution", "")
+                    if user_id:
+                        u = CustomUser.objects.filter(id=user_id).first()
+                        if u:
+                            sup = getattr(u, "admin_supervisor_profile", None) or getattr(u, "supervisor_profile", None)
+                            CouncilMember.objects.create(
+                                council=council,
+                                user=u,
+                                supervisor=sup,
+                                role=role,
+                                external_institution=ext,
+                            )
+
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="admin_user_update",
+            description=f"Khoa đã điều chỉnh thủ công thành viên/thông tin {council.council_name}.",
+        )
+        return Response(DefenseCouncilSerializer(council).data, status=status.HTTP_200_OK)
+
+    def delete(self, request, pk):
+        council = get_object_or_404(DefenseCouncil, pk=pk)
+        if council.is_finalized:
+            msg = f"{council.council_name} đã chốt điểm nên không thể xóa."
+            return Response({"detail": msg, "error": msg}, status=status.HTTP_400_BAD_REQUEST)
+
+        cname = council.council_name
+        with transaction.atomic():
+            GraduationProject.objects.filter(council=council).update(council=None, reviewer=None)
+            DefenseScheduleSlot.objects.filter(council=council).delete()
+            council.delete()
+
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="admin_user_update",
+            description=f"Khoa đã xóa {cname}.",
+        )
+        return Response({"message": f"Đã xóa {cname}."}, status=status.HTTP_200_OK)
+
+
+class LockCouncilAllocationAPIView(APIView):
+    """
+    Khoa chốt phân chia Hội đồng & Giảng viên phản biện (sau khi đã rà soát / điều chỉnh thủ công).
+    Khi chốt:
+    - Kiểm tra đã thành lập ít nhất 1 Hội đồng chuẩn 1CT-2TK-2UV.
+    - Kiểm tra tất cả sinh viên đủ điều kiện bảo vệ đã được gán Hội đồng & GVPB hợp lệ (không trùng GVHD).
+    - Tự động chuyển batch.current_stage = 'PHASE_6_DEFENSE' để mở bước Tự động xếp lịch bảo vệ và mở GĐ6 trên cổng GV/SV/HĐ.
+    """
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def post(self, request):
+        batch_id = request.data.get("batch_id")
+        lock = request.data.get("lock", True)
+        if isinstance(lock, str):
+            lock = lock.lower() not in ("false", "0", "no")
+
+        if not batch_id:
+            return Response({"detail": "batch_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        batch = get_object_or_404(AcademicBatch, id=batch_id)
+
+        if not lock:
+            if batch.current_stage == "COMPLETED" or batch.is_closed:
+                msg = "Đợt đồ án đã kết thúc nên không thể mở khóa phân chia Hội đồng."
+                return Response({"detail": msg, "error": msg}, status=status.HTTP_400_BAD_REQUEST)
+            batch.current_stage = "PHASE_5_IN_PROGRESS"
+            batch.save(update_fields=["current_stage"])
+            return Response(
+                {
+                    "success": True,
+                    "is_council_allocation_locked": False,
+                    "current_stage": batch.current_stage,
+                    "message": "Đã mở khóa phân chia Hội đồng & Phản biện để tiếp tục điều chỉnh thủ công.",
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        councils = list(DefenseCouncil.objects.filter(batch=batch).prefetch_related("members"))
+        if not councils:
+            msg = "Chưa có Hội đồng bảo vệ nào trong đợt này. Vui lòng thành lập Hội đồng trước khi chốt."
+            return Response({"detail": msg, "error": msg}, status=status.HTTP_400_BAD_REQUEST)
+
+        for c in councils:
+            val = c.check_utc_model_validity()
+            if not val.get("is_valid"):
+                msg = (
+                    f"{c.council_name} chưa đạt chuẩn 1 Chủ tịch - 2 Thư ký - 2 Ủy viên "
+                    f"(hiện có {val.get('total_count')}/5 thành viên). Vui lòng điều chỉnh trước khi chốt."
+                )
+                return Response({"detail": msg, "error": msg}, status=status.HTTP_400_BAD_REQUEST)
+
+        eligible_q = (
+            Q(is_eligible_for_defense=True)
+            | Q(supervisor_defense_confirmed=True)
+            | Q(status__in=["DEFENSE_READY", "DEFENDING", "PASSED", "FAILED"])
+        )
+        eligible_projects = list(
+            GraduationProject.objects.filter(batch=batch, student__isnull=False)
+            .filter(eligible_q)
+            .exclude(final_academic_eligibility="INELIGIBLE")
+            .exclude(deferral_status="APPROVED")
+            .exclude(status__in=["DEFERRED", "DISQUALIFIED"])
+            .select_related("student__user", "council")
+        )
+        if not eligible_projects:
+            msg = "Chưa có sinh viên nào đủ điều kiện bảo vệ được phân vào Hội đồng."
+            return Response({"detail": msg, "error": msg}, status=status.HTTP_400_BAD_REQUEST)
+
+        unassigned = [
+            f"{p.student.user.get_full_name()} ({p.student.registration_no})"
+            for p in eligible_projects
+            if not p.council_id or not p.reviewer_id
+        ]
+        if unassigned:
+            sample = ", ".join(unassigned[:5])
+            msg = (
+                f"Còn {len(unassigned)} sinh viên đủ điều kiện bảo vệ chưa được gán đủ Hội đồng hoặc Giảng viên phản biện "
+                f"({sample}). Vui lòng điều chỉnh thủ công hoặc chạy tự động gán trước khi chốt."
+            )
+            return Response({"detail": msg, "error": msg, "unassigned_students": unassigned}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            if batch.current_stage != "COMPLETED":
+                batch.current_stage = "PHASE_6_DEFENSE"
+                batch.save(update_fields=["current_stage"])
+
+            for p in eligible_projects:
+                updates = []
+                if not p.is_eligible_for_defense:
+                    p.is_eligible_for_defense = True
+                    updates.append("is_eligible_for_defense")
+                if p.status not in ("DEFENSE_READY", "DEFENDING", "PASSED", "FAILED"):
+                    p.status = "DEFENSE_READY"
+                    updates.append("status")
+                if updates:
+                    p.save(update_fields=updates)
+
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="group_status_change",
+            description=f"Khoa đã chốt phân chia Hội đồng & Phản biện cho Đợt #{batch.id} ({len(councils)} HĐ, {len(eligible_projects)} SV).",
+        )
+        return Response(
+            {
+                "success": True,
+                "is_council_allocation_locked": True,
+                "current_stage": batch.current_stage,
+                "message": (
+                    f"Đã chốt phân chia {len(councils)} Hội đồng & Phản biện cho {len(eligible_projects)} sinh viên! "
+                    "Đợt đồ án đã chuyển sang Giai đoạn 6 và mở khóa bước Xếp lịch bảo vệ."
+                ),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ProjectDefenseEligibilityToggleAPIView(APIView):
+    """Khoa xác nhận / thu hồi điều kiện bảo vệ (GĐ6 - DEFENSE_READY) cho từng sinh viên hoặc hàng loạt"""
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def post(self, request, pk=None):
+        return self._handle(request, pk)
+
+    def patch(self, request, pk=None):
+        return self._handle(request, pk)
+
+    def _handle(self, request, pk=None):
+        is_eligible = request.data.get("is_eligible_for_defense", True)
+        if isinstance(is_eligible, str):
+            is_eligible = is_eligible.lower() not in ("false", "0", "no")
+
+        if pk is not None:
+            proj = get_object_or_404(GraduationProject, pk=pk)
+            projects = [proj]
+        else:
+            batch_id = request.data.get("batch_id")
+            project_ids = request.data.get("project_ids")
+            qs = GraduationProject.objects.filter(student__isnull=False).exclude(
+                deferral_status="APPROVED"
+            ).exclude(status__in=["DEFERRED", "DISQUALIFIED"])
+            if project_ids:
+                qs = qs.filter(id__in=project_ids)
+            elif batch_id:
+                qs = qs.filter(batch_id=batch_id)
+            else:
+                return Response({"detail": "Cần cung cấp project id hoặc batch_id."}, status=status.HTTP_400_BAD_REQUEST)
+            projects = list(qs)
+
+        updated_count = 0
+        with transaction.atomic():
+            for p in projects:
+                if is_eligible:
+                    p.is_eligible_for_defense = True
+                    p.supervisor_defense_confirmed = True
+                    if p.final_academic_eligibility == "PENDING":
+                        p.final_academic_eligibility = "ELIGIBLE"
+                    if p.status not in ("DEFENSE_READY", "DEFENDING", "PASSED", "FAILED"):
+                        p.status = "DEFENSE_READY"
+                    p.save(update_fields=[
+                        "is_eligible_for_defense",
+                        "supervisor_defense_confirmed",
+                        "final_academic_eligibility",
+                        "status",
+                    ])
+                else:
+                    if p.council and p.council.is_finalized:
+                        continue
+                    p.is_eligible_for_defense = False
+                    p.supervisor_defense_confirmed = False
+                    p.council = None
+                    p.reviewer = None
+                    if p.status == "DEFENSE_READY":
+                        p.status = "IN_PROGRESS" if p.topic_review_status == "APPROVED" else "ALLOCATED"
+                    p.save(update_fields=[
+                        "is_eligible_for_defense",
+                        "supervisor_defense_confirmed",
+                        "council",
+                        "reviewer",
+                        "status",
+                    ])
+                    DefenseScheduleSlot.objects.filter(project=p).delete()
+                updated_count += 1
+
+        return Response(
+            {
+                "success": True,
+                "updated_count": updated_count,
+                "is_eligible_for_defense": is_eligible,
+                "message": (
+                    f"Đã xác nhận đủ điều kiện bảo vệ (GĐ6) cho {updated_count} sinh viên."
+                    if is_eligible
+                    else f"Đã hủy xác nhận điều kiện bảo vệ và gỡ khỏi Hội đồng cho {updated_count} sinh viên."
+                ),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class AutoReviewerAllocationAPIView(APIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
 
@@ -2611,7 +2912,7 @@ class FinalizeCouncilScoresAPIView(APIView):
             live_scores = list(CouncilLiveScore.objects.filter(project=proj))
             scored_member_ids = {s.member_id for s in live_scores}
 
-            excluded_sup_ids = {sid for sid in (proj.supervisor_id, proj.reviewer_id) if sid is not None}
+            excluded_sup_ids = {proj.supervisor_id} if proj.supervisor_id is not None else set()
             eligible_members = [
                 m for m in council_members
                 if m.supervisor_id is None or m.supervisor_id not in excluded_sup_ids

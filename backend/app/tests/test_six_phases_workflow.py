@@ -343,7 +343,23 @@ class SixPhasesWorkflowTests(TestCase):
         self.assertGreaterEqual(sched_resp.data["scheduled_slots_count"], 1)
         self.assertEqual(DefenseScheduleSlot.objects.filter(council=council).count(), 1)
 
-        # 3. Chốt điểm Hội đồng
+        # 3a. Chốt điểm Hội đồng khi chưa đủ điểm -> Bị chặn HTTP 400
+        early_fin_resp = self.client.post(f"/admin/councils/{council.id}/finalize-scores/")
+        self.assertEqual(early_fin_resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # 3b. Sau khi đã có đủ điểm GVHD, GVPB và điểm Hội đồng -> Chốt điểm thành công
+        proj_pass.supervisor_score = 8.5
+        proj_pass.reviewer_score = 8.0
+        proj_pass.save(update_fields=["supervisor_score", "reviewer_score"])
+        from app.models import FinalGradeSummary
+        FinalGradeSummary.objects.update_or_create(
+            project=proj_pass,
+            defaults={
+                "supervisor_score": 8.5,
+                "reviewer_score": 8.0,
+                "council_avg_score": 8.8,
+            },
+        )
         fin_score_resp = self.client.post(f"/admin/councils/{council.id}/finalize-scores/")
         self.assertEqual(fin_score_resp.status_code, status.HTTP_200_OK)
         council.refresh_from_db()

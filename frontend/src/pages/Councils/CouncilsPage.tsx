@@ -60,14 +60,21 @@ export const CouncilsPage: React.FC = () => {
   const [generateResult, setGenerateResult] = useState<any>(null);
   const [projectsPerCouncil, setProjectsPerCouncil] = useState(8);
 
-  // Create Council Form (1 Chủ tịch, 2 Thư ký, 2 Ủy viên)
+  // Create / Edit Council Form (1 Chủ tịch, 2 Thư ký, 2 Ủy viên)
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingCouncilId, setEditingCouncilId] = useState<number | null>(null);
   const [councilNumber, setCouncilNumber] = useState(1);
   const [councilName, setCouncilName] = useState('');
   const [defenseRoom, setDefenseRoom] = useState('');
   const [sessionDate, setSessionDate] = useState('');
   const [sessionTime, setSessionTime] = useState('MORNING');
   const [selectedMembers, setSelectedMembers] = useState<Array<{ user_id: number; role: string; external_institution?: string }>>([]);
+
+  // Workflow Lock Gate (Item 9: Phân chia -> Điều chỉnh thủ công -> Chốt -> Xếp lịch)
+  const [isAllocationLocked, setIsAllocationLocked] = useState(false);
+  const [lockingAllocation, setLockingAllocation] = useState(false);
+  const [togglingEligibilityId, setTogglingEligibilityId] = useState<number | 'bulk' | null>(null);
+  const [studentFilter, setStudentFilter] = useState<'ALL' | 'ELIGIBLE' | 'INELIGIBLE'>('ALL');
 
   // Auto Schedule Modal
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -106,10 +113,12 @@ export const CouncilsPage: React.FC = () => {
         apiClient.get('/admin/users/?user_type=supervisor'),
         apiClient.get(`/admin/projects/?batch_id=${selectedBatchId}`),
       ]);
-      setCouncils(Array.isArray(counRes.data) ? counRes.data : (counRes.data?.results || []));
+      const counList = Array.isArray(counRes.data) ? counRes.data : (counRes.data?.results || []);
+      setCouncils(counList);
       const userList = Array.isArray(userRes.data) ? userRes.data : (userRes.data?.users || userRes.data?.results || []);
       setUsers(userList);
-      setProjects(Array.isArray(projRes.data) ? projRes.data : (projRes.data?.results || []));
+      const projList = Array.isArray(projRes.data) ? projRes.data : (projRes.data?.results || []);
+      setProjects(projList);
     } catch (err) {
       console.error(err);
       setCouncils([]);
@@ -126,9 +135,180 @@ export const CouncilsPage: React.FC = () => {
 
   useEffect(() => {
     if (selectedBatchId) {
+      const currBatch = batches.find((b) => b.id === selectedBatchId);
+      setIsAllocationLocked(
+        Boolean(currBatch && ['PHASE_6_DEFENSE', 'COMPLETED'].includes(currBatch.current_stage))
+      );
       fetchData();
     }
   }, [selectedBatchId]);
+
+  const isProjectDefenseEligible = (proj: any): boolean => {
+    if (!proj || proj.is_unassigned || !proj.student) return false;
+    if (proj.deferral_status === 'APPROVED' || ['DEFERRED', 'DISQUALIFIED'].includes(proj.status)) {
+      return false;
+    }
+    if (proj.final_academic_eligibility === 'INELIGIBLE') return false;
+    return Boolean(
+      proj.is_eligible_for_defense ||
+      proj.supervisor_defense_confirmed ||
+      ['DEFENSE_READY', 'DEFENDING', 'PASSED', 'FAILED'].includes(proj.status)
+    );
+  };
+
+  const getProjectStageBadgeText = (proj: any): string => {
+    if (proj.deferral_status === 'APPROVED' || proj.status === 'DEFERRED') return 'Bảo lưu';
+    if (proj.status === 'DISQUALIFIED') return 'Bị loại';
+    if (isProjectDefenseEligible(proj)) return 'Đủ ĐK Bảo vệ (GĐ6)';
+    if (proj.status === 'IN_PROGRESS' || proj.status === 'OUTLINE_APPROVED') return 'Đang ở GĐ4–GĐ5 (Chưa chốt ĐK BV)';
+    if (['OUTLINE_PENDING', 'OUTLINE_REVISION'].includes(proj.status) || proj.topic_review_status === 'APPROVED') {
+      return 'Đang ở GĐ3 (Đề cương)';
+    }
+    return 'Đang ở GĐ2 (Phân công GVHD)';
+  };
+
+  const activeBatchProjects = projects.filter(
+    (p) => p.student && !p.is_unassigned && p.deferral_status !== 'APPROVED' && !['DEFERRED', 'DISQUALIFIED'].includes(p.status)
+  );
+  const eligibleProjects = activeBatchProjects.filter(isProjectDefenseEligible);
+  const ineligibleProjects = activeBatchProjects.filter((p) => !isProjectDefenseEligible(p));
+  const assignedEligibleCount = eligibleProjects.filter((p) => p.council && p.reviewer).length;
+
+  const handleToggleLockAllocation = async (willLock: boolean) => {
+    if (!selectedBatchId) return;
+    if (willLock) {
+      if (councils.length === 0) {
+        alert('Vui lòng thành lập Hội đồng trước khi chốt phân chia!');
+        return;
+      }
+      if (
+        !confirm(
+          'Xác nhận KHOA CHỐT PHÂN CHIA HỘI ĐỒNG & GIẢNG VIÊN PHẢN BIỆN?\n\n' +
+          'Sau khi chốt:\n' +
+          '• Danh sách Hội đồng và Giảng viên phản biện sẽ được khóa.\n' +
+          '• Đợt đồ án sẽ chuyển sang Giai đoạn 6 (Mở chấm phản biện & Hội đồng).\n' +
+          '• Bước tiếp theo "Tự Động Xếp Lịch Bảo Vệ" sẽ được mở khóa.'
+        )
+      ) {
+        return;
+      }
+    } else {
+      if (!confirm('Mở khóa phân chia Hội đồng & Phản biện để tiếp tục điều chỉnh thủ công?')) {
+        return;
+      }
+    }
+
+    try {
+      setLockingAllocation(true);
+      const res = await apiClient.post('/admin/councils/lock-allocation/', {
+        batch_id: selectedBatchId,
+        lock: willLock,
+      });
+      setIsAllocationLocked(Boolean(res.data?.is_council_allocation_locked));
+      alert(res.data?.message || (willLock ? 'Đã chốt Hội đồng & Phản biện!' : 'Đã mở khóa điều chỉnh!'));
+      await fetchBatches();
+      await fetchData();
+    } catch (err: any) {
+      alert('Lỗi: ' + (err.response?.data?.error || err.response?.data?.detail || err.message));
+    } finally {
+      setLockingAllocation(false);
+    }
+  };
+
+  const handleToggleProjectEligibility = async (proj: any, nextEligible: boolean) => {
+    if (!proj?.id) return;
+    try {
+      setTogglingEligibilityId(proj.id);
+      await apiClient.patch(`/admin/projects/${proj.id}/defense-eligibility/`, {
+        is_eligible_for_defense: nextEligible,
+      });
+      if (!nextEligible) {
+        setIsAllocationLocked(false);
+      }
+      await fetchData();
+    } catch (err: any) {
+      alert('Lỗi cập nhật điều kiện bảo vệ: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setTogglingEligibilityId(null);
+    }
+  };
+
+  const handleBulkApproveDefenseEligibility = async () => {
+    if (!selectedBatchId || ineligibleProjects.length === 0) return;
+    if (
+      !confirm(
+        `Xác nhận duyệt ĐỦ ĐIỀU KIỆN BẢO VỆ (GĐ6) cho toàn bộ ${ineligibleProjects.length} sinh viên còn lại trong đợt này?`
+      )
+    ) {
+      return;
+    }
+    try {
+      setTogglingEligibilityId('bulk');
+      const res = await apiClient.post('/admin/projects/defense-eligibility/', {
+        batch_id: selectedBatchId,
+        project_ids: ineligibleProjects.map((p) => p.id),
+        is_eligible_for_defense: true,
+      });
+      setIsAllocationLocked(false);
+      alert(res.data?.message || 'Đã xác nhận đủ điều kiện bảo vệ thành công!');
+      await fetchData();
+    } catch (err: any) {
+      alert('Lỗi: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setTogglingEligibilityId(null);
+    }
+  };
+
+  const handleOpenCreateCouncil = () => {
+    setEditingCouncilId(null);
+    setCouncilNumber(councils.length + 1);
+    setCouncilName(`Hội đồng ${councils.length + 1}`);
+    setDefenseRoom(`P${String(councils.length + 1).padStart(2, '0')}`);
+    setSessionDate('');
+    setSessionTime('MORNING');
+    setSelectedMembers([
+      { user_id: 0, role: 'CHAIR', external_institution: '' },
+      { user_id: 0, role: 'SECRETARY', external_institution: '' },
+      { user_id: 0, role: 'SECRETARY', external_institution: '' },
+      { user_id: 0, role: 'MEMBER', external_institution: '' },
+      { user_id: 0, role: 'MEMBER', external_institution: '' },
+    ]);
+    setShowCreateModal(true);
+  };
+
+  const handleOpenEditCouncil = (council: DefenseCouncil) => {
+    setEditingCouncilId(council.id);
+    setCouncilNumber(council.council_number);
+    setCouncilName(council.council_name);
+    setDefenseRoom(council.defense_room || '');
+    setSessionDate(council.session_date || '');
+    setSessionTime(council.session_time || 'MORNING');
+    setSelectedMembers(
+      (council.members || []).map((m) => ({
+        user_id: m.user,
+        role: m.role,
+        external_institution: m.external_institution || '',
+      }))
+    );
+    setShowCreateModal(true);
+  };
+
+  const handleDeleteCouncil = async (council: DefenseCouncil) => {
+    if (
+      !confirm(
+        `Bạn có chắc chắn muốn xóa ${council.council_name}?\nCác sinh viên thuộc hội đồng này sẽ được gỡ về trạng thái chờ phân hội đồng.`
+      )
+    ) {
+      return;
+    }
+    try {
+      await apiClient.delete(`/admin/councils/${council.id}/`);
+      setIsAllocationLocked(false);
+      await fetchData();
+    } catch (err: any) {
+      alert('Lỗi xóa Hội đồng: ' + (err.response?.data?.error || err.response?.data?.detail || err.message));
+    }
+  };
 
   const handleAutoGenerateCouncils = async () => {
     if (!selectedBatchId) return;
@@ -148,6 +328,7 @@ export const CouncilsPage: React.FC = () => {
         projects_per_council: projectsPerCouncil,
       });
       setGenerateResult(res.data);
+      setIsAllocationLocked(false);
       fetchData();
     } catch (err: any) {
       setGenerateResult({
@@ -170,6 +351,7 @@ export const CouncilsPage: React.FC = () => {
         batch_id: selectedBatchId,
       });
       setAssignResult(res.data);
+      setIsAllocationLocked(false);
       fetchData();
     } catch (err: any) {
       alert('Lỗi phân công phản biện: ' + (err.response?.data?.detail || err.message));
@@ -236,22 +418,35 @@ export const CouncilsPage: React.FC = () => {
     if (!selectedBatchId || !councilName) return;
 
     try {
-      await apiClient.post('/admin/councils/', {
-        batch_id: selectedBatchId,
-        council_number: councilNumber,
-        council_name: councilName,
-        defense_room: defenseRoom,
-        session_date: sessionDate || null,
-        session_time: sessionTime,
-        members: selectedMembers,
-      });
+      if (editingCouncilId) {
+        await apiClient.patch(`/admin/councils/${editingCouncilId}/`, {
+          council_number: councilNumber,
+          council_name: councilName,
+          defense_room: defenseRoom,
+          session_date: sessionDate || null,
+          session_time: sessionTime,
+          members: selectedMembers,
+        });
+      } else {
+        await apiClient.post('/admin/councils/', {
+          batch_id: selectedBatchId,
+          council_number: councilNumber,
+          council_name: councilName,
+          defense_room: defenseRoom,
+          session_date: sessionDate || null,
+          session_time: sessionTime,
+          members: selectedMembers,
+        });
+      }
       setShowCreateModal(false);
+      setEditingCouncilId(null);
       setCouncilName('');
       setDefenseRoom('');
       setSelectedMembers([]);
+      setIsAllocationLocked(false);
       fetchData();
     } catch (err: any) {
-      alert('Lỗi tạo Hội đồng: ' + (err.response?.data?.detail || err.message));
+      alert('Lỗi lưu Hội đồng: ' + (err.response?.data?.error || err.response?.data?.detail || err.message));
     }
   };
 
@@ -335,39 +530,112 @@ export const CouncilsPage: React.FC = () => {
           <div className="utc-council-actions">
             <button
               onClick={handleAutoGenerateCouncils}
-              disabled={generating}
+              disabled={generating || isAllocationLocked}
               className="utc-btn-generate"
-              title="Tự động lập Hội đồng chuẩn 1CT-2TK-2UV, gán đề tài & GVPB (loại trừ GVHD)"
+              title={
+                isAllocationLocked
+                  ? 'Phân chia Hội đồng đã chốt. Bấm "Mở khóa điều chỉnh" nếu muốn sinh lại.'
+                  : 'Bước 1: Tự động lập Hội đồng chuẩn 1CT-2TK-2UV, gán đề tài đủ ĐK bảo vệ & GVPB (loại trừ GVHD)'
+              }
             >
               <span className="utc-btn-icon">⚡</span>
-              <span>{generating ? 'Đang sinh Hội đồng...' : 'Sinh Hội Đồng Tự Động'}</span>
+              <span>{generating ? 'Đang sinh Hội đồng...' : '1. Sinh Hội Đồng Tự Động'}</span>
             </button>
             <button
-              onClick={() => setShowCreateModal(true)}
+              onClick={handleOpenCreateCouncil}
+              disabled={isAllocationLocked}
               className="utc-btn-create"
               title="Tạo thủ công Hội đồng chuẩn 5 thành viên (1 Chủ tịch, 2 Thư ký, 2 Ủy viên)"
             >
               <span className="utc-btn-icon">➕</span>
-              <span>Tạo Hội Đồng Chuẩn (1CT-2TK-2UV)</span>
+              <span>Tạo Hội Đồng Chuẩn</span>
             </button>
             <button
               onClick={handleAutoAssignReviewers}
-              disabled={assigning}
+              disabled={assigning || isAllocationLocked}
               className="utc-btn-emerald"
-              title="Phân bổ đề tài vào HĐ & gán phản biện không trùng GVHD"
+              title="Phân bổ đề tài đủ ĐK bảo vệ vào HĐ & gán phản biện không trùng GVHD"
             >
               <span className="utc-btn-icon">⚖️</span>
               <span>{assigning ? 'Đang phân bổ...' : 'Tự Động Phân HĐ & Phản Biện'}</span>
             </button>
+            {isAllocationLocked ? (
+              <button
+                onClick={() => handleToggleLockAllocation(false)}
+                disabled={lockingAllocation}
+                className="utc-btn-lock-council is-locked"
+                title="Mở khóa để tiếp tục điều chỉnh thủ công Hội đồng & Giảng viên phản biện"
+              >
+                <span className="utc-btn-icon">🔓</span>
+                <span>{lockingAllocation ? 'Đang xử lý...' : 'Đã Chốt HĐ (Mở Khóa)'}</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => handleToggleLockAllocation(true)}
+                disabled={lockingAllocation || councils.length === 0}
+                className="utc-btn-lock-council"
+                title="Bước 2: Sau khi kiểm tra & điều chỉnh thủ công, bấm Chốt để mở khóa bước Xếp lịch bảo vệ"
+              >
+                <span className="utc-btn-icon">🔒</span>
+                <span>{lockingAllocation ? 'Đang chốt...' : '2. Khoa Chốt HĐ & Phản Biện'}</span>
+              </button>
+            )}
             <button
               onClick={() => setShowScheduleModal(true)}
+              disabled={!isAllocationLocked}
               className="utc-btn-violet"
-              title="Khoa nhập tham số ca/giờ/thời lượng để tự động xếp lịch"
+              title={
+                !isAllocationLocked
+                  ? "Vui lòng kiểm tra, điều chỉnh thủ công (nếu cần) và bấm '2. Khoa Chốt HĐ & Phản Biện' trước khi sang bước Xếp lịch bảo vệ!"
+                  : 'Bước 3: Khoa nhập tham số ca/giờ/thời lượng để tự động xếp lịch bảo vệ'
+              }
             >
               <span className="utc-btn-icon">⏱️</span>
-              <span>Tự Động Xếp Lịch Bảo Vệ</span>
+              <span>3. Tự Động Xếp Lịch Bảo Vệ</span>
             </button>
           </div>
+        </div>
+
+        {/* Workflow & Defense Eligibility Status Bar */}
+        <div className="utc-council-workflow-strip">
+          <div className="utc-workflow-metrics">
+            <div className="utc-wf-pill pill-eligible">
+              <span>✅ Đủ điều kiện bảo vệ (GĐ6):</span>
+              <strong>{eligibleProjects.length} / {activeBatchProjects.length} SV</strong>
+            </div>
+            <div className="utc-wf-pill pill-assigned">
+              <span>🏛️ Đã gán HĐ & GVPB:</span>
+              <strong>{assignedEligibleCount} / {eligibleProjects.length} SV</strong>
+            </div>
+            {ineligibleProjects.length > 0 && (
+              <div className="utc-wf-pill pill-ineligible">
+                <span>⏳ Chưa đủ ĐK (đang ở GĐ1–GĐ5):</span>
+                <strong>{ineligibleProjects.length} SV (không xếp vào HĐ)</strong>
+              </div>
+            )}
+            <div className={`utc-wf-pill ${isAllocationLocked ? 'pill-locked' : 'pill-unlocked'}`}>
+              <span>{isAllocationLocked ? '🔒 Trạng thái:' : '✏️ Trạng thái:'}</span>
+              <strong>
+                {isAllocationLocked
+                  ? 'Đã chốt HĐ & Phản biện (Sẵn sàng xếp lịch)'
+                  : 'Đang mở điều chỉnh thủ công (Cần chốt trước khi xếp lịch)'}
+              </strong>
+            </div>
+          </div>
+
+          {ineligibleProjects.length > 0 && !isAllocationLocked && (
+            <button
+              type="button"
+              onClick={handleBulkApproveDefenseEligibility}
+              disabled={togglingEligibilityId === 'bulk'}
+              className="utc-btn-approve-elig-bulk"
+              title="Xác nhận đủ điều kiện bảo vệ (GĐ6) cho toàn bộ sinh viên còn lại trong đợt để đưa vào chia Hội đồng"
+            >
+              {togglingEligibilityId === 'bulk'
+                ? 'Đang duyệt...'
+                : `✅ Duyệt ĐK Bảo Vệ Cho ${ineligibleProjects.length} SV Còn Lại`}
+            </button>
+          )}
         </div>
 
         {/* TAB 1: COUNCILS */}
@@ -582,7 +850,7 @@ export const CouncilsPage: React.FC = () => {
                     <span>{generating ? 'Đang sinh Hội đồng...' : 'Sinh Hội Đồng Tự Động Ngay'}</span>
                   </button>
                   <button
-                    onClick={() => setShowCreateModal(true)}
+                    onClick={handleOpenCreateCouncil}
                     className="utc-btn-create"
                   >
                     <span className="utc-btn-icon">➕</span>
@@ -594,6 +862,7 @@ export const CouncilsPage: React.FC = () => {
               <div className="utc-councils-grid">
                 {councils.map((council) => {
                   const val = council.validity_info;
+                  const councilProjects = eligibleProjects.filter((p) => Number(p.council) === Number(council.id));
                   return (
                     <div key={council.id} className="utc-council-card">
                       <div className="utc-council-card-head">
@@ -601,16 +870,38 @@ export const CouncilsPage: React.FC = () => {
                           <span className="utc-council-tag">HĐ #{council.council_number}</span>
                           <h4>{council.council_name}</h4>
                         </div>
-                        <span className={`utc-utc-model-badge ${val?.is_valid ? 'badge-utc-valid' : 'badge-utc-warn'}`}>
-                          {val?.is_valid ? '✅ Chuẩn 1CT-2TK-2UV' : `⚠️ Thành phần (${council.members?.length || 0}/5)`}
-                        </span>
+                        <div className="utc-council-card-head-right">
+                          <span className={`utc-utc-model-badge ${val?.is_valid ? 'badge-utc-valid' : 'badge-utc-warn'}`}>
+                            {val?.is_valid ? '✅ Chuẩn 1CT-2TK-2UV' : `⚠️ Thành phần (${council.members?.length || 0}/5)`}
+                          </span>
+                          {!council.is_finalized && !isAllocationLocked && (
+                            <div className="utc-council-card-tools">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditCouncil(council)}
+                                className="utc-btn-card-tool"
+                                title="Sửa thành viên, phòng hoặc ca bảo vệ của Hội đồng này"
+                              >
+                                ✏️ Sửa HĐ
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteCouncil(council)}
+                                className="utc-btn-card-tool is-danger"
+                                title="Xóa Hội đồng này"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       <div className="utc-council-meta">
                         <div>📅 {council.session_date ? council.session_date : 'Chưa xếp ngày'}</div>
                         <div>⏰ {council.session_time === 'AFTERNOON' ? 'Ca Chiều (13:30)' : 'Ca Sáng (08:00)'}</div>
                         <div>🚪 Phòng: <strong>{council.defense_room || 'Chưa gán'}</strong></div>
-                        <div>📚 Đề tài: <strong>{council.project_count || 0}</strong> sinh viên</div>
+                        <div>📚 Đề tài: <strong>{councilProjects.length}</strong> sinh viên</div>
                       </div>
 
                       <div className="utc-members-list">
@@ -649,11 +940,174 @@ export const CouncilsPage: React.FC = () => {
                           <div className="utc-members-empty">Chưa có thành viên nào.</div>
                         )}
                       </div>
+
+                      {/* Danh sách SV thuộc Hội đồng này + nút Đổi nhanh */}
+                      <div className="utc-council-students-box">
+                        <div className="utc-council-students-head">
+                          <span>👨‍🎓 Sinh viên bảo vệ ({councilProjects.length}):</span>
+                        </div>
+                        {councilProjects.length === 0 ? (
+                          <div className="utc-members-empty">Chưa có sinh viên đủ ĐK bảo vệ trong HĐ này.</div>
+                        ) : (
+                          <div className="utc-council-students-list">
+                            {councilProjects.map((proj) => (
+                              <div key={proj.id} className="utc-council-student-item">
+                                <div className="utc-cs-info">
+                                  <strong>{formatFullName(proj.student_name)}</strong>
+                                  <span className="utc-cs-reg">({proj.student_reg_no})</span>
+                                  <div className="utc-cs-sub">
+                                    GVHD: {formatFullName(proj.supervisor_name)} • GVPB:{' '}
+                                    <b>{formatFullName(proj.reviewer_name) || 'Chưa gán'}</b>
+                                  </div>
+                                </div>
+                                {!isAllocationLocked && !council.is_finalized && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenOverride(proj)}
+                                    className="utc-btn-override"
+                                    title="Điều chỉnh thủ công Hội đồng hoặc Giảng viên phản biện"
+                                  >
+                                    ✏️ Đổi
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
               </div>
             )}
+
+            {/* BẢNG ĐIỀU CHỈNH THỦ CÔNG HỘI ĐỒNG & PHẢN BIỆN TRƯỚC KHI CHỐT (ITEM 9, 20, 23) */}
+            <div className="utc-schedule-section" style={{ marginTop: '1.5rem' }}>
+              <div className="utc-panel-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                <div>
+                  <h4>⚖️ Bảng Rà Soát & Điều Chỉnh Thủ Công Hội Đồng / Giảng Viên Phản Biện</h4>
+                  <span className="text-muted">
+                    Chỉ những sinh viên <strong>Đủ ĐK Bảo vệ (GĐ6)</strong> mới được phân vào Hội đồng và xếp lịch bảo vệ.
+                    Sau khi điều chỉnh xong, bấm <strong>"2. Khoa Chốt HĐ & Phản Biện"</strong> để sang bước Xếp lịch.
+                  </span>
+                </div>
+                <div className="utc-filter-tabs-inline">
+                  <button
+                    type="button"
+                    className={`utc-filter-chip ${studentFilter === 'ALL' ? 'active' : ''}`}
+                    onClick={() => setStudentFilter('ALL')}
+                  >
+                    Tất cả ({activeBatchProjects.length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`utc-filter-chip ${studentFilter === 'ELIGIBLE' ? 'active' : ''}`}
+                    onClick={() => setStudentFilter('ELIGIBLE')}
+                  >
+                    ✅ Đủ ĐK Bảo vệ ({eligibleProjects.length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`utc-filter-chip ${studentFilter === 'INELIGIBLE' ? 'active' : ''}`}
+                    onClick={() => setStudentFilter('INELIGIBLE')}
+                  >
+                    ⏳ Đang ở GĐ1–GĐ5 ({ineligibleProjects.length})
+                  </button>
+                </div>
+              </div>
+
+              <div className="utc-table-container">
+                <table className="utc-custom-table">
+                  <thead>
+                    <tr>
+                      <th>STT</th>
+                      <th>MSSV</th>
+                      <th>Sinh Viên & Đề Tài</th>
+                      <th>Trạng Thái / Giai Đoạn</th>
+                      <th>GV Hướng Dẫn</th>
+                      <th>Hội Đồng Bảo Vệ</th>
+                      <th>GV Phản Biện</th>
+                      <th>Điều Chỉnh Thủ Công</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(studentFilter === 'ELIGIBLE'
+                      ? eligibleProjects
+                      : studentFilter === 'INELIGIBLE'
+                      ? ineligibleProjects
+                      : activeBatchProjects
+                    ).map((proj, idx) => {
+                      const eligible = isProjectDefenseEligible(proj);
+                      return (
+                        <tr key={proj.id}>
+                          <td className="text-center font-bold">{idx + 1}</td>
+                          <td className="font-bold">{proj.student_reg_no}</td>
+                          <td>
+                            <div className="font-semibold">{formatFullName(proj.student_name)}</div>
+                            <div className="text-xs text-muted">{proj.topic_title_vi || 'Chưa cập nhật tên đề tài'}</div>
+                          </td>
+                          <td>
+                            <span className={`utc-elig-stage-badge ${eligible ? 'is-ready' : 'is-pending'}`}>
+                              {eligible ? '✅ ' : '⏳ '}
+                              {getProjectStageBadgeText(proj)}
+                            </span>
+                          </td>
+                          <td>{formatFullName(proj.supervisor_name)}</td>
+                          <td>
+                            {eligible ? (
+                              <span className="font-semibold text-slate-800">{proj.council_name || '⚠️ Chưa gán HĐ'}</span>
+                            ) : (
+                              <span className="text-xs text-muted">Chưa xét vào HĐ</span>
+                            )}
+                          </td>
+                          <td>
+                            {eligible ? (
+                              <span className="font-semibold text-purple-700">{formatFullName(proj.reviewer_name) || '⚠️ Chưa gán GVPB'}</span>
+                            ) : (
+                              <span className="text-xs text-muted">—</span>
+                            )}
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                              {eligible && (
+                                <button
+                                  type="button"
+                                  disabled={isAllocationLocked}
+                                  onClick={() => handleOpenOverride(proj)}
+                                  className="utc-btn-override"
+                                  title={
+                                    isAllocationLocked
+                                      ? 'Đã chốt phân chia. Mở khóa để điều chỉnh.'
+                                      : 'Đổi Hội đồng hoặc Giảng viên phản biện'
+                                  }
+                                >
+                                  ✏️ Đổi HĐ / GVPB
+                                </button>
+                              )}
+                              {!isAllocationLocked && (
+                                <button
+                                  type="button"
+                                  disabled={togglingEligibilityId === proj.id}
+                                  onClick={() => handleToggleProjectEligibility(proj, !eligible)}
+                                  className={`utc-btn-override ${eligible ? 'is-muted' : 'is-promote'}`}
+                                  title={
+                                    eligible
+                                      ? 'Thu hồi xác nhận đủ điều kiện bảo vệ (đưa về giai đoạn trước)'
+                                      : 'Xác nhận sinh viên này đủ điều kiện bảo vệ (GĐ6) để xếp vào Hội đồng'
+                                  }
+                                >
+                                  {eligible ? '↩️ Hủy ĐK' : '✅ Duyệt ĐK BV'}
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </>
         )}
 
@@ -661,8 +1115,13 @@ export const CouncilsPage: React.FC = () => {
         {activeTab === 'schedule' && (
           <div className="utc-schedule-section">
             <div className="utc-panel-head">
-              <h4>⏱️ Lịch Bảo Vệ Chi Tiết Từng Sinh Viên (Theo Khung Giờ & Phòng)</h4>
-              <span className="text-muted">Được tính toán tự động dựa trên thời lượng và ca bảo vệ của từng Hội đồng</span>
+              <h4>⏱️ Lịch Bảo Vệ Chi Tiết Từng Sinh Viên Đủ Điều Kiện Bảo Vệ ({eligibleProjects.length} SV)</h4>
+              <span className="text-muted">
+                Chỉ hiển thị và xếp lịch cho các sinh viên đã đủ điều kiện bảo vệ GĐ6
+                {ineligibleProjects.length > 0
+                  ? ` (Đã loại trừ ${ineligibleProjects.length} sinh viên đang ở GĐ1–GĐ5 chưa đủ điều kiện).`
+                  : '.'}
+              </span>
             </div>
 
             <div className="utc-table-container">
@@ -681,52 +1140,70 @@ export const CouncilsPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {projects.map((proj, idx) => (
-                    <tr key={proj.id}>
-                      <td className="text-center font-bold">{proj.schedule_slot_info?.order || idx + 1}</td>
-                      <td>
-                        <span className="font-semibold text-slate-800">{proj.council_name || 'Chưa gán HĐ'}</span>
-                      </td>
-                      <td className="font-bold">{proj.student_reg_no}</td>
-                      <td>
-                        <div className="font-semibold">{formatFullName(proj.student_name)}</div>
-                        <div className="text-xs text-muted">{proj.topic_title_vi}</div>
-                      </td>
-                      <td>
-                        {proj.schedule_slot_info ? (
-                          <span className="utc-time-slot-badge">
-                            {proj.schedule_slot_info.start} - {proj.schedule_slot_info.end}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-slate-400">Chưa xếp slot</span>
-                        )}
-                      </td>
-                      <td>
-                        <span className="font-bold text-blue-700">{proj.schedule_slot_info?.room || '—'}</span>
-                      </td>
-                      <td>{formatFullName(proj.supervisor_name)}</td>
-                      <td>
-                        <span className="font-semibold text-purple-700">{formatFullName(proj.reviewer_name) || 'Chưa gán GVPB'}</span>
-                      </td>
-                      <td>
-                        <button onClick={() => handleOpenOverride(proj)} className="utc-btn-override" title="Đổi HĐ hoặc Phản biện">
-                          ✏️ Đổi
-                        </button>
+                  {eligibleProjects.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                        Chưa có sinh viên nào đủ điều kiện bảo vệ (GĐ6) trong đợt này.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    eligibleProjects.map((proj, idx) => (
+                      <tr key={proj.id}>
+                        <td className="text-center font-bold">{proj.schedule_slot_info?.order || idx + 1}</td>
+                        <td>
+                          <span className="font-semibold text-slate-800">{proj.council_name || 'Chưa gán HĐ'}</span>
+                        </td>
+                        <td className="font-bold">{proj.student_reg_no}</td>
+                        <td>
+                          <div className="font-semibold">{formatFullName(proj.student_name)}</div>
+                          <div className="text-xs text-muted">{proj.topic_title_vi}</div>
+                        </td>
+                        <td>
+                          {proj.schedule_slot_info ? (
+                            <span className="utc-time-slot-badge">
+                              {proj.schedule_slot_info.date ? `${proj.schedule_slot_info.date} • ` : ''}
+                              {proj.schedule_slot_info.start} - {proj.schedule_slot_info.end}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-400">Chưa xếp slot</span>
+                          )}
+                        </td>
+                        <td>
+                          <span className="font-bold text-blue-700">{proj.schedule_slot_info?.room || '—'}</span>
+                        </td>
+                        <td>{formatFullName(proj.supervisor_name)}</td>
+                        <td>
+                          <span className="font-semibold text-purple-700">{formatFullName(proj.reviewer_name) || 'Chưa gán GVPB'}</span>
+                        </td>
+                        <td>
+                          <button
+                            onClick={() => handleOpenOverride(proj)}
+                            disabled={isAllocationLocked}
+                            className="utc-btn-override"
+                            title={isAllocationLocked ? 'Mở khóa chốt HĐ để điều chỉnh' : 'Đổi HĐ hoặc Phản biện'}
+                          >
+                            ✏️ Đổi
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
         )}
 
-        {/* MODAL 1: CREATE COUNCIL (1CT - 2TK - 2UV) */}
+        {/* MODAL 1: CREATE / EDIT COUNCIL (1CT - 2TK - 2UV) */}
         {showCreateModal && (
           <div className="utc-modal-backdrop">
             <div className="utc-modal-card" style={{ maxWidth: '650px' }}>
               <div className="utc-modal-head">
-                <h4>➕ Thành Lập Hội Đồng Bảo Vệ Chuẩn UTC (1CT-2TK-2UV)</h4>
+                <h4>
+                  {editingCouncilId
+                    ? '✏️ Điều Chỉnh Thủ Công Hội Đồng Bảo Vệ (1CT-2TK-2UV)'
+                    : '➕ Thành Lập Hội Đồng Bảo Vệ Chuẩn UTC (1CT-2TK-2UV)'}
+                </h4>
                 <button onClick={() => setShowCreateModal(false)} className="utc-btn-close">✕</button>
               </div>
               <form onSubmit={handleCreateCouncil}>

@@ -1,12 +1,13 @@
 import math
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Max, Q
 
 from app.models import (
     AcademicBatch,
     AuditLog,
     CouncilMember,
     DefenseCouncil,
+    DefenseScheduleSlot,
     GraduationProject,
     Supervisor,
     SupervisorQuota,
@@ -165,19 +166,69 @@ class CouncilGeneratorEngine:
         except AcademicBatch.DoesNotExist:
             return {"success": False, "error": f"Không tìm thấy đợt ID {batch_id}."}
 
-        # Loại trừ các đề tài đã bảo lưu hoặc đã nằm trong Hội đồng chốt điểm (is_finalized=True)
-        projects = list(
-            GraduationProject.objects.filter(batch=batch)
+        # Chỉ lấy các đề tài ĐỦ ĐIỀU KIỆN BẢO VỆ (GĐ6), không bảo lưu, không bị loại
+        # và chưa nằm trong Hội đồng đã chốt điểm (is_finalized=True).
+        eligible_q = (
+            Q(is_eligible_for_defense=True)
+            | Q(supervisor_defense_confirmed=True)
+            | Q(status__in=["DEFENSE_READY", "DEFENDING", "PASSED", "FAILED"])
+        )
+        all_batch_qs = (
+            GraduationProject.objects.filter(batch=batch, student__isnull=False)
             .exclude(deferral_status="APPROVED")
+            .exclude(status__in=["DEFERRED", "DISQUALIFIED"])
+        )
+        total_batch_projects = all_batch_qs.count()
+
+        # Dọn sạch gán HĐ/GVPB/Slot cũ bị lệch trên các sinh viên CHƯA đủ điều kiện bảo vệ (đang ở GĐ1-GĐ5)
+        ineligible_qs = (
+            GraduationProject.objects.filter(batch=batch)
+            .exclude(council__is_finalized=True)
+            .filter(
+                ~eligible_q
+                | Q(final_academic_eligibility="INELIGIBLE")
+                | Q(deferral_status="APPROVED")
+                | Q(status__in=["DEFERRED", "DISQUALIFIED"])
+            )
+        )
+        ineligible_ids = list(ineligible_qs.values_list("id", flat=True))
+        if ineligible_ids:
+            DefenseScheduleSlot.objects.filter(project_id__in=ineligible_ids).delete()
+            GraduationProject.objects.filter(id__in=ineligible_ids).update(
+                council=None, reviewer=None
+            )
+
+        projects = list(
+            all_batch_qs.filter(eligible_q)
+            .exclude(final_academic_eligibility="INELIGIBLE")
             .exclude(council__is_finalized=True)
             .select_related("student__user", "supervisor__user")
             .order_by("student__registration_no")
         )
+        skipped_ineligible_count = max(0, total_batch_projects - len(projects))
 
         if not projects:
+            # Xóa các hội đồng chưa chốt rỗng nếu không có SV nào đủ điều kiện
+            old_unfinalized = DefenseCouncil.objects.filter(batch=batch, is_finalized=False)
+            if old_unfinalized.exists():
+                DefenseScheduleSlot.objects.filter(council__in=old_unfinalized).delete()
+                old_unfinalized.delete()
+
+            if total_batch_projects > 0:
+                return {
+                    "success": False,
+                    "error": (
+                        f"Đợt này hiện có 0/{total_batch_projects} sinh viên đủ điều kiện bảo vệ "
+                        f"({total_batch_projects} sinh viên vẫn đang ở GĐ1–GĐ5 hoặc chưa được xác nhận đủ điều kiện bảo vệ). "
+                        "Vui lòng hoàn tất xét duyệt điều kiện bảo vệ trước khi thành lập Hội đồng."
+                    ),
+                    "eligible_projects_count": 0,
+                    "skipped_ineligible_count": total_batch_projects,
+                    "total_batch_projects": total_batch_projects,
+                }
             return {
                 "success": False,
-                "error": "Đợt này không còn đề tài nào chưa chốt Hội đồng để thành lập Hội đồng.",
+                "error": "Đợt này chưa có đề tài nào đủ điều kiện để thành lập Hội đồng.",
             }
 
         # ------------------------------------------------------------------
@@ -420,7 +471,14 @@ class CouncilGeneratorEngine:
                 # --- 3c. Gán đề tài vào hội đồng ---
                 for proj in chunk:
                     proj.council = council
-                    proj.save(update_fields=["council"])
+                    update_fields = ["council"]
+                    if not proj.is_eligible_for_defense:
+                        proj.is_eligible_for_defense = True
+                        update_fields.append("is_eligible_for_defense")
+                    if proj.status not in ("DEFENSE_READY", "DEFENDING", "PASSED", "FAILED"):
+                        proj.status = "DEFENSE_READY"
+                        update_fields.append("status")
+                    proj.save(update_fields=update_fields)
                     assignments.append({
                         "project_id": proj.id,
                         "council_id": council.id,
@@ -476,14 +534,23 @@ class CouncilGeneratorEngine:
                     ),
                 )
 
+        skipped_note = (
+            f" (Đã bỏ qua {skipped_ineligible_count}/{total_batch_projects} sinh viên chưa đủ điều kiện bảo vệ / đang ở GĐ1–GĐ5)."
+            if skipped_ineligible_count > 0
+            else ""
+        )
         return {
             "success": True,
             "message": (
                 f"Đã tạo {len(created_councils)} Hội đồng (1CT-2TK-2UV), "
-                f"gán {len(assignments)} đề tài và {assigned_reviewers} Giảng viên phản biện."
+                f"gán {len(assignments)}/{total_batch_projects} đề tài đủ điều kiện bảo vệ và {assigned_reviewers} Giảng viên phản biện."
+                f"{skipped_note}"
             ),
             "councils": created_councils,
             "assigned_projects": len(assignments),
             "assigned_reviewers": assigned_reviewers,
+            "eligible_projects_count": len(projects),
+            "skipped_ineligible_count": skipped_ineligible_count,
+            "total_batch_projects": total_batch_projects,
             "conflicts": conflicts,
         }

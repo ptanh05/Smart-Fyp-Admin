@@ -1,6 +1,7 @@
 import collections
 import datetime
 from django.db import transaction
+from django.db.models import Q
 from app.models import (
     AcademicBatch,
     DefenseCouncil,
@@ -94,11 +95,48 @@ class DefenseSchedulerEngine:
         council_schedules = []
         total_projects = 0
 
+        eligible_q = (
+            Q(is_eligible_for_defense=True)
+            | Q(supervisor_defense_confirmed=True)
+            | Q(status__in=["DEFENSE_READY", "DEFENDING", "PASSED", "FAILED"])
+        )
+
         with transaction.atomic():
+            # Dọn sạch gán HĐ/GVPB/Slot của các sinh viên CHƯA đủ điều kiện bảo vệ (đang ở GĐ1-GĐ5)
+            ineligible_ids = list(
+                GraduationProject.objects.filter(batch=batch)
+                .exclude(council__is_finalized=True)
+                .filter(
+                    ~eligible_q
+                    | Q(final_academic_eligibility="INELIGIBLE")
+                    | Q(deferral_status="APPROVED")
+                    | Q(status__in=["DEFERRED", "DISQUALIFIED"])
+                )
+                .values_list("id", flat=True)
+            )
+            if ineligible_ids:
+                GraduationProject.objects.filter(id__in=ineligible_ids).update(
+                    council=None, reviewer=None
+                )
+
             # Xóa các slot cũ trước khi xếp lại
             DefenseScheduleSlot.objects.filter(council__batch=batch).delete()
 
             for council in ordered_councils:
+                # Chỉ xếp lịch cho các đề tài ĐỦ ĐIỀU KIỆN BẢO VỆ trong hội đồng này (TUYỆT ĐỐI không fallback sang SV GĐ2/GĐ3)
+                projects = list(
+                    GraduationProject.objects.filter(council=council)
+                    .filter(eligible_q)
+                    .exclude(final_academic_eligibility="INELIGIBLE")
+                    .exclude(deferral_status="APPROVED")
+                    .exclude(status__in=["DEFERRED", "DISQUALIFIED"])
+                    .select_related("student__user")
+                    .order_by("student__registration_no")
+                )
+
+                if not projects:
+                    continue
+
                 my_keys = council_member_keys[council.id]
 
                 # Tìm cặp (date, shift) sớm nhất không có thành viên nào bị trùng lịch
@@ -140,30 +178,23 @@ class DefenseSchedulerEngine:
                     "defense_room": assigned_room,
                 })
 
-                projects = list(
-                    GraduationProject.objects.filter(
-                        council=council,
-                        is_eligible_for_defense=True
-                    ).exclude(deferral_status="APPROVED").select_related("student__user").order_by("student__registration_no")
-                )
-
-                # Nếu chưa có dự án được lọc theo is_eligible_for_defense, lấy tất cả dự án không bảo lưu trong council
-                if not projects:
-                    projects = list(
-                        GraduationProject.objects.filter(
-                            council=council
-                        ).exclude(deferral_status="APPROVED").select_related("student__user").order_by("student__registration_no")
-                    )
-
-                if not projects:
-                    continue
-
                 is_afternoon = (assigned_shift == "AFTERNOON")
                 start_hour_str = afternoon_start_str if is_afternoon else morning_start_str
                 cur_h, cur_m = map(int, start_hour_str.split(":"))
                 cur_time = datetime.time(hour=cur_h, minute=cur_m)
 
                 for idx, proj in enumerate(projects, start=1):
+                    # Đồng bộ trạng thái đề tài đã xếp lịch bảo vệ sang GĐ6 (DEFENSE_READY)
+                    proj_updates = []
+                    if not proj.is_eligible_for_defense:
+                        proj.is_eligible_for_defense = True
+                        proj_updates.append("is_eligible_for_defense")
+                    if proj.status not in ("DEFENSE_READY", "DEFENDING", "PASSED", "FAILED"):
+                        proj.status = "DEFENSE_READY"
+                        proj_updates.append("status")
+                    if proj_updates:
+                        proj.save(update_fields=proj_updates)
+
                     start_dt = datetime.datetime.combine(assigned_date, cur_time)
                     end_dt = start_dt + datetime.timedelta(minutes=slot_duration_minutes)
                     end_time = end_dt.time()
@@ -194,6 +225,11 @@ class DefenseSchedulerEngine:
 
                     cur_time = end_time
                     total_projects += 1
+
+            # Khi đã xếp lịch bảo vệ GĐ6, tự động đồng bộ current_stage của đợt sang PHASE_6_DEFENSE
+            if total_projects > 0 and batch.current_stage not in ("PHASE_6_DEFENSE", "COMPLETED"):
+                batch.current_stage = "PHASE_6_DEFENSE"
+                batch.save(update_fields=["current_stage"])
 
             if user:
                 AuditLog.objects.create(

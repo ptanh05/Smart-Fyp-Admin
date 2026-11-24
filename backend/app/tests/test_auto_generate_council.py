@@ -301,3 +301,66 @@ class AutoGenerateCouncilTests(TestCase):
         # ID cũ đã bị xóa (hội đồng chưa finalize)
         remaining = set(DefenseCouncil.objects.values_list("id", flat=True))
         self.assertFalse(first_ids & remaining)
+
+    def test_only_eligible_projects_are_assigned_and_scheduled_skipping_gd2_gd3(self):
+        """
+        Kịch bản thực tế Mục 20, 23, 10:
+        Đợt có 26 sinh viên nhưng chỉ có 1 sinh viên đủ điều kiện bảo vệ (DEFENSE_READY),
+        còn 20 sinh viên đang ở GĐ2 (ALLOCATED) và 5 sinh viên ở GĐ3 (OUTLINE_PENDING).
+        -> Chỉ tạo 1 Hội đồng cho đúng 1 sinh viên đủ điều kiện, và tự động xếp lịch
+           chỉ xếp đúng 1 slot bảo vệ (tuyệt đối không xếp lịch cho 20/26 SV ở GĐ2/GĐ3).
+        """
+        from app.services.defense_scheduler import DefenseSchedulerEngine
+        from app.models import DefenseScheduleSlot
+
+        # Đưa 3 trong 4 SV hiện tại về GĐ2 (ALLOCATED, is_eligible_for_defense=False)
+        for p in self.projects[1:]:
+            p.status = "ALLOCATED"
+            p.is_eligible_for_defense = False
+            p.supervisor_defense_confirmed = False
+            p.save()
+
+        # Tạo thêm 22 SV ở GĐ2 & GĐ3 (tổng cộng 26 SV: 1 đủ ĐK, 20 ở GĐ2, 5 ở GĐ3)
+        for idx in range(5, 27):
+            u = CustomUser.objects.create_user(
+                username=f"2022600{idx:03d}",
+                first_name=f"SinhVien{idx}",
+                last_name="UTC",
+                user_type="student",
+            )
+            st = Student.objects.create(
+                user=u,
+                registration_no=f"2022600{idx:03d}",
+                academic_batch=self.batch,
+                education_program="ENGINEER",
+            )
+            is_gd3 = idx >= 22
+            GraduationProject.objects.create(
+                student=st,
+                batch=self.batch,
+                supervisor=self.supervisors[idx % len(self.supervisors)],
+                topic_title_vi=f"Đề tài {st.registration_no}",
+                topic_review_status="APPROVED" if is_gd3 else "DRAFT",
+                status="OUTLINE_PENDING" if is_gd3 else "ALLOCATED",
+                is_eligible_for_defense=False,
+                supervisor_defense_confirmed=False,
+            )
+
+        self.assertEqual(GraduationProject.objects.filter(batch=self.batch).count(), 26)
+
+        res = CouncilGeneratorEngine.generate_councils_for_batch(
+            batch_id=self.batch.id,
+            projects_per_council=8,
+        )
+        self.assertTrue(res["success"], res.get("error"))
+        self.assertEqual(len(res["councils"]), 1, "Chỉ có 1 SV đủ ĐK thì chỉ được lập 1 Hội đồng")
+        self.assertEqual(res["assigned_projects"], 1)
+        self.assertEqual(res["skipped_ineligible_count"], 25)
+
+        sched_res = DefenseSchedulerEngine.schedule_defense_for_batch(
+            batch_id=self.batch.id,
+            slot_duration_minutes=40,
+        )
+        self.assertTrue(sched_res["success"], sched_res.get("error"))
+        self.assertEqual(sched_res["scheduled_projects_count"], 1)
+        self.assertEqual(DefenseScheduleSlot.objects.filter(council__batch=self.batch).count(), 1)
