@@ -47,47 +47,51 @@ BATCH_STAGE_DEFINITIONS = [
     },
     {
         "number": 4,
-        "key": "progress",
-        "code": "PHASE_5_IN_PROGRESS",
-        "label": "GĐ 4: Thực Hiện Đồ Án & Tiến Độ",
-        "short_label": "Thực hiện đồ án",
+        "key": "eligibility",
+        "code": "PHASE_4_ELIGIBILITY",
+        "label": "GĐ 4: Xét Điều Kiện & Báo Cáo Tiến Độ Tuần",
+        "short_label": "Xét ĐK & báo cáo tuần",
         "icon": "📋",
-        "description": "GVHD giao Task/Deadline, SV nộp kết quả, GVHD đánh giá & xác nhận đủ điều kiện bảo vệ",
-        "role_hint": "GVHD ↔ Sinh viên",
+        "description": "Khoa xét điều kiện làm đồ án / đặc cách, SV nộp báo cáo tiến độ tuần, GVHD nhận xét",
+        "role_hint": "Khoa / Sinh viên ↔ GVHD",
     },
     {
         "number": 5,
-        "key": "defense",
-        "code": "PHASE_6_DEFENSE",
-        "label": "GĐ 5: Hội Đồng & Bảo Vệ",
-        "short_label": "Hội đồng & bảo vệ",
-        "icon": "🏛️",
-        "description": "Xét điều kiện bảo vệ cuối, thành lập Hội đồng, gán phản biện & xếp lịch bảo vệ",
-        "role_hint": "Khoa / Hội đồng",
+        "key": "progress",
+        "code": "PHASE_5_IN_PROGRESS",
+        "label": "GĐ 5: Thực Hiện Đồ Án (Task & Nhật Ký)",
+        "short_label": "Thực hiện đồ án",
+        "icon": "🧭",
+        "description": "GVHD giao Task/Deadline, ghi nhật ký hướng dẫn, SV nộp kết quả, GVHD xác nhận hoàn thành",
+        "role_hint": "GVHD ↔ Sinh viên",
     },
     {
         "number": 6,
-        "key": "closing",
-        "code": "COMPLETED",
-        "label": "GĐ 6: Chấm Điểm & Đóng Đợt",
-        "short_label": "Chấm điểm & đóng đợt",
-        "icon": "📝",
-        "description": "Chấm điểm rubric, tính điểm tổng kết, xuất biên bản & đóng đợt đồ án",
-        "role_hint": "Hội đồng → Khoa",
+        "key": "defense",
+        "code": "PHASE_6_DEFENSE",
+        "label": "GĐ 6: Đánh Giá, Bảo Vệ & Đóng Đợt",
+        "short_label": "Đánh giá & bảo vệ",
+        "icon": "🏛️",
+        "description": "GVHD đánh giá, phản biện, Hội đồng bảo vệ & chấm điểm, Khoa chốt điểm và đóng đợt",
+        "role_hint": "GVHD / Phản biện / Hội đồng → Khoa",
     },
 ]
 
-# Map trạng thái DB -> giai đoạn nghiệp vụ (1..6)
+# Map trạng thái DB -> giai đoạn nghiệp vụ (1..6).
+# PHẢI khớp workflow_stages.BATCH_STAGE_TO_NUMBER (contract test kiểm tra) để
+# thanh tiến trình đợt, sidebar và guard backend dùng chung một thang số.
 DB_STAGE_TO_NUMBER = {
     "PHASE_1_SETUP": 1,
     "PHASE_2_ALLOCATING": 2,
     "PHASE_2_LOCKED": 2,
     "PHASE_3_TOPIC": 3,
     "PHASE_4_ELIGIBILITY": 4,
-    "PHASE_5_IN_PROGRESS": 4,
-    "PHASE_6_DEFENSE": 5,
+    "PHASE_5_IN_PROGRESS": 5,
+    "PHASE_6_DEFENSE": 6,
     "COMPLETED": 6,
 }
+
+_DEFINITIONS_BY_NUMBER = {d["number"]: d for d in BATCH_STAGE_DEFINITIONS}
 
 TOTAL_STAGES = len(BATCH_STAGE_DEFINITIONS)
 
@@ -167,6 +171,10 @@ def compute_batch_progress(batch):
 
     defense_ready = GraduationProject.objects.filter(
         batch_id=batch_id, is_eligible_for_defense=True
+    ).count()
+
+    eligible_projects = GraduationProject.objects.filter(
+        batch_id=batch_id, initial_eligibility__in=["ELIGIBLE", "FORCE_APPROVED"]
     ).count()
 
     total_councils = DefenseCouncil.objects.filter(batch_id=batch_id).count()
@@ -268,81 +276,65 @@ def compute_batch_progress(batch):
         }
     )
 
-    # GĐ4 - Thực hiện & tiến độ
-    g4_base = completed_tasks + reviewed_weekly
-    g4_total = (total_tasks + total_weekly) or 1
-    g4_percent = _pct(g4_base, g4_total)
+    # GĐ4 - Xét điều kiện & báo cáo tiến độ tuần
+    g4_total = (total_projects + total_weekly) or 1
+    g4_percent = _pct(eligible_projects + reviewed_weekly, g4_total)
     stages.append(
         {
-            "number": 4,
-            "key": "progress",
-            "code": "PHASE_5_IN_PROGRESS",
-            "label": "GĐ 4: Thực Hiện Đồ Án & Tiến Độ",
-            "short_label": "Thực hiện đồ án",
-            "icon": "📋",
-            "description": "GVHD giao Task/Deadline, SV nộp kết quả, GVHD đánh giá & xác nhận đủ điều kiện bảo vệ",
-            "role_hint": "GVHD ↔ Sinh viên",
+            **_DEFINITIONS_BY_NUMBER[4],
             "percent": g4_percent,
             "stats": {
-                "Task hoàn thành": f"{completed_tasks}/{total_tasks}",
+                "Đủ ĐK làm đồ án": f"{eligible_projects}/{total_projects}",
                 "Báo cáo tuần đã duyệt": f"{reviewed_weekly}/{total_weekly}",
-                "Đủ điều kiện bảo vệ": defense_ready,
             },
             "action_hint": (
-                "GVHD giao task & đánh giá báo cáo tuần"
+                "Xét điều kiện làm đồ án & GVHD nhận xét báo cáo tuần"
                 if g4_percent < 100
-                else "Đã hoàn tất tiến độ, chuyển sang xét điều kiện bảo vệ"
+                else "Đã xét điều kiện, chuyển đợt sang giai đoạn thực hiện"
             ),
         }
     )
 
-    # GĐ5 - Hội đồng & bảo vệ
-    g5_percent = _pct(scheduled_slots, total_projects or 1)
+    # GĐ5 - Thực hiện đồ án (task board & nhật ký)
+    g5_total = (total_tasks + total_projects) or 1
+    g5_percent = _pct(completed_tasks + defense_ready, g5_total)
     stages.append(
         {
-            "number": 5,
-            "key": "defense",
-            "code": "PHASE_6_DEFENSE",
-            "label": "GĐ 5: Hội Đồng & Bảo Vệ",
-            "short_label": "Hội đồng & bảo vệ",
-            "icon": "🏛️",
-            "description": "Xét điều kiện bảo vệ cuối, thành lập Hội đồng, gán phản biện & xếp lịch bảo vệ",
-            "role_hint": "Khoa / Hội đồng",
+            **_DEFINITIONS_BY_NUMBER[5],
             "percent": g5_percent,
+            "stats": {
+                "Task hoàn thành": f"{completed_tasks}/{total_tasks}",
+                "GVHD xác nhận hoàn thành": f"{defense_ready}/{total_projects}",
+            },
+            "action_hint": (
+                "GVHD giao task, ghi nhật ký & xác nhận hoàn thành GĐ5"
+                if g5_percent < 100
+                else "Đã hoàn tất thực hiện, chuyển sang đánh giá & bảo vệ"
+            ),
+        }
+    )
+
+    # GĐ6 - Đánh giá, bảo vệ & đóng đợt
+    g6_total = (total_projects * 2) or 1
+    g6_percent = _pct(scheduled_slots + finalized_grades, g6_total)
+    stages.append(
+        {
+            **_DEFINITIONS_BY_NUMBER[6],
+            "percent": 100.0 if batch.current_stage == "COMPLETED" else g6_percent,
             "stats": {
                 "Hội đồng": total_councils,
                 "Đã xếp lịch bảo vệ": scheduled_slots,
                 "Đủ điều kiện bảo vệ": defense_ready,
-            },
-            "action_hint": (
-                "Sinh Hội đồng & xếp lịch bảo vệ"
-                if total_councils == 0
-                else "Theo dõi & chấm điểm tại buổi bảo vệ"
-            ),
-        }
-    )
-
-    # GĐ6 - Chấm điểm & đóng đợt
-    g6_percent = _pct(finalized_grades, total_projects or 1)
-    stages.append(
-        {
-            "number": 6,
-            "key": "closing",
-            "code": "COMPLETED",
-            "label": "GĐ 6: Chấm Điểm & Đóng Đợt",
-            "short_label": "Chấm điểm & đóng đợt",
-            "icon": "📝",
-            "description": "Chấm điểm rubric, tính điểm tổng kết, xuất biên bản & đóng đợt đồ án",
-            "role_hint": "Hội đồng → Khoa",
-            "percent": 100.0 if batch.current_stage == "COMPLETED" else g6_percent,
-            "stats": {
-                "Đã chốt điểm": finalized_grades,
-                "Tổng đề tài": total_projects,
+                "Đã chốt điểm": f"{finalized_grades}/{total_projects}",
             },
             "action_hint": (
                 "Đợt đã đóng & lưu trữ"
                 if batch.current_stage == "COMPLETED"
-                else "Chấm điểm & bấm 'Đóng đợt (CLOSED)'"
+                else (
+                    "Sinh Hội đồng & xếp lịch bảo vệ"
+                    if total_councils == 0
+                    else "Chấm điểm, chốt điểm & bấm 'Đóng đợt (CLOSED)'"
+                )
             ),
         }
     )
@@ -392,6 +384,9 @@ def compute_batch_progress(batch):
         },
         "is_open": is_open,
         "current_stage_number": current_number,
+        "current_stage_key": current_stage_def["key"],
+        "current_stage_label": current_stage_def["label"],
+        "batch_status": batch.current_stage,
         "current_stage": current_stage_def,
         "overall_percent": overall,
         "stages": stages,

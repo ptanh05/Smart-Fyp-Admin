@@ -1,0 +1,820 @@
+{
+  "contract_version": "2026-11-24.1",
+  "description": "Bộ case contract 6 giai đoạn dùng chung cho smart-fyp-management và Smart-Fyp-Admin. Sửa đồng thời cả hai repo.",
+  "project_defaults": {
+    "status": "ALLOCATED",
+    "topic_review_status": "DRAFT",
+    "initial_eligibility": "PENDING",
+    "final_academic_eligibility": "PENDING",
+    "deferral_status": "NONE",
+    "supervisor_defense_confirmed": false,
+    "is_eligible_for_defense": false,
+    "supervisor_score": null,
+    "reviewer_score": null,
+    "is_force_approved": false,
+    "signed_outline_file": ""
+  },
+  "batch_defaults": {
+    "current_stage": "PHASE_1_SETUP",
+    "is_closed": false,
+    "is_active": true
+  },
+  "cases": [
+    {
+      "id": "R01_no_project_batch_phase1",
+      "description": "Đợt mới tạo (GĐ1), sinh viên chưa có đồ án",
+      "batch": {
+        "current_stage": "PHASE_1_SETUP"
+      },
+      "project": null,
+      "expected": {
+        "current_stage_number": 1,
+        "current_stage_key": "project",
+        "statuses": [
+          "active",
+          "locked",
+          "locked",
+          "locked",
+          "locked",
+          "locked"
+        ],
+        "editable": [
+          true,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "overall_percent": 0
+      }
+    },
+    {
+      "id": "R01_gd1_done_gd2_opens",
+      "description": "Khoa chuyển đợt sang GĐ2 -> sinh viên khảo sát nguyện vọng",
+      "batch": {
+        "current_stage": "PHASE_2_ALLOCATING"
+      },
+      "project": null,
+      "expected": {
+        "current_stage_number": 2,
+        "current_stage_key": "survey",
+        "statuses": [
+          "completed",
+          "active",
+          "locked",
+          "locked",
+          "locked",
+          "locked"
+        ],
+        "editable": [
+          false,
+          true,
+          false,
+          false,
+          false,
+          false
+        ],
+        "accessible": [
+          true,
+          true,
+          false,
+          false,
+          false,
+          false
+        ]
+      }
+    },
+    {
+      "id": "R01_no_project_capped_at_gd2",
+      "description": "Đợt sang GĐ3 nhưng SV chưa được phân công -> dừng GĐ2, chỉ xem",
+      "batch": {
+        "current_stage": "PHASE_3_TOPIC"
+      },
+      "project": null,
+      "expected": {
+        "current_stage_number": 2,
+        "statuses": [
+          "completed",
+          "active",
+          "locked",
+          "locked",
+          "locked",
+          "locked"
+        ],
+        "editable": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "current_step_key": "awaiting_allocation"
+      }
+    },
+    {
+      "id": "R02_allocated_waits_in_gd2",
+      "description": "Đã phân công GVHD, đợt vẫn ở GĐ2",
+      "batch": {
+        "current_stage": "PHASE_2_LOCKED"
+      },
+      "project": {
+        "status": "ALLOCATED"
+      },
+      "expected": {
+        "current_stage_number": 2,
+        "statuses": [
+          "completed",
+          "active",
+          "locked",
+          "locked",
+          "locked",
+          "locked"
+        ],
+        "editable": [
+          false,
+          true,
+          false,
+          false,
+          false,
+          false
+        ]
+      }
+    },
+    {
+      "id": "R02_gd2_done_gd3_opens",
+      "description": "Đợt chuyển sang GĐ3 -> đồ án đã phân công mở GĐ3",
+      "batch": {
+        "current_stage": "PHASE_3_TOPIC"
+      },
+      "project": {
+        "status": "ALLOCATED"
+      },
+      "expected": {
+        "current_stage_number": 3,
+        "current_stage_key": "outline",
+        "statuses": [
+          "completed",
+          "completed",
+          "active",
+          "locked",
+          "locked",
+          "locked"
+        ],
+        "editable": [
+          false,
+          false,
+          true,
+          false,
+          false,
+          false
+        ],
+        "current_step_key": "outline_not_submitted"
+      }
+    },
+    {
+      "id": "R03_outline_sent_to_supervisor_only",
+      "description": "Đề cương mới gửi GVHD -> vẫn GĐ3",
+      "batch": {
+        "current_stage": "PHASE_3_TOPIC"
+      },
+      "project": {
+        "status": "OUTLINE_PENDING",
+        "topic_review_status": "DRAFT"
+      },
+      "expected": {
+        "current_stage_number": 3,
+        "statuses": [
+          "completed",
+          "completed",
+          "active",
+          "locked",
+          "locked",
+          "locked"
+        ],
+        "editable": [
+          false,
+          false,
+          true,
+          false,
+          false,
+          false
+        ],
+        "current_step_key": "outline_waiting_supervisor"
+      }
+    },
+    {
+      "id": "R04_supervisor_approved_faculty_pending",
+      "description": "GVHD duyệt, Khoa chưa duyệt -> vẫn GĐ3",
+      "batch": {
+        "current_stage": "PHASE_3_TOPIC"
+      },
+      "project": {
+        "status": "OUTLINE_PENDING",
+        "topic_review_status": "GV_CONFIRMED"
+      },
+      "expected": {
+        "current_stage_number": 3,
+        "statuses": [
+          "completed",
+          "completed",
+          "active",
+          "locked",
+          "locked",
+          "locked"
+        ],
+        "editable": [
+          false,
+          false,
+          true,
+          false,
+          false,
+          false
+        ],
+        "current_step_key": "outline_waiting_faculty"
+      }
+    },
+    {
+      "id": "R04_outline_revision",
+      "description": "Đề cương bị yêu cầu sửa -> vẫn GĐ3",
+      "batch": {
+        "current_stage": "PHASE_3_TOPIC"
+      },
+      "project": {
+        "status": "OUTLINE_REVISION",
+        "topic_review_status": "REVISION_REQUIRED"
+      },
+      "expected": {
+        "current_stage_number": 3,
+        "editable": [
+          false,
+          false,
+          true,
+          false,
+          false,
+          false
+        ],
+        "current_step_key": "outline_revision"
+      }
+    },
+    {
+      "id": "R04_topic_approved_is_not_outline_approval",
+      "description": "Khoa duyệt đề tài (TOPIC_APPROVED) chưa phải duyệt đề cương -> GĐ3",
+      "batch": {
+        "current_stage": "PHASE_3_TOPIC"
+      },
+      "project": {
+        "status": "TOPIC_APPROVED",
+        "topic_review_status": "APPROVED"
+      },
+      "expected": {
+        "current_stage_number": 3,
+        "editable": [
+          false,
+          false,
+          true,
+          false,
+          false,
+          false
+        ],
+        "current_step_key": "topic_approved"
+      }
+    },
+    {
+      "id": "R05_faculty_approved_outline_opens_gd4",
+      "description": "Khoa phê duyệt đề cương -> mở GĐ4 dù đợt còn GĐ3",
+      "batch": {
+        "current_stage": "PHASE_3_TOPIC"
+      },
+      "project": {
+        "status": "OUTLINE_APPROVED",
+        "topic_review_status": "APPROVED"
+      },
+      "expected": {
+        "current_stage_number": 4,
+        "current_stage_key": "weekly",
+        "statuses": [
+          "completed",
+          "completed",
+          "completed",
+          "active",
+          "locked",
+          "locked"
+        ],
+        "editable": [
+          false,
+          false,
+          false,
+          true,
+          false,
+          false
+        ]
+      }
+    },
+    {
+      "id": "R06_gd4_incomplete_gd5_locked",
+      "description": "Đợt ở GĐ4, đồ án OUTLINE_APPROVED -> GĐ5 khóa",
+      "batch": {
+        "current_stage": "PHASE_4_ELIGIBILITY"
+      },
+      "project": {
+        "status": "OUTLINE_APPROVED",
+        "topic_review_status": "APPROVED"
+      },
+      "expected": {
+        "current_stage_number": 4,
+        "statuses": [
+          "completed",
+          "completed",
+          "completed",
+          "active",
+          "locked",
+          "locked"
+        ],
+        "editable": [
+          false,
+          false,
+          false,
+          true,
+          false,
+          false
+        ]
+      }
+    },
+    {
+      "id": "R06_eligible_in_progress_still_gd4",
+      "description": "Đủ ĐK (IN_PROGRESS) nhưng Khoa chưa chuyển đợt -> vẫn GĐ4, GĐ5 khóa",
+      "batch": {
+        "current_stage": "PHASE_4_ELIGIBILITY"
+      },
+      "project": {
+        "status": "IN_PROGRESS",
+        "topic_review_status": "APPROVED",
+        "initial_eligibility": "ELIGIBLE"
+      },
+      "expected": {
+        "current_stage_number": 4,
+        "statuses": [
+          "completed",
+          "completed",
+          "completed",
+          "active",
+          "locked",
+          "locked"
+        ],
+        "editable": [
+          false,
+          false,
+          false,
+          true,
+          false,
+          false
+        ]
+      }
+    },
+    {
+      "id": "R06_ineligible_capped_at_gd4",
+      "description": "Không đủ ĐK, chờ đặc cách: đợt sang GĐ5 nhưng đồ án dừng GĐ4 chỉ xem",
+      "batch": {
+        "current_stage": "PHASE_5_IN_PROGRESS"
+      },
+      "project": {
+        "status": "OUTLINE_APPROVED",
+        "topic_review_status": "APPROVED",
+        "initial_eligibility": "INELIGIBLE"
+      },
+      "expected": {
+        "current_stage_number": 4,
+        "statuses": [
+          "completed",
+          "completed",
+          "completed",
+          "active",
+          "locked",
+          "locked"
+        ],
+        "editable": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "current_step_key": "waiting_force_approval"
+      }
+    },
+    {
+      "id": "R07_batch_gd5_opens_execution",
+      "description": "Khoa chuyển đợt sang GĐ5 -> mở task board",
+      "batch": {
+        "current_stage": "PHASE_5_IN_PROGRESS"
+      },
+      "project": {
+        "status": "IN_PROGRESS",
+        "topic_review_status": "APPROVED",
+        "initial_eligibility": "ELIGIBLE"
+      },
+      "expected": {
+        "current_stage_number": 5,
+        "current_stage_key": "supervision",
+        "statuses": [
+          "completed",
+          "completed",
+          "completed",
+          "completed",
+          "active",
+          "locked"
+        ],
+        "editable": [
+          false,
+          false,
+          false,
+          false,
+          true,
+          false
+        ]
+      }
+    },
+    {
+      "id": "R07_force_approved_opens_gd5",
+      "description": "Được đặc cách (FORCE_APPROVED) khi đợt ở GĐ5",
+      "batch": {
+        "current_stage": "PHASE_5_IN_PROGRESS"
+      },
+      "project": {
+        "status": "IN_PROGRESS",
+        "topic_review_status": "APPROVED",
+        "initial_eligibility": "FORCE_APPROVED",
+        "is_force_approved": true
+      },
+      "expected": {
+        "current_stage_number": 5,
+        "editable": [
+          false,
+          false,
+          false,
+          false,
+          true,
+          false
+        ]
+      }
+    },
+    {
+      "id": "R07_execution_confirmed_opens_gd6",
+      "description": "GVHD xác nhận hoàn thành GĐ5 -> GĐ6 dù đợt còn GĐ5",
+      "batch": {
+        "current_stage": "PHASE_5_IN_PROGRESS"
+      },
+      "project": {
+        "status": "DEFENSE_READY",
+        "topic_review_status": "APPROVED",
+        "initial_eligibility": "ELIGIBLE",
+        "is_eligible_for_defense": true,
+        "supervisor_defense_confirmed": true
+      },
+      "expected": {
+        "current_stage_number": 6,
+        "current_stage_key": "grade",
+        "statuses": [
+          "completed",
+          "completed",
+          "completed",
+          "completed",
+          "completed",
+          "active"
+        ],
+        "editable": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          true
+        ],
+        "defense_eligible": true
+      }
+    },
+    {
+      "id": "R08_not_eligible_for_defense",
+      "description": "Đợt sang GĐ6 nhưng chưa đủ ĐK bảo vệ -> chỉ GVHD đánh giá, chưa chấm bảo vệ",
+      "batch": {
+        "current_stage": "PHASE_6_DEFENSE"
+      },
+      "project": {
+        "status": "IN_PROGRESS",
+        "topic_review_status": "APPROVED",
+        "initial_eligibility": "ELIGIBLE"
+      },
+      "expected": {
+        "current_stage_number": 6,
+        "editable": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          true
+        ],
+        "defense_eligible": false,
+        "current_step_key": "defense_not_eligible"
+      }
+    },
+    {
+      "id": "R08_final_academic_ineligible",
+      "description": "Sẵn sàng bảo vệ nhưng không đạt xét học vụ cuối -> không đủ ĐK bảo vệ",
+      "batch": {
+        "current_stage": "PHASE_6_DEFENSE"
+      },
+      "project": {
+        "status": "DEFENSE_READY",
+        "topic_review_status": "APPROVED",
+        "is_eligible_for_defense": true,
+        "final_academic_eligibility": "INELIGIBLE",
+        "deferral_status": "REQUESTED"
+      },
+      "expected": {
+        "current_stage_number": 6,
+        "defense_eligible": false
+      }
+    },
+    {
+      "id": "R09_deferred_does_not_advance",
+      "description": "Bảo lưu trước GĐ5: đợt sang GĐ6 nhưng đồ án không tự mở giai đoạn sau",
+      "batch": {
+        "current_stage": "PHASE_6_DEFENSE"
+      },
+      "project": {
+        "status": "DEFERRED",
+        "topic_review_status": "APPROVED",
+        "initial_eligibility": "ELIGIBLE",
+        "deferral_status": "APPROVED"
+      },
+      "expected": {
+        "current_stage_number": 4,
+        "statuses": [
+          "completed",
+          "completed",
+          "completed",
+          "active",
+          "locked",
+          "locked"
+        ],
+        "editable": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "is_blocked": true,
+        "block_kind": "deferred",
+        "defense_eligible": false
+      }
+    },
+    {
+      "id": "R09_deferred_after_supervisor_evaluation",
+      "description": "GVHD đánh giá không đủ ĐK -> DEFERRED, dừng GĐ6 chỉ xem",
+      "batch": {
+        "current_stage": "PHASE_6_DEFENSE"
+      },
+      "project": {
+        "status": "DEFERRED",
+        "topic_review_status": "APPROVED",
+        "supervisor_score": 4.0,
+        "deferral_status": "APPROVED"
+      },
+      "expected": {
+        "current_stage_number": 6,
+        "editable": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "is_blocked": true,
+        "block_kind": "deferred"
+      }
+    },
+    {
+      "id": "R09_disqualified_does_not_advance",
+      "description": "Bị loại ở GĐ4 -> không mở GĐ5 khi đợt chuyển",
+      "batch": {
+        "current_stage": "PHASE_5_IN_PROGRESS"
+      },
+      "project": {
+        "status": "DISQUALIFIED",
+        "topic_review_status": "APPROVED",
+        "initial_eligibility": "DISQUALIFIED"
+      },
+      "expected": {
+        "current_stage_number": 4,
+        "statuses": [
+          "completed",
+          "completed",
+          "completed",
+          "active",
+          "locked",
+          "locked"
+        ],
+        "editable": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "is_blocked": true,
+        "block_kind": "disqualified"
+      }
+    },
+    {
+      "id": "R09_outline_rejected_blocked_at_gd3",
+      "description": "Đề cương bị bác (FAILED+REJECTED) không phải trượt bảo vệ -> dừng GĐ3",
+      "batch": {
+        "current_stage": "PHASE_4_ELIGIBILITY"
+      },
+      "project": {
+        "status": "FAILED",
+        "topic_review_status": "REJECTED"
+      },
+      "expected": {
+        "current_stage_number": 3,
+        "statuses": [
+          "completed",
+          "completed",
+          "active",
+          "locked",
+          "locked",
+          "locked"
+        ],
+        "editable": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "is_blocked": true,
+        "block_kind": "outline_rejected",
+        "is_finished": false
+      }
+    },
+    {
+      "id": "R10_defended_passed_terminal",
+      "description": "Đã bảo vệ, Đạt -> trạng thái cuối",
+      "batch": {
+        "current_stage": "PHASE_6_DEFENSE"
+      },
+      "project": {
+        "status": "PASSED",
+        "topic_review_status": "APPROVED",
+        "is_eligible_for_defense": true,
+        "supervisor_score": 8.0,
+        "reviewer_score": 8.5
+      },
+      "expected": {
+        "current_stage_number": 6,
+        "statuses": [
+          "completed",
+          "completed",
+          "completed",
+          "completed",
+          "completed",
+          "completed"
+        ],
+        "editable": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "is_finished": true,
+        "overall_percent": 100,
+        "current_step_key": "passed"
+      }
+    },
+    {
+      "id": "R10_defended_failed_terminal",
+      "description": "Đã bảo vệ, Không đạt -> trạng thái cuối",
+      "batch": {
+        "current_stage": "PHASE_6_DEFENSE"
+      },
+      "project": {
+        "status": "FAILED",
+        "topic_review_status": "APPROVED",
+        "is_eligible_for_defense": true,
+        "supervisor_score": 4.0,
+        "reviewer_score": 3.0
+      },
+      "expected": {
+        "current_stage_number": 6,
+        "statuses": [
+          "completed",
+          "completed",
+          "completed",
+          "completed",
+          "completed",
+          "completed"
+        ],
+        "editable": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "is_finished": true,
+        "current_step_key": "failed"
+      }
+    },
+    {
+      "id": "R10_defending_is_gd6",
+      "description": "Đang bảo vệ (DEFENDING) -> GĐ6",
+      "batch": {
+        "current_stage": "PHASE_6_DEFENSE"
+      },
+      "project": {
+        "status": "DEFENDING",
+        "topic_review_status": "APPROVED",
+        "is_eligible_for_defense": true
+      },
+      "expected": {
+        "current_stage_number": 6,
+        "editable": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          true
+        ],
+        "defense_eligible": true
+      }
+    },
+    {
+      "id": "R10_closed_batch_read_only",
+      "description": "Đợt đã đóng (COMPLETED) -> mọi giai đoạn chỉ xem",
+      "batch": {
+        "current_stage": "COMPLETED",
+        "is_closed": true
+      },
+      "project": {
+        "status": "DEFENSE_READY",
+        "topic_review_status": "APPROVED",
+        "is_eligible_for_defense": true
+      },
+      "expected": {
+        "current_stage_number": 6,
+        "editable": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "batch_closed": true
+      }
+    },
+    {
+      "id": "R11_batch_ahead_closes_previous_stage",
+      "description": "Đợt GĐ4, đồ án chưa được Khoa duyệt đề cương -> GĐ3 đóng, GĐ4 mở theo đợt",
+      "batch": {
+        "current_stage": "PHASE_4_ELIGIBILITY"
+      },
+      "project": {
+        "status": "OUTLINE_PENDING",
+        "topic_review_status": "GV_CONFIRMED"
+      },
+      "expected": {
+        "current_stage_number": 4,
+        "statuses": [
+          "completed",
+          "completed",
+          "completed",
+          "active",
+          "locked",
+          "locked"
+        ],
+        "editable": [
+          false,
+          false,
+          false,
+          true,
+          false,
+          false
+        ]
+      }
+    }
+  ]
+}

@@ -2,6 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../components/layout/AdminLayout';
 import { apiClient } from '../../api/client';
 import { formatFullName } from '../../utils/nameHelper';
+import {
+  formatWorkflowStage,
+  getWorkflowStepLabel,
+  isDefenseEligible,
+  isDeferred,
+  isInExecution,
+  type ProjectWorkflow,
+} from '../../utils/workflowStage';
 import './ProgressMonitoringPage.css';
 
 interface ProjectProgress {
@@ -18,6 +26,9 @@ interface ProjectProgress {
   supervisor_defense_confirmed: boolean;
   is_eligible_for_defense: boolean;
   created_at: string;
+  /** Giai đoạn chuẩn hóa do backend tính — cùng số GĐ Sinh viên/GVHD nhìn thấy. */
+  workflow?: ProjectWorkflow | null;
+  workflow_stage_number?: number | null;
 }
 
 export const ProgressMonitoringPage: React.FC = () => {
@@ -81,9 +92,9 @@ export const ProgressMonitoringPage: React.FC = () => {
     );
   });
 
-  const countInProgress = studentProjects.filter((p) => p.status === 'IN_PROGRESS' || p.status === 'OUTLINE_APPROVED').length;
-  const countDefenseReady = studentProjects.filter((p) => p.status === 'DEFENSE_READY' || p.is_eligible_for_defense).length;
-  const countDeferred = studentProjects.filter((p) => p.status === 'DEFERRED').length;
+  const countInProgress = studentProjects.filter(isInExecution).length;
+  const countDefenseReady = studentProjects.filter(isDefenseEligible).length;
+  const countDeferred = studentProjects.filter(isDeferred).length;
 
   return (
     <AdminLayout>
@@ -190,7 +201,10 @@ export const ProgressMonitoringPage: React.FC = () => {
                         <div className="font-semibold text-slate-900">{p.topic_title_vi}</div>
                       </td>
                       <td>
-                        <span className="utc-stage-pill">{p.status}</span>
+                        <span className="utc-stage-pill" title={p.status}>{formatWorkflowStage(p)}</span>
+                        {getWorkflowStepLabel(p) && (
+                          <div className="text-xs text-muted">{getWorkflowStepLabel(p)}</div>
+                        )}
                       </td>
                       <td>
                         <span className={`utc-pill ${p.supervisor_defense_confirmed ? 'pill-green' : 'pill-amber'}`}>

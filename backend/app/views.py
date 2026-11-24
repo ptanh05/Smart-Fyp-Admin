@@ -66,6 +66,7 @@ from .serializers import (
     GraduationProjectAdminSerializer
 )
 from .services.excel_importer import ExcelImportService, generate_random_password
+from .services.workflow_stages import compute_project_progress
 from .services.allocation_engine import MinCostMaxFlowAllocationEngine
 from .services.reviewer_engine import ReviewerAndCouncilAllocationEngine
 from .services.document_generator import DocumentGenerationService
@@ -2000,6 +2001,7 @@ class GraduationProjectsAdminListAPIView(APIView):
             "topic_category",
             "final_grade_summary",
             "schedule_slot",
+            "batch",
         )
 
         if batch_id:
@@ -2023,6 +2025,12 @@ class GraduationProjectsAdminListAPIView(APIView):
 
         serializer = GraduationProjectAdminSerializer(projects_list, many=True, context={"request": request})
         data = list(serializer.data)
+        # Giai đoạn chuẩn hóa (contract workflow_stages dùng chung với Cổng SV/GV):
+        # Admin thấy đúng số giai đoạn mà Sinh viên và GVHD thấy cho cùng đồ án.
+        for project_obj, item in zip(projects_list, data):
+            workflow = compute_project_progress(project_obj)
+            item["workflow"] = workflow
+            item["workflow_stage_number"] = workflow["current_stage_number"]
 
         # Synchronize GĐ2 (Phân công GVHD) with GĐ1 (Đợt & Sinh viên):
         # Include all students enrolled in this batch who do not yet have an active GraduationProject.
@@ -2031,7 +2039,7 @@ class GraduationProjectsAdminListAPIView(APIView):
             unassigned_students = Student.objects.filter(
                 academic_batch_id=batch_id
             ).exclude(id__in=assigned_student_ids).select_related(
-                "user", "course_class"
+                "user", "course_class", "academic_batch"
             ).order_by("user__last_name", "user__first_name")
 
             unassigned_list = list(unassigned_students)
@@ -2119,6 +2127,9 @@ class GraduationProjectsAdminListAPIView(APIView):
                         "preference_2_name": p2_name,
                         "preference_3_name": p3_name,
                     }
+                    unassigned_workflow = compute_project_progress(None, st.academic_batch)
+                    unassigned_item["workflow"] = unassigned_workflow
+                    unassigned_item["workflow_stage_number"] = unassigned_workflow["current_stage_number"]
                     data.append(unassigned_item)
 
         from .paginators import paginate_data_or_list

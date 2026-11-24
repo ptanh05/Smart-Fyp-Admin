@@ -435,7 +435,11 @@ export const BatchesPage: React.FC = () => {
       }
 
       const res = await apiClient.post('/admin/students/import-excel/', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        // Creating secure password hashes for a large roster is intentionally
+        // CPU intensive. Do not inherit the 60-second timeout used by normal
+        // API calls or the browser will abort while the backend is still
+        // importing students.
+        timeout: 300000,
       });
       setImportResult(res.data);
       if (res.data?.success) {
@@ -452,7 +456,9 @@ export const BatchesPage: React.FC = () => {
       }
       let msg = responseData?.detail || responseData?.error || responseData?.message;
       if (!msg) {
-        if (err.message === 'Network Error' || !err.response) {
+        if (err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT') {
+          msg = 'Import quá thời gian xử lý 5 phút. Backend có thể vẫn đang hoàn tất dữ liệu; vui lòng tải lại danh sách trước khi thử lại.';
+        } else if (err.message === 'Network Error' || !err.response) {
           msg = 'Không thể kết nối đến máy chủ backend (lỗi mạng hoặc quá thời gian xử lý file). Vui lòng thử lại.';
         } else {
           msg = err.message || 'Lỗi xử lý file Excel sinh viên';
