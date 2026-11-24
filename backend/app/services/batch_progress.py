@@ -172,7 +172,7 @@ def compute_batch_progress(batch):
     ).exclude(supervisor_rating="PENDING").count()
     if SubmissionVersion._meta.db_table in connection.introspection.table_names():
         projects_with_draft = SubmissionVersion.objects.filter(
-            project__batch_id=batch_id, kind="REPORT"
+            project__batch_id=batch_id, kind="REPORT", supervisor_review_status="APPROVED"
         ).values("project_id").distinct().count()
     else:
         # Một số môi trường test/triển khai cũ chưa có bảng feature extension.
@@ -293,12 +293,12 @@ def compute_batch_progress(batch):
             **_DEFINITIONS_BY_NUMBER[4],
             "percent": g4_percent,
             "stats": {
-                "Đã nộp bản nháp": f"{projects_with_draft}/{total_projects}",
+                "Bản nháp GVHD đã duyệt": f"{projects_with_draft}/{total_projects}",
             },
             "action_hint": (
-                "Sinh viên nộp bản nháp báo cáo/quyển đồ án"
+                "Sinh viên nộp bản nháp và GVHD phê duyệt"
                 if g4_percent < 100
-                else "Đã nhận đủ bản nháp, có thể chuyển đợt sang giai đoạn thực hiện"
+                else "GVHD đã duyệt đủ bản nháp, có thể chuyển đợt sang giai đoạn thực hiện"
             ),
         }
     )

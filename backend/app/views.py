@@ -72,6 +72,7 @@ from .services.allocation_engine import MinCostMaxFlowAllocationEngine
 from .services.reviewer_engine import ReviewerAndCouncilAllocationEngine
 from .services.document_generator import DocumentGenerationService
 from .services.defense_scheduler import DefenseSchedulerEngine
+from .feature_models import SubmissionVersion
 
 logger = logging.getLogger(__name__)
 
@@ -1093,6 +1094,41 @@ class AcademicBatchDetailAPIView(RetrieveUpdateDestroyAPIView):
         )
 
     def update(self, request, *args, **kwargs):
+        if request.data.get("current_stage") == "PHASE_5_IN_PROGRESS":
+            batch = self.get_object()
+            active_projects = list(
+                GraduationProject.objects.filter(batch=batch)
+                .exclude(status__in=["DEFERRED", "DISQUALIFIED", "PASSED", "FAILED"])
+                .select_related("student")
+            )
+            approved_project_ids = set(
+                SubmissionVersion.objects.filter(
+                    project__batch=batch,
+                    kind="REPORT",
+                    supervisor_review_status="APPROVED",
+                ).values_list("project_id", flat=True)
+            )
+            missing = [project for project in active_projects if project.id not in approved_project_ids]
+            if not active_projects:
+                return Response(
+                    {"detail": "Đợt chưa có đồ án để chuyển sang GĐ5."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            if missing:
+                sample = ", ".join(
+                    project.student.registration_no for project in missing[:10] if project.student_id
+                )
+                suffix = f" ({sample})" if sample else ""
+                return Response(
+                    {
+                        "detail": (
+                            f"Chưa thể mở GĐ5: còn {len(missing)} đồ án chưa có bản nháp được GVHD duyệt"
+                            f"{suffix}."
+                        ),
+                        "missing_approved_drafts": len(missing),
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
         response = super().update(request, *args, **kwargs)
         cache.delete(BATCHES_CACHE_KEY)
         invalidate_user_summary_cache()
