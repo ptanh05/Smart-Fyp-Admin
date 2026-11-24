@@ -2415,9 +2415,30 @@ class EligibilityDecisionAPIView(APIView):
         return self.handle_decision(request, pk)
 
     def handle_decision(self, request, pk):
-        project = GraduationProject.objects.filter(Q(pk=pk) | Q(student_id=pk) | Q(student__user_id=pk)).first()
+        try:
+            abs_pk = abs(int(pk))
+        except (ValueError, TypeError):
+            abs_pk = pk
+
+        project = GraduationProject.objects.filter(
+            Q(pk=abs_pk) | Q(student_id=abs_pk) | Q(student__user_id=abs_pk)
+        ).first()
+
         if not project:
-            return Response({"detail": "Không tìm thấy hồ sơ đồ án hoặc sinh viên tương ứng."}, status=status.HTTP_404_NOT_FOUND)
+            # If student has not been allocated a GraduationProject yet (e.g. unassigned student)
+            student = Student.objects.filter(Q(pk=abs_pk) | Q(user_id=abs_pk)).first()
+            if student:
+                project = GraduationProject.objects.filter(student=student).first()
+                if not project:
+                    batch = student.academic_batch or AcademicBatch.objects.filter(is_active=True).first()
+                    project = GraduationProject.objects.create(
+                        student=student,
+                        batch=batch,
+                        status="ALLOCATED",
+                        initial_eligibility="PENDING",
+                    )
+            else:
+                return Response({"detail": "Không tìm thấy hồ sơ đồ án hoặc sinh viên tương ứng."}, status=status.HTTP_404_NOT_FOUND)
         decision = (request.data.get("decision") or "FORCE_APPROVE").strip().upper()
         reason = request.data.get("reason", "")
 

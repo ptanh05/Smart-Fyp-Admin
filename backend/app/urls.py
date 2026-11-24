@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, re_path
 from .views import (
     AdminRegisterAPIView,
     AdminLoginAPIView,
@@ -162,10 +162,13 @@ urlpatterns = [
     # Xét điều kiện làm đồ án & Force Approve (Giai đoạn 4)
     path("admin/eligibility/import-excel/", ExcelEligibilityImportAPIView.as_view(), name="admin-eligibility-import-excel"),
     path("admin/projects/<int:pk>/eligibility-decision/", EligibilityDecisionAPIView.as_view(), name="admin-projects-eligibility-decision"),
+    re_path(r"^admin/projects/(?P<pk>-?\d+)/eligibility-decision/?$", EligibilityDecisionAPIView.as_view(), name="admin-projects-eligibility-decision-re"),
     path("admin/projects/<int:pk>/force-approve/", EligibilityDecisionAPIView.as_view(), name="admin-projects-force-approve"),
+    re_path(r"^admin/projects/(?P<pk>-?\d+)/force-approve/?$", EligibilityDecisionAPIView.as_view(), name="admin-projects-force-approve-re"),
     path("projects/<int:pk>/eligibility-decision/", EligibilityDecisionAPIView.as_view(), name="projects-eligibility-decision"),
     path("projects/<int:pk>/force-approve/", EligibilityDecisionAPIView.as_view(), name="projects-force-approve"),
     path("admin/students/<int:pk>/force-approve/", EligibilityDecisionAPIView.as_view(), name="admin-students-force-approve"),
+    re_path(r"^admin/students/(?P<pk>-?\d+)/force-approve/?$", EligibilityDecisionAPIView.as_view(), name="admin-students-force-approve-re"),
     path("students/<int:pk>/force-approve/", EligibilityDecisionAPIView.as_view(), name="students-force-approve"),
     path("app/projects/<int:pk>/force-approve/", EligibilityDecisionAPIView.as_view(), name="app-projects-force-approve"),
     path("app/students/<int:pk>/force-approve/", EligibilityDecisionAPIView.as_view(), name="app-students-force-approve"),

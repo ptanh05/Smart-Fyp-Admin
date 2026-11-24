@@ -122,7 +122,11 @@ export const AllocationsPage: React.FC = () => {
     currentBatch?.is_allocation_published ||
     (currentBatch?.current_stage && !['PHASE_1_SETUP', 'PHASE_2_ALLOCATING', 'PHASE_2_LOCKED'].includes(currentBatch.current_stage))
   );
-  const canPublish = isAllocationLocked && !isAllocationPublished;
+
+  const totalQuota = quotas.reduce((s, q) => s + (q.max_total_quota || 0), 0);
+  const studentProjects = projects.filter((p) => p.student);
+  const totalAssigned = studentProjects.filter((p) => p.supervisor).length;
+  const unassignedCount = studentProjects.filter((p) => !p.supervisor).length;
 
   const handleRunMCMF = async () => {
     if (!selectedBatchId) return;
@@ -140,9 +144,19 @@ export const AllocationsPage: React.FC = () => {
         batch_id: selectedBatchId,
       });
       setMatchResult(res.data);
-      fetchBatches();
-      fetchData();
-      showToast(`✓ Chạy giải thuật MCMF thành công: Đã ghép ${res.data.matched_count} sinh viên!`, 'success');
+      await fetchBatches();
+      await fetchData();
+      if (res.data?.unassigned_count === 0) {
+        showToast(
+          `✓ Chạy giải thuật MCMF thành công: Đã ghép đủ 100% (${res.data.matched_count} sinh viên)! Sẵn sàng Chốt & Công bố.`,
+          'success'
+        );
+      } else {
+        showToast(
+          `✓ Chạy MCMF: Đã ghép ${res.data?.matched_count || 0} SV. Còn ${res.data?.unassigned_count || 0} SV cần phân công thủ công.`,
+          'info'
+        );
+      }
     } catch (err: any) {
       const errMsg =
         err.response?.data?.error ||
@@ -157,14 +171,23 @@ export const AllocationsPage: React.FC = () => {
   };
 
   const handleFinalizeAllocation = async () => {
-    if (!selectedBatchId) return;
+    if (!selectedBatchId || isAllocationLocked || isAllocationPublished) return;
+
+    if (unassignedCount > 0) {
+      showToast(
+        `⚠️ Vẫn còn ${unassignedCount} sinh viên chưa được phân công GVHD. Vui lòng hoàn tất phân công trước khi chốt!`,
+        'error'
+      );
+      return;
+    }
+
     if (!confirm('Khoa xác nhận CHỐT phân công đợt đồ án này? Sau khi chốt, đề xuất sẽ được khóa để chuẩn bị công bố.')) return;
 
     try {
       const res = await apiClient.post('/admin/allocations/finalize/', { batch_id: selectedBatchId });
-      showToast(res.data?.message || '✓ Đã chốt phân công thành công!', 'success');
-      fetchBatches();
-      fetchData();
+      showToast(res.data?.message || '✓ Đã chốt phân công thành công! Bạn có thể nhấn Công Bố & Gửi Thông Báo.', 'success');
+      await fetchBatches();
+      await fetchData();
     } catch (err: any) {
       const errMsg = err.response?.data?.error || err.response?.data?.detail || err.message || 'Lỗi chốt phân công';
       showToast(`❌ ${errMsg}`, 'error');
@@ -172,23 +195,63 @@ export const AllocationsPage: React.FC = () => {
   };
 
   const handlePublishAllocation = async () => {
-    if (!selectedBatchId) return;
-    if (!isAllocationLocked) {
-      showToast('⚠️ Khoa cần chốt danh sách phân công (Khoa Chốt Phân Công) trước khi công bố!', 'error');
-      return;
-    }
+    if (!selectedBatchId || sendingEmails || matching || loading) return;
+
     if (isAllocationPublished) {
       showToast('ℹ️ Đợt này đã được công bố kết quả phân công trước đó.', 'info');
       return;
     }
+
+    if (unassignedCount > 0) {
+      showToast(
+        `⚠️ Vẫn còn ${unassignedCount} sinh viên chưa được phân công GVHD. Vui lòng hoàn tất phân công trước khi công bố!`,
+        'error'
+      );
+      return;
+    }
+
+    // Nếu chưa chốt phân công (đang ở giai đoạn phân công): Tự động hỗ trợ Chốt và Công bố liền mạch
+    if (!isAllocationLocked) {
+      const confirmAll = confirm(
+        'Đợt này chưa được chốt danh sách. Bạn có xác nhận muốn CHỐT PHÂN CÔNG và CÔNG BỐ KẾT QUẢ (gửi thông báo cho toàn bộ Giảng viên & Sinh viên) ngay bây giờ?'
+      );
+      if (!confirmAll) return;
+
+      try {
+        setSendingEmails(true);
+        // Bước 1: Gọi chốt phân công
+        const finalizeRes = await apiClient.post('/admin/allocations/finalize/', { batch_id: selectedBatchId });
+        if (finalizeRes.data && finalizeRes.data.success === false) {
+          showToast(`❌ ${finalizeRes.data.error || 'Lỗi khi chốt phân công'}`, 'error');
+          return;
+        }
+
+        // Bước 2: Gọi công bố và phát thông báo
+        const pubRes = await apiClient.post('/admin/allocations/publish/', { batch_id: selectedBatchId });
+        showToast(
+          pubRes.data?.message || '✓ Đã chốt, công bố và gửi thông báo thành công! Chuyển sang Giai đoạn 3.',
+          'success'
+        );
+        await fetchBatches();
+        await fetchData();
+      } catch (err: any) {
+        const errMsg = err.response?.data?.error || err.response?.data?.detail || err.message || 'Lỗi công bố phân công';
+        showToast(`❌ ${errMsg}`, 'error');
+      } finally {
+        setSendingEmails(false);
+      }
+      return;
+    }
+
+    // Nếu đã chốt phân công rồi (PHASE_2_LOCKED)
     if (!confirm('CÔNG BỐ & PHÁT THÔNG BÁO kết quả phân công cho toàn bộ Giảng viên và Sinh viên qua hệ thống?')) return;
 
     try {
       setSendingEmails(true);
       const res = await apiClient.post('/admin/allocations/publish/', { batch_id: selectedBatchId });
       showToast(res.data?.message || '✓ Đã công bố và gửi thông báo thành công! Chuyển sang Giai đoạn 3.', 'success');
-      fetchBatches();
-      fetchData();
+      await fetchBatches();
+      await fetchData();
     } catch (err: any) {
       const errMsg = err.response?.data?.error || err.response?.data?.detail || err.message || 'Lỗi công bố';
       showToast(`❌ ${errMsg}`, 'error');
@@ -216,17 +279,13 @@ export const AllocationsPage: React.FC = () => {
       showToast(`✓ Đã override phân công thủ công cho SV ${overrideStudent.student_reg_no} thành công!`, 'success');
       setShowOverrideModal(false);
       setOverrideStudent(null);
-      fetchData();
+      await fetchBatches();
+      await fetchData();
     } catch (err: any) {
       const errMsg = err.response?.data?.error || err.response?.data?.detail || err.message || 'Lỗi override';
       showToast(`❌ ${errMsg}`, 'error');
     }
   };
-
-  const totalQuota = quotas.reduce((s, q) => s + (q.max_total_quota || 0), 0);
-  const studentProjects = projects.filter((p) => p.student);
-  const totalAssigned = studentProjects.filter((p) => p.supervisor).length;
-  const unassignedCount = studentProjects.filter((p) => !p.supervisor).length;
 
   return (
     <AdminLayout>
@@ -280,27 +339,78 @@ export const AllocationsPage: React.FC = () => {
 
             <button
               onClick={handleFinalizeAllocation}
-              disabled={isAllocationPublished}
+              disabled={isAllocationPublished || isAllocationLocked}
               className={`utc-btn-warning ${isAllocationLocked ? 'utc-btn-is-locked' : ''}`}
-              title={isAllocationPublished ? 'Khoa đã chốt và công bố kết quả phân công' : 'Khoa chốt danh sách phân công (Bước 17)'}
+              title={
+                isAllocationPublished
+                  ? 'Khoa đã chốt và công bố kết quả phân công'
+                  : isAllocationLocked
+                  ? 'Đợt này đã được chốt phân công (Bước 17)'
+                  : 'Khoa chốt danh sách phân công (Bước 17)'
+              }
             >
               <span>🔒</span> {isAllocationPublished ? 'Đã Chốt & Công Bố' : isAllocationLocked ? '✓ Đã Chốt Phân Công' : 'Khoa Chốt Phân Công'}
             </button>
 
             <button
               onClick={handlePublishAllocation}
-              disabled={!canPublish || sendingEmails || matching}
-              className={`utc-btn-primary ${!canPublish ? 'btn-disabled-guide' : ''}`}
+              disabled={isAllocationPublished || sendingEmails || matching}
+              className={`utc-btn-primary ${isAllocationLocked && !isAllocationPublished ? 'utc-btn-pulse' : ''}`}
               title={
-                !isAllocationLocked && !isAllocationPublished
-                  ? "Vui lòng nhấn 'Khoa Chốt Phân Công' trước khi công bố và gửi thông báo!"
-                  : isAllocationPublished
+                isAllocationPublished
                   ? 'Đã công bố và gửi thông báo kết quả cho toàn bộ GV & SV'
-                  : 'Công bố và gửi email kết quả cho SV & GV (Bước 18 & 19)'
+                  : isAllocationLocked
+                  ? 'Công bố và gửi email kết quả cho SV & GV (Chuyển sang Giai đoạn 3)'
+                  : 'Chốt phân công & Công bố kết quả cho toàn bộ SV & GV (Bước 18 & 19)'
               }
             >
-              <span>📢</span> {isAllocationPublished ? '✓ Đã Công Bố & Gửi Thông Báo' : sendingEmails ? 'Đang công bố & gửi email...' : 'Công Bố & Gửi Thông Báo'}
+              <span>📢</span> {isAllocationPublished ? '✓ Đã Công Bố & Gửi Thông Báo' : sendingEmails ? 'Đang công bố & gửi thông báo...' : 'Công Bố & Gửi Thông Báo'}
             </button>
+          </div>
+        </div>
+
+        {/* Workflow Stepper Guide */}
+        <div className="utc-workflow-stepper">
+          <div className={`utc-wf-step ${totalAssigned > 0 ? 'completed' : 'active'}`}>
+            <span className="utc-wf-index">{totalAssigned > 0 ? '✓' : '1'}</span>
+            <div className="utc-wf-content">
+              <strong>1. Phân Công GVHD</strong>
+              <span>
+                {unassignedCount === 0 && totalAssigned > 0
+                  ? `Đã phân công đủ 100% (${totalAssigned} SV)`
+                  : totalAssigned > 0
+                  ? `Đã ghép ${totalAssigned}/${studentProjects.length} SV (Còn ${unassignedCount} SV)`
+                  : 'Chạy MCMF hoặc gán thủ công'}
+              </span>
+            </div>
+          </div>
+          <div className="utc-wf-divider" />
+          <div className={`utc-wf-step ${isAllocationLocked || isAllocationPublished ? 'completed' : totalAssigned > 0 && unassignedCount === 0 ? 'ready' : ''}`}>
+            <span className="utc-wf-index">{isAllocationLocked || isAllocationPublished ? '✓' : '2'}</span>
+            <div className="utc-wf-content">
+              <strong>2. Khoa Chốt Danh Sách</strong>
+              <span>
+                {isAllocationPublished || isAllocationLocked
+                  ? 'Đã chốt danh sách phân công'
+                  : totalAssigned > 0 && unassignedCount === 0
+                  ? 'Đã ghép đủ - Sẵn sàng chốt'
+                  : 'Chờ phân công đủ SV'}
+              </span>
+            </div>
+          </div>
+          <div className="utc-wf-divider" />
+          <div className={`utc-wf-step ${isAllocationPublished ? 'completed' : isAllocationLocked ? 'ready active-glow' : ''}`}>
+            <span className="utc-wf-index">{isAllocationPublished ? '✓' : '3'}</span>
+            <div className="utc-wf-content">
+              <strong>3. Công Bố & Thông Báo</strong>
+              <span>
+                {isAllocationPublished
+                  ? 'Đã công bố & chuyển sang GĐ 3'
+                  : isAllocationLocked
+                  ? 'Sẵn sàng phát lệnh công bố'
+                  : 'Gửi kết quả cho toàn bộ GV & SV'}
+              </span>
+            </div>
           </div>
         </div>
 

@@ -35,6 +35,14 @@ export const EligibilityPage: React.FC = () => {
   // Force Approve Modal
   const [forceProject, setForceProject] = useState<ProjectEligibility | null>(null);
   const [forceReason, setForceReason] = useState('');
+  const [submittingForce, setSubmittingForce] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   const fetchBatches = async () => {
     try {
@@ -95,50 +103,99 @@ export const EligibilityPage: React.FC = () => {
       setImportResult(res.data);
       fetchProjects();
     } catch (err: any) {
-      alert('Lỗi import: ' + (err.response?.data?.detail || err.message));
+      setToast({ type: 'error', message: 'Lỗi import: ' + (err.response?.data?.detail || err.message) });
     } finally {
       setImporting(false);
     }
   };
 
+  const getInitialIneligibilityReason = (proj: ProjectEligibility) => {
+    if (proj.ineligibility_reason && proj.ineligibility_reason.trim()) {
+      return proj.ineligibility_reason;
+    }
+    if (proj.debt_credits && proj.debt_credits >= 10) {
+      return `Nợ ${proj.debt_credits} tín chỉ (vượt giới hạn quy định tối đa < 10 TC)`;
+    }
+    if (proj.gpa_score !== null && proj.gpa_score !== undefined && proj.gpa_score < 2.0) {
+      return `Điểm CPA ${proj.gpa_score} (dưới ngưỡng 2.0 quy định)`;
+    }
+    if (proj.initial_eligibility === 'INELIGIBLE') {
+      return 'Không đủ điều kiện học vụ theo danh sách rà soát';
+    }
+    return 'Chưa có ghi chú vi phạm cụ thể (Cần phê duyệt đặc cách theo đơn giải trình)';
+  };
+
+  const openForceApproveModal = (p: ProjectEligibility) => {
+    setForceProject(p);
+    const defaultNote = p.debt_credits && p.debt_credits >= 10
+      ? `Khoa đặc cách: Cho phép SV nợ ${p.debt_credits} TC làm đồ án có điều kiện, cam kết trả nợ trước lễ bảo vệ.`
+      : (p.gpa_score !== null && p.gpa_score !== undefined && p.gpa_score < 2.0
+          ? `Khoa đặc cách: Chấp thuận đơn giải trình nâng điểm của SV (CPA ${p.gpa_score}).`
+          : (p.ineligibility_reason ? `Đặc cách: ${p.ineligibility_reason}` : 'Khoa phê duyệt đặc cách theo đơn giải trình và quyết định của Hội đồng.'));
+    setForceReason(defaultNote);
+  };
+
   const handleForceApproveSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!forceProject) return;
+    if (!forceProject || submittingForce) return;
 
     try {
-      await apiClient.post(`/admin/projects/${forceProject.id}/force-approve/`, {
+      setSubmittingForce(true);
+      const targetId = forceProject.id > 0
+        ? forceProject.id
+        : (forceProject.student || Math.abs(forceProject.id));
+
+      await apiClient.post(`/admin/projects/${targetId}/force-approve/`, {
         decision: 'FORCE_APPROVE',
         reason: forceReason.trim() || 'Khoa phê duyệt đặc cách theo đơn giải trình',
       });
-      alert(`Đã Force Approve đặc cách cho SV ${forceProject.student_reg_no} làm đồ án!`);
+      setToast({
+        type: 'success',
+        message: `Đã Force Approve đặc cách thành công cho SV ${formatFullName(forceProject.student_name)} (${forceProject.student_reg_no})!`,
+      });
       setForceProject(null);
       setForceReason('');
       fetchProjects();
     } catch (err: any) {
-      alert('Lỗi đặc cách: ' + (err.response?.data?.detail || err.message));
+      setToast({
+        type: 'error',
+        message: 'Lỗi đặc cách: ' + (err.response?.data?.detail || err.message),
+      });
+    } finally {
+      setSubmittingForce(false);
     }
   };
 
   const handleBulkForceApproveIneligible = async () => {
     const ineligibles = projects.filter((p) => p.initial_eligibility === 'INELIGIBLE');
     if (ineligibles.length === 0) {
-      alert('Không có sinh viên nào ở trạng thái Không đủ điều kiện.');
+      setToast({ type: 'info', message: 'Không có sinh viên nào ở trạng thái Không đủ điều kiện.' });
       return;
     }
     if (!window.confirm(`Bạn có chắc chắn muốn Force Approve đặc cách cho toàn bộ ${ineligibles.length} sinh viên không đủ điều kiện được làm đồ án tốt nghiệp?`)) {
       return;
     }
     try {
+      setSubmittingForce(true);
       for (const p of ineligibles) {
-        await apiClient.post(`/admin/projects/${p.id}/force-approve/`, {
+        const targetId = p.id > 0 ? p.id : (p.student || Math.abs(p.id));
+        await apiClient.post(`/admin/projects/${targetId}/force-approve/`, {
           decision: 'FORCE_APPROVE',
           reason: 'Khoa phê duyệt đặc cách tập trung cho đợt đồ án',
         });
       }
-      alert(`Đã Force Approve thành công cho ${ineligibles.length} sinh viên!`);
+      setToast({
+        type: 'success',
+        message: `Đã Force Approve thành công cho toàn bộ ${ineligibles.length} sinh viên!`,
+      });
       fetchProjects();
     } catch (err: any) {
-      alert('Lỗi: ' + (err.response?.data?.detail || err.message));
+      setToast({
+        type: 'error',
+        message: 'Lỗi: ' + (err.response?.data?.detail || err.message),
+      });
+    } finally {
+      setSubmittingForce(false);
     }
   };
 
@@ -147,14 +204,15 @@ export const EligibilityPage: React.FC = () => {
     if (reason === null) return;
 
     try {
-      await apiClient.patch(`/admin/projects/${projId}/eligibility-decision/`, {
+      const targetId = projId > 0 ? projId : Math.abs(projId);
+      await apiClient.patch(`/admin/projects/${targetId}/eligibility-decision/`, {
         decision: 'DISQUALIFY',
         reason: reason.trim(),
       });
-      alert(`Đã loại sinh viên ${regNo} khỏi đợt đồ án.`);
+      setToast({ type: 'info', message: `Đã loại sinh viên ${regNo} khỏi đợt đồ án.` });
       fetchProjects();
     } catch (err: any) {
-      alert('Lỗi: ' + (err.response?.data?.detail || err.message));
+      setToast({ type: 'error', message: 'Lỗi: ' + (err.response?.data?.detail || err.message) });
     }
   };
 
@@ -323,10 +381,7 @@ export const EligibilityPage: React.FC = () => {
                           {p.initial_eligibility !== 'ELIGIBLE' && p.initial_eligibility !== 'FORCE_APPROVED' && (
                             <>
                               <button
-                                onClick={() => {
-                                  setForceProject(p);
-                                  setForceReason(p.ineligibility_reason ? `Đặc cách: ${p.ineligibility_reason}` : 'Khoa phê duyệt đặc cách theo đơn giải trình');
-                                }}
+                                onClick={() => openForceApproveModal(p)}
                                 className="utc-btn-sm-force"
                                 data-testid="force-approve-btn"
                                 title="Cho phép đặc cách làm đồ án (Force Approve)"
@@ -351,10 +406,7 @@ export const EligibilityPage: React.FC = () => {
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                               <span className="text-xs text-blue-600 font-bold">⭐ Đã đặc cách (GĐ5)</span>
                               <button
-                                onClick={() => {
-                                  setForceProject(p);
-                                  setForceReason(p.ineligibility_reason || 'Khoa phê duyệt đặc cách theo đơn giải trình');
-                                }}
+                                onClick={() => openForceApproveModal(p)}
                                 className="utc-btn-sm-subtle"
                                 title="Cập nhật thông tin đặc cách"
                               >
@@ -420,23 +472,58 @@ export const EligibilityPage: React.FC = () => {
 
         {/* MODAL 2: FORCE APPROVE */}
         {forceProject && (
-          <div className="utc-modal-backdrop">
-            <div className="utc-modal-card">
+          <div className="utc-modal-backdrop" onClick={() => !submittingForce && setForceProject(null)}>
+            <div className="utc-modal-card force-approve-modal" onClick={(e) => e.stopPropagation()}>
               <div className="utc-modal-head">
                 <h4>⭐ Quyết Định Force Approve (Đặc Cách Cho Làm Đồ Án)</h4>
-                <button onClick={() => setForceProject(null)} className="utc-btn-close">✕</button>
+                <button
+                  type="button"
+                  disabled={submittingForce}
+                  onClick={() => setForceProject(null)}
+                  className="utc-btn-close"
+                >
+                  ✕
+                </button>
               </div>
               <form onSubmit={handleForceApproveSubmit}>
-                <div className="utc-form-group">
-                  <p>Sinh viên: <strong>{formatFullName(forceProject.student_name)}</strong> ({forceProject.student_reg_no})</p>
-                  <p>Lý do không đạt ban đầu: <span className="text-red font-bold">{forceProject.ineligibility_reason}</span></p>
+                <div className="utc-student-highlight-box">
+                  <div className="utc-sh-row">
+                    <span className="utc-sh-label">Sinh viên:</span>
+                    <strong className="utc-sh-val">{formatFullName(forceProject.student_name)}</strong>
+                    <span className="utc-badge-reg">MSSV: {forceProject.student_reg_no}</span>
+                    {forceProject.student_class && (
+                      <span className="utc-badge-class">Lớp: {forceProject.student_class}</span>
+                    )}
+                  </div>
+                  <div className="utc-sh-metrics">
+                    <div className="utc-sh-metric">
+                      <span className="utc-metric-lbl">Điểm CPA tích lũy:</span>
+                      <strong className={`utc-metric-val ${forceProject.gpa_score !== null && forceProject.gpa_score < 2.0 ? 'text-red' : 'text-emerald'}`}>
+                        {forceProject.gpa_score !== null && forceProject.gpa_score !== undefined ? forceProject.gpa_score : 'Chưa cập nhật'}
+                      </strong>
+                    </div>
+                    <div className="utc-sh-metric">
+                      <span className="utc-metric-lbl">Tín chỉ nợ:</span>
+                      <strong className={`utc-metric-val ${forceProject.debt_credits >= 10 ? 'text-red' : 'text-emerald'}`}>
+                        {forceProject.debt_credits || 0} TC
+                      </strong>
+                    </div>
+                  </div>
+                  <div className="utc-sh-reason">
+                    <span className="utc-sh-label">Lý do không đạt ban đầu:</span>
+                    <span className="utc-reason-text font-bold text-red">
+                      {getInitialIneligibilityReason(forceProject)}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="utc-form-group">
-                  <label>Lý do Khoa chấp thuận đặc cách (Lưu hồ sơ kiểm toán):</label>
+                <div className="utc-form-group" style={{ marginTop: '1rem' }}>
+                  <label htmlFor="forceReasonInput">Lý do Khoa chấp thuận đặc cách (Lưu hồ sơ kiểm toán):</label>
                   <textarea
+                    id="forceReasonInput"
                     rows={4}
                     required
+                    disabled={submittingForce}
                     placeholder="VD: Sinh viên đã có đơn cam kết trả nợ học phần trong kỳ phụ; Đã được phê duyệt giải trình đặc cách..."
                     value={forceReason}
                     onChange={(e) => setForceReason(e.target.value)}
@@ -445,10 +532,39 @@ export const EligibilityPage: React.FC = () => {
                 </div>
 
                 <div className="utc-modal-foot">
-                  <button type="button" onClick={() => setForceProject(null)} className="utc-btn-cancel">Hủy</button>
-                  <button type="submit" className="utc-btn-primary">Xác Nhận Force Approve</button>
+                  <button
+                    type="button"
+                    disabled={submittingForce}
+                    onClick={() => setForceProject(null)}
+                    className="utc-btn-cancel"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submittingForce}
+                    className="utc-btn-primary"
+                  >
+                    {submittingForce ? 'Đang xử lý Force Approve...' : 'Xác Nhận Force Approve'}
+                  </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* TOAST NOTIFICATION CONTAINER */}
+        {toast && (
+          <div className="utc-toast-container">
+            <div className={`utc-toast-item ${toast.type}`}>
+              <span>{toast.message}</span>
+              <button
+                type="button"
+                onClick={() => setToast(null)}
+                className="utc-toast-close"
+              >
+                ✕
+              </button>
             </div>
           </div>
         )}
