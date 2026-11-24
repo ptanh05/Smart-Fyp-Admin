@@ -435,6 +435,7 @@ export const BatchesPage: React.FC = () => {
       }
 
       const res = await apiClient.post('/admin/students/import-excel/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
         // Creating secure password hashes for a large roster is intentionally
         // CPU intensive. Do not inherit the 60-second timeout used by normal
         // API calls or the browser will abort while the backend is still

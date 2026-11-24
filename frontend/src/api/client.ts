@@ -49,6 +49,21 @@ apiClient.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  // Khi gửi FormData, xóa Content-Type: application/json mặc định để trình duyệt
+  // tự gắn multipart/form-data kèm boundary chính xác.
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData && config.headers) {
+    const currentContentType =
+      typeof config.headers.get === 'function'
+        ? config.headers.get('Content-Type')
+        : config.headers['Content-Type'];
+    if (!currentContentType || String(currentContentType).includes('application/json')) {
+      if (typeof config.headers.delete === 'function') {
+        config.headers.delete('Content-Type');
+      } else {
+        delete config.headers['Content-Type'];
+      }
+    }
+  }
   return config;
 });
 
