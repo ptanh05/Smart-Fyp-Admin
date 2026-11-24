@@ -40,7 +40,6 @@ from .models import (
     CouncilMember,
     CouncilLiveScore,
     DefenseScheduleSlot,
-    CouncilLiveScore,
     FinalGradeSummary,
     EvaluationPolicy
 )

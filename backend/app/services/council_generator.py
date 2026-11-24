@@ -198,14 +198,15 @@ class CouncilGeneratorEngine:
                 council=None, reviewer=None
             )
 
+        unfinalized_batch_qs = all_batch_qs.exclude(council__is_finalized=True)
+        unfinalized_count = unfinalized_batch_qs.count()
         projects = list(
-            all_batch_qs.filter(eligible_q)
+            unfinalized_batch_qs.filter(eligible_q)
             .exclude(final_academic_eligibility="INELIGIBLE")
-            .exclude(council__is_finalized=True)
             .select_related("student__user", "supervisor__user")
             .order_by("student__registration_no")
         )
-        skipped_ineligible_count = max(0, total_batch_projects - len(projects))
+        skipped_ineligible_count = max(0, unfinalized_count - len(projects))
 
         if not projects:
             # Phân biệt đợt trống (chưa có đề tài) với đợt mà mọi đề tài đã chốt Hội đồng/bảo lưu.
@@ -213,6 +214,11 @@ class CouncilGeneratorEngine:
                 return {
                     "success": False,
                     "error": "Đợt này chưa có đề tài nào để thành lập Hội đồng.",
+                }
+            if unfinalized_count == 0:
+                return {
+                    "success": False,
+                    "error": "Đợt này không còn đề tài nào chưa chốt Hội đồng để thành lập Hội đồng.",
                 }
             # Xóa các hội đồng chưa chốt rỗng nếu không có SV nào đủ điều kiện
             old_unfinalized = DefenseCouncil.objects.filter(batch=batch, is_finalized=False)

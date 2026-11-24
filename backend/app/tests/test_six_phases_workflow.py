@@ -315,10 +315,7 @@ class SixPhasesWorkflowTests(TestCase):
             topic_title_vi="Đồ án Đạt Chuẩn", supervisor_defense_confirmed=True,
             final_academic_eligibility="ELIGIBLE", is_eligible_for_defense=True,
             status="DEFENSE_READY", council=council,
-            supervisor_score=8.0, reviewer_score=7.5,
         )
-        # Từ commit 9b266dc: chỉ chốt điểm khi đủ điểm GVHD, GVPB và điểm Hội đồng.
-        FinalGradeSummary.objects.create(project=proj_pass, council_avg_score=8.0)
 
         proj_defer = GraduationProject.objects.create(
             student=self.sv2, batch=self.batch, supervisor=self.sup2,
@@ -355,7 +352,6 @@ class SixPhasesWorkflowTests(TestCase):
         proj_pass.supervisor_score = 8.5
         proj_pass.reviewer_score = 8.0
         proj_pass.save(update_fields=["supervisor_score", "reviewer_score"])
-        from app.models import FinalGradeSummary
         FinalGradeSummary.objects.update_or_create(
             project=proj_pass,
             defaults={
