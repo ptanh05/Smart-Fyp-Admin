@@ -100,6 +100,7 @@ class AcademicBatch(models.Model):
     is_allocation_published = models.BooleanField(default=False)
     allocation_published_at = models.DateTimeField(null=True, blank=True)
     is_closed = models.BooleanField(default=False)
+    supplementary_open = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -720,6 +721,9 @@ class ThesisDeferralRequest(models.Model):
     evidence_file = models.FileField(upload_to="deferral_evidence/", null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="PENDING")
     admin_notes = models.TextField(blank=True, null=True)
+    supervisor_feedback = models.TextField(blank=True, default="")
+    supervisor_reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_by_admin = models.BooleanField(default=False)
     submitted_at = models.DateTimeField(auto_now_add=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
     reviewed_by = models.ForeignKey(CustomUser, null=True, blank=True, on_delete=models.SET_NULL, related_name="reviewed_deferral_requests")
@@ -1256,3 +1260,106 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"Thông báo: {self.user.username} - {self.title}"
+
+
+class BatchMilestone(models.Model):
+    """Mốc thời gian chi tiết theo từng giai đoạn của một Đợt đồ án"""
+    batch = models.ForeignKey(AcademicBatch, on_delete=models.CASCADE, related_name="milestones")
+    name = models.CharField(max_length=255)
+    stage_number = models.PositiveSmallIntegerField(default=1)
+    start_date = models.DateTimeField(null=True, blank=True)
+    end_date = models.DateTimeField(null=True, blank=True)
+    description = models.TextField(blank=True, default="")
+    order_index = models.PositiveIntegerField(default=1)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "app_batchmilestone"
+        ordering = ["order_index", "start_date", "id"]
+        verbose_name = "Mốc thời gian đợt đồ án"
+        verbose_name_plural = "Danh sách Mốc thời gian đợt đồ án"
+
+    def __str__(self):
+        return f"{self.batch.batch_code} - GĐ{self.stage_number}: {self.name}"
+
+
+class DefenseMinutesSignature(models.Model):
+    """Chữ ký xác nhận Biên bản bảo vệ của từng thành viên Hội đồng"""
+    council = models.ForeignKey(DefenseCouncil, on_delete=models.CASCADE, related_name="minutes_signatures")
+    project = models.ForeignKey(GraduationProject, on_delete=models.CASCADE, related_name="minutes_signatures")
+    member = models.ForeignKey(CouncilMember, on_delete=models.CASCADE, related_name="minutes_signatures")
+    signed_by = models.ForeignKey(
+        CustomUser,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="defense_minutes_signatures",
+    )
+    note = models.CharField(max_length=255, blank=True, default="")
+    signed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "app_defenseminutessignature"
+        unique_together = ("project", "member")
+        ordering = ["signed_at", "id"]
+        verbose_name = "Chữ ký biên bản bảo vệ"
+        verbose_name_plural = "Danh sách Chữ ký biên bản bảo vệ"
+
+    def __str__(self):
+        return f"Chữ ký {self.member_id} - Đề tài #{self.project_id}"
+
+
+class SecurityPolicy(models.Model):
+    """Cấu hình chính sách bảo mật động lưu CSDL"""
+    policy_key = models.CharField(max_length=64, unique=True)
+    label = models.CharField(max_length=255)
+    policy_value = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default="")
+    updated_by = models.ForeignKey(
+        CustomUser,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="updated_security_policies",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "app_securitypolicy"
+        ordering = ["policy_key"]
+        verbose_name = "Chính sách bảo mật"
+        verbose_name_plural = "Danh sách Chính sách bảo mật"
+
+    def __str__(self):
+        return f"{self.policy_key}={self.policy_value}"
+
+
+class UserSessionLog(models.Model):
+    """Theo dõi phiên đăng nhập JWT phục vụ giám sát và thu hồi từ xa"""
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="session_logs")
+    token_jti = models.CharField(max_length=128, db_index=True)
+    portal = models.CharField(max_length=32, default="portal")
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=500, blank=True, default="")
+    is_active = models.BooleanField(default=True, db_index=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoked_by = models.ForeignKey(
+        CustomUser,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="revoked_session_logs",
+    )
+    revoke_reason = models.CharField(max_length=255, blank=True, default="")
+    last_seen_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = "app_usersessionlog"
+        ordering = ["-created_at", "-id"]
+        verbose_name = "Phiên đăng nhập"
+        verbose_name_plural = "Danh sách Phiên đăng nhập"
+
+    def __str__(self):
+        return f"Session {self.user.username} ({'ACTIVE' if self.is_active else 'REVOKED'})"

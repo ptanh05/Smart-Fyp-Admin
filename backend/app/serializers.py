@@ -18,7 +18,9 @@ from .models import (
     EvaluationPolicy,
     OutlineReviewGroup,
     OutlineReview,
-    AcademicStaff
+    AcademicStaff,
+    BatchMilestone,
+    ThesisDeferralRequest,
 )
 from .utils.department_formatter import normalize_department_name
 
@@ -525,6 +527,7 @@ class AcademicBatchSerializer(serializers.ModelSerializer):
             "is_allocation_published",
             "allocation_published_at",
             "is_closed",
+            "supplementary_open",
             "created_at",
             "classes",
             "student_count",
@@ -780,6 +783,8 @@ class GraduationProjectAdminSerializer(serializers.ModelSerializer):
         slot = getattr(obj, "schedule_slot", None)
         if slot:
             return {
+                "id": slot.id,
+                "council": slot.council_id,
                 "order": slot.order_number,
                 "date": str(slot.slot_date) if slot.slot_date else "",
                 "start": slot.start_time.strftime("%H:%M") if slot.start_time else "",
@@ -804,18 +809,95 @@ class GraduationProjectAdminSerializer(serializers.ModelSerializer):
             data["topic_title_vi"] = ""
         return data
 
-    def get_outline_file_url(self, obj):
-        if obj.outline_pdf_path:
-            url = obj.outline_pdf_path.url if hasattr(obj.outline_pdf_path, 'url') else str(obj.outline_pdf_path)
-            request = self.context.get('request')
-            if request and not url.startswith('http'):
-                return request.build_absolute_uri(url)
-            return url
-        return None
 
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-        title = (data.get("topic_title_vi") or "").strip()
-        if title.startswith("Đồ án tốt nghiệp của") or title.startswith("Đề tài tốt nghiệp của"):
-            data["topic_title_vi"] = ""
-        return data
+class BatchMilestoneSerializer(serializers.ModelSerializer):
+    status = serializers.SerializerMethodField()
+    days_left = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BatchMilestone
+        fields = [
+            "id",
+            "batch",
+            "name",
+            "stage_number",
+            "start_date",
+            "end_date",
+            "description",
+            "order_index",
+            "is_active",
+            "status",
+            "days_left",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
+
+    def validate_stage_number(self, value):
+        if value < 1 or value > 6:
+            raise serializers.ValidationError("Giai đoạn phải nằm trong khoảng 1 đến 6.")
+        return value
+
+    def validate(self, attrs):
+        start = attrs.get("start_date") or getattr(self.instance, "start_date", None)
+        end = attrs.get("end_date") or getattr(self.instance, "end_date", None)
+        if start and end and end < start:
+            raise serializers.ValidationError({"end_date": "Thời gian kết thúc không được nhỏ hơn thời gian bắt đầu."})
+        return attrs
+
+    def get_status(self, obj):
+        from django.utils import timezone
+        now = timezone.now()
+        if obj.start_date and obj.start_date > now:
+            return "UPCOMING"
+        if obj.end_date and obj.end_date < now:
+            return "EXPIRED"
+        if obj.start_date or obj.end_date:
+            return "ACTIVE"
+        return "UNSCHEDULED"
+
+    def get_days_left(self, obj):
+        if not obj.end_date:
+            return None
+        from django.utils import timezone
+        delta = (obj.end_date.date() - timezone.localdate()).days
+        return delta
+
+
+class ThesisDeferralRequestSerializer(serializers.ModelSerializer):
+    student_name = serializers.SerializerMethodField()
+    student_reg_no = serializers.CharField(source="student.registration_no", read_only=True, default="")
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    reviewed_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ThesisDeferralRequest
+        fields = [
+            "id",
+            "project",
+            "student",
+            "student_name",
+            "student_reg_no",
+            "reason",
+            "evidence_file",
+            "status",
+            "status_display",
+            "admin_notes",
+            "supervisor_feedback",
+            "supervisor_reviewed_at",
+            "created_by_admin",
+            "submitted_at",
+            "reviewed_at",
+            "reviewed_by",
+            "reviewed_by_name",
+        ]
+        read_only_fields = ["id", "submitted_at", "reviewed_at", "reviewed_by", "supervisor_reviewed_at"]
+
+    def get_student_name(self, obj):
+        if obj.student and obj.student.user:
+            return obj.student.user.get_full_name() or obj.student.user.username
+        return ""
+
+    def get_reviewed_by_name(self, obj):
+        if obj.reviewed_by:
+            return obj.reviewed_by.get_full_name() or obj.reviewed_by.username
+        return ""

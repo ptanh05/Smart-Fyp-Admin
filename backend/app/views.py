@@ -174,15 +174,21 @@ class AdminLoginAPIView(APIView):
 
     def post(self, request):
         from django.core.cache import cache
+        from .session_auth import get_security_policy_int, issue_tracked_session_tokens
+
         identifier = (request.data.get("username") or request.data.get("email") or "").strip()
         password = request.data.get("password", "")
 
         if not identifier or not password:
             return Response({"detail": "Username/email and password are required."}, status=status.HTTP_400_BAD_REQUEST)
 
+        max_attempts = max(1, get_security_policy_int("max_login_attempts", 3))
+        lockout_minutes = max(1, get_security_policy_int("lockout_minutes", 15))
+        lock_ttl = lockout_minutes * 60
+
         lock_key = f"login_lock_{identifier}"
         if cache.get(lock_key):
-            return Response({"detail": "Tài khoản tạm khóa 15 phút do nhập sai mật khẩu quá 3 lần."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+            return Response({"detail": f"Tài khoản tạm khóa {lockout_minutes} phút do nhập sai mật khẩu quá {max_attempts} lần."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
         fail_key = f"login_fail_{identifier}"
         fail_count = cache.get(fail_key, 0)
@@ -195,19 +201,19 @@ class AdminLoginAPIView(APIView):
 
         if not user or not is_valid:
             fail_count += 1
-            if fail_count >= 3:
-                cache.set(lock_key, True, 15 * 60)  # 15 minutes
+            if fail_count >= max_attempts:
+                cache.set(lock_key, True, lock_ttl)
                 cache.delete(fail_key)
                 if user:
                     AuditLog.objects.create(
                         user=user,
                         action_type="SECURITY_ALERT",
-                        description=f"Tài khoản bị khóa 15 phút do nhập sai mật khẩu 3 lần."
+                        description=f"Tài khoản bị khóa {lockout_minutes} phút do nhập sai mật khẩu {max_attempts} lần."
                     )
-                return Response({"detail": "Tài khoản tạm khóa 15 phút do nhập sai mật khẩu quá 3 lần."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+                return Response({"detail": f"Tài khoản tạm khóa {lockout_minutes} phút do nhập sai mật khẩu quá {max_attempts} lần."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
             
-            cache.set(fail_key, fail_count, 15 * 60)
-            return Response({"detail": f"Sai thông tin đăng nhập. Bạn còn {3 - fail_count} lần thử trước khi bị khóa."}, status=status.HTTP_401_UNAUTHORIZED)
+            cache.set(fail_key, fail_count, lock_ttl)
+            return Response({"detail": f"Sai thông tin đăng nhập. Bạn còn {max_attempts - fail_count} lần thử trước khi bị khóa."}, status=status.HTTP_401_UNAUTHORIZED)
 
         # Successful login, reset fail count
         cache.delete(fail_key)
@@ -227,8 +233,7 @@ class AdminLoginAPIView(APIView):
             user.user_type = "admin"
             user.save(update_fields=["user_type"])
 
-        refresh = RefreshToken.for_user(user)
-        access_token = str(refresh.access_token)
+        refresh, access_token, _ = issue_tracked_session_tokens(user, request, portal="admin")
 
         AuditLog.objects.create(
             user=user,
@@ -250,12 +255,17 @@ class AdminCookieTokenRefreshAPIView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        from .session_auth import UserSessionLog
         refresh_token = request.COOKIES.get("refresh_token")
         if not refresh_token:
             return Response({"detail": "No refresh token cookie found."}, status=status.HTTP_401_UNAUTHORIZED)
 
         try:
             refresh = RefreshToken(refresh_token)
+            sid = refresh.payload.get("sid")
+            if sid and UserSessionLog.objects.filter(token_jti=sid, is_active=False).exists():
+                response = Response({"detail": "Phiên đăng nhập đã bị thu hồi."}, status=status.HTTP_401_UNAUTHORIZED)
+                return delete_refresh_cookie(response)
             user_id = refresh.payload.get("user_id")
             user = CustomUser.objects.filter(id=user_id).first()
 
@@ -278,6 +288,14 @@ class AdminCookieLogoutAPIView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        from .session_auth import revoke_session_by_jti
+        refresh_token = request.COOKIES.get("refresh_token")
+        if refresh_token:
+            try:
+                tok = RefreshToken(refresh_token)
+                revoke_session_by_jti(str(tok.payload.get("sid") or tok.payload.get("jti") or ""), revoked_by=request.user if request.user.is_authenticated else None, reason="User logout")
+            except Exception:
+                pass
         response = Response({"message": "Logged out successfully."}, status=status.HTTP_200_OK)
         return delete_refresh_cookie(response)
 
@@ -921,11 +939,7 @@ class AdminSecurityCenterAPIView(APIView):
     permission_classes = [IsAuthenticated, IsSuperAdminOnly]
 
     def get(self, request):
-        cached_sec = cache.get(SECURITY_METRICS_CACHE_KEY)
-        if cached_sec is not None:
-            res = Response(cached_sec, status=status.HTTP_200_OK)
-            res["Cache-Control"] = "private, max-age=30"
-            return res
+        from .session_auth import UserSessionLog, ensure_default_security_policies
 
         total_users = CustomUser.objects.count()
         active_users = CustomUser.objects.filter(is_active=True).count()
@@ -936,7 +950,16 @@ class AdminSecurityCenterAPIView(APIView):
         batches_count = AcademicBatch.objects.count()
         projects_count = GraduationProject.objects.count()
         councils_count = DefenseCouncil.objects.count()
-        recent_audits = AuditLogSerializer(AuditLog.objects.all().order_by("-created_at")[:10], many=True).data
+        recent_audits = AuditLogSerializer(AuditLog.objects.all().order_by("-created_at")[:15], many=True).data
+
+        policies_qs = ensure_default_security_policies()
+        sessions_qs = UserSessionLog.objects.select_related("user", "revoked_by").order_by("-is_active", "-last_seen_at", "-created_at")[:50]
+
+        middleware_list = list(getattr(settings, "MIDDLEWARE", []))
+        rf_settings = getattr(settings, "REST_FRAMEWORK", {})
+        simple_jwt = getattr(settings, "SIMPLE_JWT", {})
+        access_lt = simple_jwt.get("ACCESS_TOKEN_LIFETIME")
+        access_mins = int(access_lt.total_seconds() // 60) if access_lt else 15
 
         sec_data = {
             "metrics": {
@@ -949,22 +972,63 @@ class AdminSecurityCenterAPIView(APIView):
                 "batches_count": batches_count,
                 "projects_count": projects_count,
                 "councils_count": councils_count,
+                "active_sessions_count": UserSessionLog.objects.filter(is_active=True).count(),
             },
             "security_headers": {
-                "httponly_cookies": True,
-                "content_security_policy": True,
-                "hsts_production": True,
-                "cors_credentials": True,
+                "httponly_cookies": bool(getattr(settings, "SESSION_COOKIE_HTTPONLY", False)),
+                "content_security_policy": bool(getattr(settings, "CONTENT_SECURITY_POLICY", None) or any("csp" in m.lower() for m in middleware_list)),
+                "hsts_production": bool(getattr(settings, "SECURE_HSTS_SECONDS", 0) > 0),
+                "hsts_seconds": int(getattr(settings, "SECURE_HSTS_SECONDS", 0) or 0),
+                "cors_credentials": bool(getattr(settings, "CORS_ALLOW_CREDENTIALS", False)),
+                "x_frame_options": getattr(settings, "X_FRAME_OPTIONS", "SAMEORIGIN"),
+                "nosniff_enabled": bool(getattr(settings, "SECURE_CONTENT_TYPE_NOSNIFF", False)),
+                "debug_mode": bool(getattr(settings, "DEBUG", False)),
                 "magic_bytes_file_inspection": True,
                 "websocket_one_time_tickets": True,
-                "jwt_access_expiry_minutes": 15,
-                "rate_limiting_active": True,
+                "jwt_access_expiry_minutes": access_mins,
+                "rate_limiting_active": bool(rf_settings.get("DEFAULT_THROTTLE_CLASSES")),
+                "bot_protection_active": any("BotProtectionMiddleware" in m for m in middleware_list),
             },
-            "recent_audits": recent_audits
+            "policies": [
+                {
+                    "id": p.id,
+                    "policy_key": p.policy_key,
+                    "label": p.label,
+                    "policy_value": p.policy_value,
+                    "description": p.description,
+                    "updated_at": p.updated_at,
+                }
+                for p in policies_qs
+            ],
+            "active_sessions": [
+                {
+                    "id": s.id,
+                    "user_id": s.user_id,
+                    "username": s.user.username,
+                    "full_name": s.user.get_full_name() or s.user.username,
+                    "user_type": s.user.user_type,
+                    "portal": s.portal,
+                    "ip_address": s.ip_address,
+                    "user_agent": s.user_agent,
+                    "is_active": s.is_active,
+                    "last_seen_at": s.last_seen_at,
+                    "created_at": s.created_at,
+                    "revoked_at": s.revoked_at,
+                    "revoke_reason": s.revoke_reason,
+                }
+                for s in sessions_qs
+            ],
+            "rbac_matrix": [
+                {"role": "admin", "label": "Quản trị viên Hệ thống (SuperAdmin)", "scopes": ["Quản lý Đợt & Timeline", "Phân công GVHD", "Bảo mật & Thu hồi phiên", "Đóng / Mở đợt"]},
+                {"role": "academic_staff", "label": "Giáo vụ Khoa", "scopes": ["Import SV & Điểm học vụ", "Xét ĐK / Bảo lưu", "Hội đồng & Xuất biểu mẫu"]},
+                {"role": "supervisor", "label": "Giảng viên Hướng dẫn", "scopes": ["Xác nhận đề tài & Duyệt đề cương", "Task Board & Nhật ký HD", "Góp ý bảo lưu & Chấm điểm"]},
+                {"role": "council", "label": "Thành viên Hội đồng", "scopes": ["Chấm điểm trực tiếp (1CT-2TK-2UV)", "Ký biên bản bảo vệ điện tử"]},
+                {"role": "student", "label": "Sinh viên", "scopes": ["Đăng ký NV1-NV3 & ĐK bổ sung", "Nộp đề cương / Báo cáo tuần / Bảo lưu"]},
+            ],
+            "recent_audits": recent_audits,
         }
-        cache.set(SECURITY_METRICS_CACHE_KEY, sec_data, 30)
         res = Response(sec_data, status=status.HTTP_200_OK)
-        res["Cache-Control"] = "private, max-age=30"
+        res["Cache-Control"] = "no-store"
         return res
 
 
@@ -1096,6 +1160,11 @@ class AcademicBatchDetailAPIView(RetrieveUpdateDestroyAPIView):
     def update(self, request, *args, **kwargs):
         if request.data.get("current_stage") == "PHASE_5_IN_PROGRESS":
             batch = self.get_object()
+            if getattr(batch, "supplementary_open", False):
+                return Response(
+                    {"detail": "Đợt đồ án đang mở đăng ký bổ sung. Vui lòng chốt đăng ký bổ sung trước khi chuyển sang GĐ5."},
+                    status=status.HTTP_409_CONFLICT,
+                )
             active_projects = list(
                 GraduationProject.objects.filter(batch=batch)
                 .exclude(status__in=["DEFERRED", "DISQUALIFIED", "PASSED", "FAILED"])
@@ -1130,12 +1199,45 @@ class AcademicBatchDetailAPIView(RetrieveUpdateDestroyAPIView):
                     status=status.HTTP_409_CONFLICT,
                 )
         response = super().update(request, *args, **kwargs)
+        try:
+            batch_obj = self.get_object()
+            AuditLog.objects.create(
+                user=request.user,
+                action_type="group_status_change",
+                description=f"Khoa cập nhật thông tin Đợt đồ án {batch_obj.batch_code}.",
+            )
+        except Exception:
+            pass
         cache.delete(BATCHES_CACHE_KEY)
         invalidate_user_summary_cache()
         return response
 
     def destroy(self, request, *args, **kwargs):
+        batch = self.get_object()
+        force = str(request.query_params.get("force", "")).lower() in ("1", "true", "yes")
+        student_cnt = batch.students.count()
+        project_cnt = batch.graduation_projects.count()
+        if (student_cnt > 0 or project_cnt > 0) and not force:
+            return Response(
+                {
+                    "detail": (
+                        f"Đợt {batch.batch_code} đang có {student_cnt} sinh viên và {project_cnt} đồ án. "
+                        "Chỉ cho phép xóa đợt trống hoặc sử dụng xác nhận xóa cưỡng bức."
+                    ),
+                    "error": "batch_not_empty",
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        b_code = batch.batch_code
         response = super().destroy(request, *args, **kwargs)
+        try:
+            AuditLog.objects.create(
+                user=request.user,
+                action_type="group_status_change",
+                description=f"Khoa đã xóa Đợt đồ án {b_code}.",
+            )
+        except Exception:
+            pass
         cache.delete(BATCHES_CACHE_KEY)
         invalidate_user_summary_cache()
         return response
@@ -3071,6 +3173,10 @@ class CloseBatchAPIView(APIView):
 
     def post(self, request, pk):
         batch = get_object_or_404(AcademicBatch, pk=pk)
+
+        if getattr(batch, "supplementary_open", False):
+            msg = "Đợt đồ án đang mở đăng ký bổ sung. Vui lòng chốt phân công bổ sung trước khi kết thúc đợt."
+            return Response({"error": msg, "detail": msg}, status=status.HTTP_400_BAD_REQUEST)
 
         councils = list(DefenseCouncil.objects.filter(batch=batch).order_by("council_number"))
         if not councils:

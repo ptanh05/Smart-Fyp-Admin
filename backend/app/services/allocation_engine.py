@@ -64,7 +64,7 @@ class MinCostMaxFlowAllocationEngine:
             self.rev = rev
 
     @classmethod
-    def allocate_supervisors_for_batch(cls, batch_id) -> dict[str, Any]:
+    def allocate_supervisors_for_batch(cls, batch_id, only_unassigned=False) -> dict[str, Any]:
         try:
             batch = AcademicBatch.objects.get(id=batch_id)
         except AcademicBatch.DoesNotExist:
@@ -79,10 +79,59 @@ class MinCostMaxFlowAllocationEngine:
             return {
                 "success": True,
                 "matched_count": 0,
+                "preserved_count": 0,
+                "newly_matched_count": 0,
                 "unassigned_count": 0,
                 "matched": [],
                 "unassigned": [],
                 "message": "Không có sinh viên nào trong đợt này."
+            }
+
+        # Khấu trừ các đồ án đã khóa trạng thái (hoặc toàn bộ SV đã có GVHD khi chạy bổ sung)
+        locked_qs = GraduationProject.objects.filter(batch=batch)
+        if only_unassigned:
+            locked_qs = locked_qs.filter(supervisor__isnull=False)
+        else:
+            locked_qs = locked_qs.filter(status__in=cls.LOCKED_PROJECT_STATUSES)
+
+        locked_projects = list(locked_qs.select_related('student__user', 'supervisor__user'))
+        locked_student_ids = {p.student_id for p in locked_projects if p.student_id}
+        locked_count_by_sup = collections.Counter(
+            p.supervisor_id for p in locked_projects if p.supervisor_id
+        )
+
+        # Chỉ chạy MCMF cho các sinh viên chưa có đồ án bị khóa trạng thái / chưa phân công
+        allocatable_students = [s for s in students if s.id not in locked_student_ids]
+
+        if only_unassigned and not allocatable_students:
+            preserved = []
+            for proj in locked_projects:
+                if not proj.student or not proj.supervisor:
+                    continue
+                st = proj.student
+                sup = proj.supervisor
+                preserved.append({
+                    "student_id": st.id,
+                    "student_name": st.user.get_full_name() or st.user.username,
+                    "registration_no": st.registration_no,
+                    "education_program": st.education_program,
+                    "supervisor_id": sup.id,
+                    "supervisor_name": f"{sup.academic_title or ''} {sup.user.get_full_name()}".strip(),
+                    "academic_title": sup.academic_title or "",
+                    "department": sup.department_name,
+                    "project_id": proj.id,
+                })
+            return {
+                "success": True,
+                "only_unassigned": True,
+                "matched_count": len(preserved),
+                "preserved_count": len(preserved),
+                "newly_matched_count": 0,
+                "unassigned_count": 0,
+                "matched": preserved,
+                "unassigned": [],
+                "total_students": len(students),
+                "message": "Toàn bộ sinh viên trong đợt đã được phân công GVHD.",
             }
 
         # 2. Fetch active supervisor quotas in batch (filter active users)
@@ -101,19 +150,6 @@ class MinCostMaxFlowAllocationEngine:
             if q.max_total_quota is None:
                 q.calculate_capacity()
                 q.save(update_fields=["max_total_quota"])
-
-        # Khấu trừ các đồ án đã khóa trạng thái (đang thực hiện / đã duyệt đề tài / bảo vệ...)
-        locked_projects = list(
-            GraduationProject.objects.filter(batch=batch, status__in=cls.LOCKED_PROJECT_STATUSES)
-            .select_related('student__user', 'supervisor__user')
-        )
-        locked_student_ids = {p.student_id for p in locked_projects if p.student_id}
-        locked_count_by_sup = collections.Counter(
-            p.supervisor_id for p in locked_projects if p.supervisor_id
-        )
-
-        # Chỉ chạy MCMF cho các sinh viên chưa có đồ án bị khóa trạng thái
-        allocatable_students = [s for s in students if s.id not in locked_student_ids]
 
         # Fetch student preferences (NV1, NV2, NV3) or legacy internship info
         preferences = {pref.student_id: pref for pref in StudentPreference.objects.filter(batch=batch).select_related(
@@ -270,6 +306,7 @@ class MinCostMaxFlowAllocationEngine:
             total_cost += push * dist[sink]
 
         # Trích xuất kết quả đề xuất
+        preserved_results = []
         matched_results = []
         unassigned_students = []
 
@@ -279,7 +316,7 @@ class MinCostMaxFlowAllocationEngine:
                 continue
             st = proj.student
             sup = proj.supervisor
-            matched_results.append({
+            item = {
                 "student_id": st.id,
                 "student_name": st.user.get_full_name() or st.user.username,
                 "registration_no": st.registration_no,
@@ -289,7 +326,9 @@ class MinCostMaxFlowAllocationEngine:
                 "academic_title": sup.academic_title or "",
                 "department": sup.department_name,
                 "project_id": proj.id,
-            })
+            }
+            preserved_results.append(item)
+            matched_results.append(item)
 
         with transaction.atomic():
             for s_idx, student in enumerate(allocatable_students, start=1):
@@ -369,7 +408,10 @@ class MinCostMaxFlowAllocationEngine:
 
         return {
             "success": True,
+            "only_unassigned": bool(only_unassigned),
             "matched_count": len(matched_results),
+            "preserved_count": len(preserved_results),
+            "newly_matched_count": len(matched_results) - len(preserved_results),
             "unassigned_count": len(unassigned_students),
             "matched": matched_results,
             "unassigned": unassigned_students,
@@ -380,6 +422,12 @@ class MinCostMaxFlowAllocationEngine:
     def finalize_allocation(cls, batch_id, user=None):
         """Khoa chốt phân công đề tài (Bước 17)"""
         batch = AcademicBatch.objects.get(id=batch_id)
+
+        if getattr(batch, "supplementary_open", False):
+            return {
+                "success": False,
+                "error": "Đợt đồ án đang mở đăng ký bổ sung. Vui lòng chốt phân công bổ sung trước khi khóa danh sách."
+            }
 
         allocated_qs = GraduationProject.objects.filter(batch=batch, supervisor__isnull=False)
         if not allocated_qs.exists():
@@ -415,6 +463,11 @@ class MinCostMaxFlowAllocationEngine:
     def publish_and_notify_allocation(cls, batch_id, user=None):
         """Công bố và gửi email kết quả phân công (Bước 18 & 19)"""
         batch = AcademicBatch.objects.get(id=batch_id)
+        if getattr(batch, "supplementary_open", False):
+            return {
+                "success": False,
+                "error": "Đợt đồ án đang mở đăng ký bổ sung. Vui lòng chốt phân công bổ sung trước khi công bố kết quả."
+            }
         if batch.current_stage != "PHASE_2_LOCKED":
             if batch.is_allocation_published:
                 return {

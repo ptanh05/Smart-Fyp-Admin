@@ -24,6 +24,18 @@ export interface BatchStage {
   action_hint?: string;
 }
 
+export interface BatchMilestoneItem {
+  id: number;
+  name: string;
+  stage_number: number;
+  start_date?: string | null;
+  end_date?: string | null;
+  description?: string;
+  order_index: number;
+  status: 'UPCOMING' | 'ACTIVE' | 'EXPIRED' | 'UNSCHEDULED';
+  days_left?: number | null;
+}
+
 export interface BatchProgressData {
   batch?: {
     id: number;
@@ -33,14 +45,19 @@ export interface BatchProgressData {
     current_stage: string;
     is_active: boolean;
     is_closed: boolean;
+    supplementary_open?: boolean;
     start_date?: string | null;
     end_date?: string | null;
   };
   is_open: boolean;
+  supplementary_open?: boolean;
   current_stage_number: number;
   current_stage?: BatchStage;
   overall_percent: number;
   stages: BatchStage[];
+  milestones?: BatchMilestoneItem[];
+  current_milestone?: BatchMilestoneItem | null;
+  days_left?: number | null;
   next_actions?: string[];
   summary?: Record<string, number>;
   my_project?: {
@@ -242,6 +259,21 @@ export const BatchProgressBar: React.FC<Props> = ({
           </span>
           {data.next_actions && data.next_actions.length > 0 && (
             <span className="utc-bpb-next-hint">· {data.next_actions[0]}</span>
+          )}
+          {data.current_milestone && (
+            <span className="utc-bpb-next-hint" style={{ fontWeight: 700, color: (data.current_milestone.days_left ?? 1) < 0 ? '#dc2626' : '#0369a1' }}>
+              · 🗓️ {data.current_milestone.name}
+              {data.current_milestone.days_left !== null && data.current_milestone.days_left !== undefined
+                ? (data.current_milestone.days_left >= 0
+                    ? ` (Còn ${data.current_milestone.days_left} ngày)`
+                    : ` (Quá hạn ${Math.abs(data.current_milestone.days_left)} ngày)`)
+                : ''}
+            </span>
+          )}
+          {(data.supplementary_open || data.batch?.supplementary_open) && (
+            <span className="utc-bpb-next-hint" style={{ fontWeight: 700, color: '#b45309' }}>
+              · 🔔 Đang mở ĐK bổ sung
+            </span>
           )}
         </div>
       )}

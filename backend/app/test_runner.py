@@ -28,6 +28,10 @@ class LegacyTableTestRunner(DiscoverRunner):
     # ------------------------------------------------------------------
     def _create_missing_legacy_tables(self):
         from django.apps import apps
+        try:
+            from . import feature_models  # noqa: F401
+        except ImportError:
+            pass
 
         existing_tables = set(connection.introspection.table_names())
 

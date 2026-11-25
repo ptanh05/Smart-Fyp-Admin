@@ -70,6 +70,15 @@ export const SupervisorsPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  // Topic Areas CRUD State
+  const [topicAreas, setTopicAreas] = useState<Array<{ id: number; code: string; name: string; description?: string; is_active: boolean; supervisor_count?: number }>>([]);
+  const [showTopicAreaModal, setShowTopicAreaModal] = useState(false);
+  const [areaCode, setAreaCode] = useState('');
+  const [areaName, setAreaName] = useState('');
+  const [areaDesc, setAreaDesc] = useState('');
+  const [editingAreaId, setEditingAreaId] = useState<number | null>(null);
+  const [savingArea, setSavingArea] = useState(false);
+
   const validateSupPhone = (val: string): string | undefined => {
     const trimmed = val.trim();
     if (!trimmed) return undefined;
@@ -129,9 +138,19 @@ export const SupervisorsPage: React.FC = () => {
     }
   };
 
+  const fetchTopicAreas = async () => {
+    try {
+      const res = await apiClient.get('/admin/topic-areas/?include_inactive=true');
+      setTopicAreas(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error('Error fetching topic areas:', err);
+    }
+  };
+
   useEffect(() => {
     fetchSupervisors();
     fetchDepartments();
+    fetchTopicAreas();
   }, []);
 
   const handleOpenEdit = (sup: SupervisorProfile) => {
@@ -182,11 +201,15 @@ export const SupervisorsPage: React.FC = () => {
     try {
       setSaving(true);
       const interestString = selectedAreas.join('; ');
+      const matchedTopicIds = topicAreas
+        .filter((a) => selectedAreas.includes(a.name))
+        .map((a) => a.id);
       await apiClient.patch(`/admin/supervisors/${editingSupervisor.id}/profile/`, {
         academic_title: supTitle,
         department_id: supDeptId ? Number(supDeptId) : null,
         academic_rank_multiplier: supMultiplier,
         research_interest: interestString,
+        ...(matchedTopicIds.length > 0 ? { topic_area_ids: matchedTopicIds } : {}),
         phone_number: supPhone.trim()
       });
 
@@ -252,9 +275,25 @@ export const SupervisorsPage: React.FC = () => {
               Thiết lập học vị (GS/PGS/TS/ThS), hướng nghiên cứu chuyên sâu, bộ môn chuyên môn và hệ số Capacity cho từng giảng viên.
             </p>
           </div>
-          <button onClick={() => fetchSupervisors()} className="utc-btn-refresh">
-            🔄 Làm Mới Dữ Liệu
-          </button>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => {
+                setEditingAreaId(null);
+                setAreaCode('');
+                setAreaName('');
+                setAreaDesc('');
+                setShowTopicAreaModal(true);
+              }}
+              className="utc-btn-refresh"
+              style={{ background: '#e0f2fe', color: '#0369a1', border: '1px solid #7dd3fc' }}
+            >
+              📚 Quản Lý Chuyên Ngành ({topicAreas.filter((a) => a.is_active).length})
+            </button>
+            <button onClick={() => fetchSupervisors()} className="utc-btn-refresh">
+              🔄 Làm Mới Dữ Liệu
+            </button>
+          </div>
         </div>
 
         {notification && (
@@ -572,7 +611,10 @@ export const SupervisorsPage: React.FC = () => {
                       border: supTouched.areas && supErrors.areas ? '1px solid #dc2626' : '1px solid #cbd5e1',
                     }}
                   >
-                    {UTC_RESEARCH_AREAS.map((area) => {
+                    {(topicAreas.filter((a) => a.is_active).length > 0
+                      ? topicAreas.filter((a) => a.is_active).map((a) => a.name)
+                      : UTC_RESEARCH_AREAS
+                    ).map((area) => {
                       const isChecked = selectedAreas.includes(area);
                       return (
                         <label
@@ -638,6 +680,138 @@ export const SupervisorsPage: React.FC = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* TopicArea CRUD Modal */}
+        {showTopicAreaModal && (
+          <div className="utc-modal-backdrop">
+            <div className="utc-modal-card" style={{ maxWidth: '680px' }}>
+              <div className="utc-modal-head">
+                <h4>📚 Quản Lý Danh Mục Chuyên Ngành / Hướng Nghiên Cứu</h4>
+                <button onClick={() => setShowTopicAreaModal(false)} className="utc-btn-close">✕</button>
+              </div>
+              <div className="utc-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!areaCode.trim() || !areaName.trim() || savingArea) return;
+                    try {
+                      setSavingArea(true);
+                      if (editingAreaId) {
+                        await apiClient.patch(`/admin/topic-areas/${editingAreaId}/`, {
+                          code: areaCode.trim(),
+                          name: areaName.trim(),
+                          description: areaDesc.trim(),
+                        });
+                      } else {
+                        await apiClient.post('/admin/topic-areas/', {
+                          code: areaCode.trim(),
+                          name: areaName.trim(),
+                          description: areaDesc.trim(),
+                          is_active: true,
+                        });
+                      }
+                      setEditingAreaId(null);
+                      setAreaCode('');
+                      setAreaName('');
+                      setAreaDesc('');
+                      await fetchTopicAreas();
+                    } catch (err: any) {
+                      alert('Lỗi lưu chuyên ngành: ' + (err.response?.data?.detail || err.message));
+                    } finally {
+                      setSavingArea(false);
+                    }
+                  }}
+                  style={{ display: 'grid', gridTemplateColumns: '140px 1fr auto', gap: '8px', alignItems: 'end', padding: '0.75rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}
+                >
+                  <div>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 600 }}>Mã CN (*)</label>
+                    <input type="text" required value={areaCode} onChange={(e) => setAreaCode(e.target.value)} placeholder="VD: AI_DATA" className="utc-input" />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 600 }}>Tên chuyên ngành (*)</label>
+                    <input type="text" required value={areaName} onChange={(e) => setAreaName(e.target.value)} placeholder="VD: Dữ liệu & Trí tuệ nhân tạo" className="utc-input" />
+                  </div>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button type="submit" disabled={savingArea} className="utc-btn-primary">
+                      {editingAreaId ? '💾 Cập nhật' : '➕ Thêm'}
+                    </button>
+                    {editingAreaId && (
+                      <button type="button" onClick={() => { setEditingAreaId(null); setAreaCode(''); setAreaName(''); setAreaDesc(''); }} className="utc-btn-cancel">Hủy</button>
+                    )}
+                  </div>
+                </form>
+
+                <div style={{ maxHeight: '320px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                  <table className="utc-custom-table" style={{ width: '100%' }}>
+                    <thead>
+                      <tr>
+                        <th>Mã</th>
+                        <th>Tên chuyên ngành</th>
+                        <th>Trạng thái</th>
+                        <th>Thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {topicAreas.map((a) => (
+                        <tr key={a.id}>
+                          <td style={{ fontFamily: 'monospace', fontWeight: 700 }}>{a.code}</td>
+                          <td>{a.name}</td>
+                          <td>
+                            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: a.is_active ? '#059669' : '#64748b' }}>
+                              {a.is_active ? '● Đang mở' : '○ Đã ẩn'}
+                            </span>
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <button
+                                type="button"
+                                onClick={() => { setEditingAreaId(a.id); setAreaCode(a.code); setAreaName(a.name); setAreaDesc(a.description || ''); }}
+                                className="utc-btn-cancel"
+                                style={{ padding: '2px 8px', fontSize: '0.78rem' }}
+                              >
+                                ✏️ Sửa
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await apiClient.patch(`/admin/topic-areas/${a.id}/`, { is_active: !a.is_active });
+                                  fetchTopicAreas();
+                                }}
+                                className="utc-btn-cancel"
+                                style={{ padding: '2px 8px', fontSize: '0.78rem' }}
+                              >
+                                {a.is_active ? 'Ẩn' : 'Hiện'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (!confirm(`Xóa chuyên ngành '${a.name}'?`)) return;
+                                  try {
+                                    await apiClient.delete(`/admin/topic-areas/${a.id}/`);
+                                    fetchTopicAreas();
+                                  } catch (err: any) {
+                                    alert(err.response?.data?.detail || err.message);
+                                  }
+                                }}
+                                className="utc-btn-cancel"
+                                style={{ padding: '2px 8px', fontSize: '0.78rem', color: '#dc2626' }}
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="utc-modal-foot">
+                <button type="button" onClick={() => setShowTopicAreaModal(false)} className="utc-btn-cancel">Đóng</button>
+              </div>
             </div>
           </div>
         )}

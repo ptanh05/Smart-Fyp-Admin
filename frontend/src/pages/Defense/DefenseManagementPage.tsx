@@ -100,6 +100,16 @@ export const DefenseManagementPage: React.FC = () => {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<any>(null);
 
+  // Formal Deferral Requests & Admin-created Deferral Modal
+  const [deferralRequests, setDeferralRequests] = useState<any[]>([]);
+  const [showCreateDeferralModal, setShowCreateDeferralModal] = useState(false);
+  const [deferProjectId, setDeferProjectId] = useState<string>('');
+  const [deferReason, setDeferReason] = useState<string>('');
+  const [deferAdminNotes, setDeferAdminNotes] = useState<string>('');
+  const [deferAutoApprove, setDeferAutoApprove] = useState<boolean>(true);
+  const [creatingDeferral, setCreatingDeferral] = useState<boolean>(false);
+  const [councilSignatures, setCouncilSignatures] = useState<any>(null);
+
   const selectedBatch = batches.find((b) => b.id === selectedBatchId) || null;
   const selectedCouncil = selectedCouncilId
     ? councils.find((c) => String(c.id) === String(selectedCouncilId)) || null
@@ -130,12 +140,18 @@ export const DefenseManagementPage: React.FC = () => {
         url += `&council_id=${selectedCouncilId}`;
       }
 
-      const [counRes, projRes] = await Promise.all([
+      const [counRes, projRes, defRes, sigRes] = await Promise.all([
         apiClient.get(`/admin/councils/?batch_id=${selectedBatchId}&_t=${Date.now()}`),
         apiClient.get(url),
+        apiClient.get(`/admin/deferrals/?batch_id=${selectedBatchId}`).catch(() => ({ data: [] })),
+        selectedCouncilId
+          ? apiClient.get(`/admin/defense/councils/${selectedCouncilId}/signatures/`).catch(() => ({ data: null }))
+          : Promise.resolve({ data: null }),
       ]);
       setCouncils(Array.isArray(counRes.data) ? counRes.data : (counRes.data?.results || []));
       setProjects(Array.isArray(projRes.data) ? projRes.data : (projRes.data?.results || []));
+      setDeferralRequests(Array.isArray(defRes.data) ? defRes.data : (defRes.data?.results || []));
+      setCouncilSignatures(sigRes?.data || null);
     } catch (err) {
       console.error(err);
       setCouncils([]);
@@ -352,6 +368,43 @@ export const DefenseManagementPage: React.FC = () => {
     }
   };
 
+  const handleCreateDeferral = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deferProjectId || !deferReason.trim() || creatingDeferral) return;
+    const selectedProj = projects.find((p) => String(p.id) === deferProjectId);
+    try {
+      setCreatingDeferral(true);
+      await apiClient.post('/admin/deferrals/', {
+        project_id: selectedProj && selectedProj.id > 0 ? selectedProj.id : undefined,
+        student_id: selectedProj?.student || Math.abs(Number(deferProjectId)),
+        reason: deferReason.trim(),
+        admin_notes: deferAdminNotes.trim(),
+        auto_approve: deferAutoApprove,
+      });
+      setActionNotice({
+        type: 'success',
+        title: 'Lập đơn bảo lưu hộ thành công',
+        message: `Đã lập hồ sơ bảo lưu cho sinh viên ${selectedProj?.student_reg_no || ''}.`,
+      });
+      setShowCreateDeferralModal(false);
+      setDeferProjectId('');
+      setDeferReason('');
+      setDeferAdminNotes('');
+      await fetchData();
+    } catch (err: any) {
+      alert('Lỗi lập đơn bảo lưu: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setCreatingDeferral(false);
+    }
+  };
+
+  const deferralByProjectId = new Map<number, any>();
+  deferralRequests.forEach((req) => {
+    if (req.project && !deferralByProjectId.has(req.project)) {
+      deferralByProjectId.set(req.project, req);
+    }
+  });
+
   const deferralCandidates = projects.filter(
     (p) =>
       p.deferral_status === 'REQUESTED' ||
@@ -433,6 +486,11 @@ export const DefenseManagementPage: React.FC = () => {
               {selectedCouncil && (
                 <span className={`utc-status-badge ${selectedCouncil.is_finalized ? 'is-done' : 'is-warn'}`}>
                   {selectedCouncil.is_finalized ? '🔒 HĐ đã chốt điểm' : '⚠️ HĐ chưa chốt điểm'}
+                </span>
+              )}
+              {councilSignatures && (
+                <span className={`utc-status-badge ${councilSignatures.fully_signed_projects >= councilSignatures.total_projects && councilSignatures.total_projects > 0 ? 'is-done' : 'is-pending'}`}>
+                  🖋️ Biên bản đủ chữ ký: {councilSignatures.fully_signed_projects}/{councilSignatures.total_projects} ĐT
                 </span>
               )}
             </div>
@@ -579,12 +637,14 @@ export const DefenseManagementPage: React.FC = () => {
                       <th className="utc-cell-center">Tổng Hệ 10</th>
                       <th className="utc-cell-center">Hệ 4</th>
                       <th className="utc-cell-center">Điểm Chữ</th>
+                      <th className="utc-cell-center">Ký Biên Bản</th>
                       <th>Kết Luận</th>
                     </tr>
                   </thead>
                   <tbody>
                     {projects.map((proj) => {
                       const isDeferred = proj.deferral_status === 'APPROVED';
+                      const sigInfo = councilSignatures?.by_project?.[String(proj.id)];
                       return (
                         <tr key={proj.id} className={isDeferred ? 'utc-row-deferred' : undefined}>
                           <td className="utc-cell-bold">{proj.student_reg_no}</td>
@@ -605,6 +665,18 @@ export const DefenseManagementPage: React.FC = () => {
                           </td>
                           <td className="utc-cell-center utc-cell-bold">
                             {isDeferred ? '—' : proj.final_letter_grade || '—'}
+                          </td>
+                          <td className="utc-cell-center">
+                            {sigInfo ? (
+                              <span
+                                className={`utc-pill ${sigInfo.is_fully_signed ? 'pill-green' : 'pill-amber'}`}
+                                title={(sigInfo.members || []).map((m: any) => `${m.name}: ${m.signed ? 'Đã ký' : 'Chưa ký'}`).join('\n')}
+                              >
+                                🖋️ {sigInfo.signed_count}/{sigInfo.total_members}
+                              </span>
+                            ) : (
+                              <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>—</span>
+                            )}
                           </td>
                           <td>
                             {isDeferred ? (
@@ -637,9 +709,18 @@ export const DefenseManagementPage: React.FC = () => {
                   Nếu không đủ điều kiện học vụ hoặc không đủ khả năng bảo vệ: Khoa duyệt đơn Bảo lưu → Lưu hồ sơ và kết thúc; Không duyệt → Loại khỏi đợt
                 </span>
               </div>
-              <button onClick={() => setShowImportFinalModal(true)} className="utc-btn-emerald">
-                <span>📊</span> Import Kiểm Tra Học Vụ Cuối (Excel)
-              </button>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => setShowCreateDeferralModal(true)}
+                  className="utc-btn-primary"
+                  style={{ padding: '0.5rem 0.9rem', fontSize: '0.85rem' }}
+                >
+                  <span>➕</span> Lập đơn bảo lưu hộ SV
+                </button>
+                <button onClick={() => setShowImportFinalModal(true)} className="utc-btn-emerald">
+                  <span>📊</span> Import Kiểm Tra Học Vụ Cuối (Excel)
+                </button>
+              </div>
             </div>
 
             <div className="utc-table-container">
@@ -688,6 +769,16 @@ export const DefenseManagementPage: React.FC = () => {
                         </td>
                         <td className="utc-cell-notes-col">
                           <span className="utc-cell-notes">{proj.deferral_reason || proj.final_academic_notes || '—'}</span>
+                          {deferralByProjectId.get(proj.id)?.supervisor_feedback && (
+                            <div style={{ marginTop: '4px', fontSize: '0.78rem', color: '#0369a1', background: '#f0f9ff', padding: '4px 6px', borderRadius: '6px', border: '1px solid #bae6fd' }}>
+                              💬 <b>GVHD:</b> {deferralByProjectId.get(proj.id).supervisor_feedback}
+                            </div>
+                          )}
+                          {deferralByProjectId.get(proj.id)?.created_by_admin && (
+                            <div style={{ marginTop: '3px', fontSize: '0.72rem', color: '#4338ca', fontWeight: 600 }}>
+                              🏛️ Khoa lập hộ SV
+                            </div>
+                          )}
                         </td>
                         <td>
                           <div className="utc-action-btn-group">
@@ -758,6 +849,72 @@ export const DefenseManagementPage: React.FC = () => {
                   <button type="button" onClick={() => setShowImportFinalModal(false)} className="utc-btn-cancel">Đóng</button>
                   <button type="submit" disabled={importing} className="utc-btn-emerald">
                     {importing ? 'Đang phân tích...' : 'Bắt Đầu Import & Rà Soát'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+        {/* MODAL: ADMIN CREATE DEFERRAL */}
+        {showCreateDeferralModal && (
+          <div className="utc-modal-backdrop">
+            <div className="utc-modal-card">
+              <div className="utc-modal-head">
+                <h4>📋 Lập Đơn Bảo Lưu Đồ Án Hộ Sinh Viên</h4>
+                <button onClick={() => setShowCreateDeferralModal(false)} className="utc-btn-close">✕</button>
+              </div>
+              <form onSubmit={handleCreateDeferral}>
+                <div className="utc-modal-body">
+                  <div className="utc-form-group">
+                    <label>Chọn Sinh viên trong đợt:</label>
+                    <select
+                      required
+                      value={deferProjectId}
+                      onChange={(e) => setDeferProjectId(e.target.value)}
+                      className="utc-input"
+                    >
+                      <option value="">-- Chọn sinh viên --</option>
+                      {projects.filter((p) => p.student).map((p) => (
+                        <option key={p.id} value={String(p.id)}>
+                          {p.student_reg_no} - {formatFullName(p.student_name)} ({p.status})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="utc-form-group" style={{ marginTop: '0.75rem' }}>
+                    <label>Lý do bảo lưu (*):</label>
+                    <textarea
+                      required
+                      rows={3}
+                      value={deferReason}
+                      onChange={(e) => setDeferReason(e.target.value)}
+                      placeholder="VD: Xin bảo lưu do lý do sức khỏe / công tác có minh chứng..."
+                      className="utc-input"
+                    />
+                  </div>
+                  <div className="utc-form-group" style={{ marginTop: '0.75rem' }}>
+                    <label>Ghi chú của Khoa:</label>
+                    <input
+                      type="text"
+                      value={deferAdminNotes}
+                      onChange={(e) => setDeferAdminNotes(e.target.value)}
+                      placeholder="Ghi chú nội bộ hoặc quyết định của Khoa..."
+                      className="utc-input"
+                    />
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '0.75rem', fontSize: '0.88rem', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={deferAutoApprove}
+                      onChange={(e) => setDeferAutoApprove(e.target.checked)}
+                    />
+                    <span>Phê duyệt bảo lưu ngay (Chuyển trạng thái sang <b>DEFERRED</b>)</span>
+                  </label>
+                </div>
+                <div className="utc-modal-foot">
+                  <button type="button" onClick={() => setShowCreateDeferralModal(false)} className="utc-btn-cancel">Đóng</button>
+                  <button type="submit" disabled={creatingDeferral} className="utc-btn-primary">
+                    {creatingDeferral ? 'Đang tạo...' : '💾 Tạo Hồ Sơ Bảo Lưu'}
                   </button>
                 </div>
               </form>

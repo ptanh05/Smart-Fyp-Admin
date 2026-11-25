@@ -90,6 +90,20 @@ export const CouncilsPage: React.FC = () => {
   const [overrideCouncilId, setOverrideCouncilId] = useState<number | ''>('');
   const [overrideReviewerId, setOverrideReviewerId] = useState<number | ''>('');
 
+  // Schedule View Mode & Manual Slot Modal
+  const [scheduleViewMode, setScheduleViewMode] = useState<'table' | 'calendar'>('table');
+  const [showManualSlotModal, setShowManualSlotModal] = useState(false);
+  const [editingSlotId, setEditingSlotId] = useState<number | null>(null);
+  const [slotProjectId, setSlotProjectId] = useState<number | ''>('');
+  const [slotCouncilId, setSlotCouncilId] = useState<number | ''>('');
+  const [slotDate, setSlotDate] = useState('');
+  const [slotStartTime, setSlotStartTime] = useState('08:00');
+  const [slotEndTime, setSlotEndTime] = useState('08:40');
+  const [slotRoom, setSlotRoom] = useState('');
+  const [slotOrderNumber, setSlotOrderNumber] = useState<number>(1);
+  const [savingSlot, setSavingSlot] = useState(false);
+  const [reopeningCouncilId, setReopeningCouncilId] = useState<number | null>(null);
+
   const fetchBatches = async () => {
     try {
       const res = await apiClient.get('/admin/batches/');
@@ -256,6 +270,82 @@ export const CouncilsPage: React.FC = () => {
       alert('Lỗi: ' + (err.response?.data?.detail || err.message));
     } finally {
       setTogglingEligibilityId(null);
+    }
+  };
+
+  const handleOpenManualSlotModal = (proj?: any) => {
+    const slot = proj?.schedule_slot_info;
+    setEditingSlotId(slot?.id || null);
+    setSlotProjectId(proj?.id || '');
+    const cId = slot?.council || proj?.council || councils[0]?.id || '';
+    setSlotCouncilId(cId);
+    const matchedCouncil = councils.find((c) => Number(c.id) === Number(cId));
+    setSlotDate(slot?.date || matchedCouncil?.session_date || new Date().toISOString().split('T')[0]);
+    setSlotStartTime(slot?.start || (matchedCouncil?.session_time === 'AFTERNOON' ? '13:30' : '08:00'));
+    setSlotEndTime(slot?.end || (matchedCouncil?.session_time === 'AFTERNOON' ? '14:10' : '08:40'));
+    setSlotRoom(slot?.room || matchedCouncil?.defense_room || '');
+    setSlotOrderNumber(slot?.order || 1);
+    setShowManualSlotModal(true);
+  };
+
+  const handleSaveManualSlot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!slotProjectId || !slotCouncilId || savingSlot) return;
+    try {
+      setSavingSlot(true);
+      const payload = {
+        council: Number(slotCouncilId),
+        project: Number(slotProjectId),
+        slot_date: slotDate,
+        start_time: slotStartTime,
+        end_time: slotEndTime,
+        room: slotRoom.trim(),
+        order_number: Number(slotOrderNumber || 1),
+      };
+      if (editingSlotId) {
+        await apiClient.patch(`/admin/defense/slots/${editingSlotId}/`, payload);
+        alert('Đã cập nhật slot lịch bảo vệ thành công!');
+      } else {
+        await apiClient.post('/admin/defense/slots/', payload);
+        alert('Đã xếp lịch bảo vệ thủ công thành công!');
+      }
+      setShowManualSlotModal(false);
+      await fetchData();
+    } catch (err: any) {
+      alert('Lỗi xung đột/lưu slot: ' + (err.response?.data?.detail || err.response?.data?.error || err.message));
+    } finally {
+      setSavingSlot(false);
+    }
+  };
+
+  const handleDeleteManualSlot = async (slotId: number) => {
+    if (!confirm('Xóa slot lịch bảo vệ này?')) return;
+    try {
+      await apiClient.delete(`/admin/defense/slots/${slotId}/`);
+      alert('Đã xóa slot lịch bảo vệ.');
+      await fetchData();
+    } catch (err: any) {
+      alert('Lỗi xóa slot: ' + (err.response?.data?.detail || err.message));
+    }
+  };
+
+  const handleReopenNotifyCouncil = async (council: DefenseCouncil) => {
+    const actionLabel = council.is_finalized
+      ? `Mở khóa ${council.council_name} và gửi thông báo cập nhật lịch/chấm điểm tới thành viên & sinh viên?`
+      : `Gửi thông báo nhắc lịch bảo vệ của ${council.council_name} tới thành viên Hội đồng & sinh viên?`;
+    if (!confirm(actionLabel)) return;
+    try {
+      setReopeningCouncilId(council.id);
+      const res = await apiClient.post(`/admin/councils/${council.id}/reopen-and-notify/`, {
+        reopen: Boolean(council.is_finalized),
+        notify: true,
+      });
+      alert(res.data?.message || 'Đã xử lý & gửi thông báo Hội đồng!');
+      await fetchData();
+    } catch (err: any) {
+      alert('Lỗi: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setReopeningCouncilId(null);
     }
   };
 
@@ -874,26 +964,37 @@ export const CouncilsPage: React.FC = () => {
                           <span className={`utc-utc-model-badge ${val?.is_valid ? 'badge-utc-valid' : 'badge-utc-warn'}`}>
                             {val?.is_valid ? '✅ Chuẩn 1CT-2TK-2UV' : `⚠️ Thành phần (${council.members?.length || 0}/5)`}
                           </span>
-                          {!council.is_finalized && !isAllocationLocked && (
-                            <div className="utc-council-card-tools">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenEditCouncil(council)}
-                                className="utc-btn-card-tool"
-                                title="Sửa thành viên, phòng hoặc ca bảo vệ của Hội đồng này"
-                              >
-                                ✏️ Sửa HĐ
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteCouncil(council)}
-                                className="utc-btn-card-tool is-danger"
-                                title="Xóa Hội đồng này"
-                              >
-                                🗑️
-                              </button>
-                            </div>
-                          )}
+                          <div className="utc-council-card-tools">
+                            <button
+                              type="button"
+                              disabled={reopeningCouncilId === council.id}
+                              onClick={() => handleReopenNotifyCouncil(council)}
+                              className="utc-btn-card-tool"
+                              title={council.is_finalized ? 'Mở khóa hội đồng & thông báo' : 'Gửi thông báo lịch bảo vệ tới thành viên & SV'}
+                            >
+                              {reopeningCouncilId === council.id ? '⏳...' : council.is_finalized ? '🔓 Mở khóa & Báo' : '🔔 Nhắc lịch'}
+                            </button>
+                            {!council.is_finalized && !isAllocationLocked && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditCouncil(council)}
+                                  className="utc-btn-card-tool"
+                                  title="Sửa thành viên, phòng hoặc ca bảo vệ của Hội đồng này"
+                                >
+                                  ✏️ Sửa HĐ
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteCouncil(council)}
+                                  className="utc-btn-card-tool is-danger"
+                                  title="Xóa Hội đồng này"
+                                >
+                                  🗑️
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -1111,19 +1212,108 @@ export const CouncilsPage: React.FC = () => {
           </>
         )}
 
-        {/* TAB 2: DETAILED SCHEDULE (SLOTS) */}
+        {/* TAB 2: DETAILED SCHEDULE (SLOTS + ROOM CALENDAR) */}
         {activeTab === 'schedule' && (
           <div className="utc-schedule-section">
-            <div className="utc-panel-head">
-              <h4>⏱️ Lịch Bảo Vệ Chi Tiết Từng Sinh Viên Đủ Điều Kiện Bảo Vệ ({eligibleProjects.length} SV)</h4>
-              <span className="text-muted">
-                Chỉ hiển thị và xếp lịch cho các sinh viên đã đủ điều kiện bảo vệ GĐ6
-                {ineligibleProjects.length > 0
-                  ? ` (Đã loại trừ ${ineligibleProjects.length} sinh viên đang ở GĐ1–GĐ5 chưa đủ điều kiện).`
-                  : '.'}
-              </span>
+            <div className="utc-panel-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+              <div>
+                <h4>⏱️ Lịch Bảo Vệ Chi Tiết Từng Sinh Viên Đủ Điều Kiện Bảo Vệ ({eligibleProjects.length} SV)</h4>
+                <span className="text-muted">
+                  Chỉ hiển thị và xếp lịch cho các sinh viên đã đủ điều kiện bảo vệ GĐ6
+                  {ineligibleProjects.length > 0
+                    ? ` (Đã loại trừ ${ineligibleProjects.length} sinh viên đang ở GĐ1–GĐ5 chưa đủ điều kiện).`
+                    : '.'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => setScheduleViewMode('table')}
+                  className={`utc-filter-chip ${scheduleViewMode === 'table' ? 'active' : ''}`}
+                >
+                  📋 Dạng Bảng
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScheduleViewMode('calendar')}
+                  className={`utc-filter-chip ${scheduleViewMode === 'calendar' ? 'active' : ''}`}
+                >
+                  📅 Lịch Calendar theo Phòng
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenManualSlotModal()}
+                  className="utc-btn-create"
+                  style={{ padding: '0.45rem 0.85rem', fontSize: '0.84rem' }}
+                >
+                  ➕ Xếp Slot Thủ Công
+                </button>
+              </div>
             </div>
 
+            {scheduleViewMode === 'calendar' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.75rem' }}>
+                {(() => {
+                  const slotted = eligibleProjects.filter((p) => p.schedule_slot_info?.date);
+                  if (slotted.length === 0) {
+                    return (
+                      <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b', background: '#f8fafc', borderRadius: '10px', border: '1px dashed #cbd5e1' }}>
+                        Chưa có slot lịch bảo vệ nào có ngày giờ. Hãy chạy tự động xếp lịch hoặc nhấn <b>"➕ Xếp Slot Thủ Công"</b>.
+                      </div>
+                    );
+                  }
+                  const byDate = new Map<string, any[]>();
+                  slotted.forEach((p) => {
+                    const d = p.schedule_slot_info.date;
+                    if (!byDate.has(d)) byDate.set(d, []);
+                    byDate.get(d)!.push(p);
+                  });
+                  return Array.from(byDate.entries())
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([dateKey, items]) => {
+                      const rooms = Array.from(new Set(items.map((x) => x.schedule_slot_info?.room || 'Chưa gán phòng')));
+                      return (
+                        <div key={dateKey} style={{ border: '1px solid #cbd5e1', borderRadius: '12px', padding: '1rem', background: '#ffffff' }}>
+                          <h5 style={{ margin: '0 0 0.75rem 0', color: '#1e3a8a', fontWeight: 700 }}>
+                            📅 Ngày {dateKey} ({items.length} sinh viên)
+                          </h5>
+                          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(rooms.length, 3)}, minmax(240px, 1fr))`, gap: '0.75rem' }}>
+                            {rooms.map((roomKey) => {
+                              const roomSlots = items
+                                .filter((x) => (x.schedule_slot_info?.room || 'Chưa gán phòng') === roomKey)
+                                .sort((a, b) => (a.schedule_slot_info?.start || '').localeCompare(b.schedule_slot_info?.start || ''));
+                              return (
+                                <div key={roomKey} style={{ background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0', padding: '0.75rem' }}>
+                                  <div style={{ fontWeight: 700, color: '#0369a1', marginBottom: '0.5rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.35rem' }}>
+                                    🚪 Phòng {roomKey}
+                                  </div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    {roomSlots.map((p) => (
+                                      <div key={p.id} style={{ background: '#ffffff', padding: '0.55rem 0.65rem', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.82rem' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: '#1e293b' }}>
+                                          <span>⏰ {p.schedule_slot_info.start} – {p.schedule_slot_info.end}</span>
+                                          <span style={{ color: '#4f46e5' }}>{p.council_name}</span>
+                                        </div>
+                                        <div style={{ marginTop: '3px', fontWeight: 600 }}>{formatFullName(p.student_name)} ({p.student_reg_no})</div>
+                                        <div style={{ marginTop: '4px', display: 'flex', gap: '6px' }}>
+                                          <button type="button" onClick={() => handleOpenManualSlotModal(p)} className="utc-btn-override">✏️ Sửa Slot</button>
+                                          {p.schedule_slot_info?.id && (
+                                            <button type="button" onClick={() => handleDeleteManualSlot(p.schedule_slot_info.id)} className="utc-btn-override" style={{ color: '#dc2626' }}>🗑️</button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    });
+                })()}
+              </div>
+            ) : (
             <div className="utc-table-container">
               <table className="utc-custom-table">
                 <thead>
@@ -1176,14 +1366,35 @@ export const CouncilsPage: React.FC = () => {
                           <span className="font-semibold text-purple-700">{formatFullName(proj.reviewer_name) || 'Chưa gán GVPB'}</span>
                         </td>
                         <td>
-                          <button
-                            onClick={() => handleOpenOverride(proj)}
-                            disabled={isAllocationLocked}
-                            className="utc-btn-override"
-                            title={isAllocationLocked ? 'Mở khóa chốt HĐ để điều chỉnh' : 'Đổi HĐ hoặc Phản biện'}
-                          >
-                            ✏️ Đổi
-                          </button>
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenManualSlotModal(proj)}
+                              className="utc-btn-override"
+                              title="Xếp / sửa ngày giờ & phòng bảo vệ thủ công"
+                            >
+                              🕒 Slot
+                            </button>
+                            {proj.schedule_slot_info?.id && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteManualSlot(proj.schedule_slot_info.id)}
+                                className="utc-btn-override"
+                                style={{ color: '#dc2626' }}
+                                title="Xóa slot lịch này"
+                              >
+                                🗑️
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleOpenOverride(proj)}
+                              disabled={isAllocationLocked}
+                              className="utc-btn-override"
+                              title={isAllocationLocked ? 'Mở khóa chốt HĐ để điều chỉnh' : 'Đổi HĐ hoặc Phản biện'}
+                            >
+                              ✏️ Đổi
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -1191,6 +1402,7 @@ export const CouncilsPage: React.FC = () => {
                 </tbody>
               </table>
             </div>
+            )}
           </div>
         )}
 
@@ -1452,6 +1664,83 @@ export const CouncilsPage: React.FC = () => {
                 <div className="utc-modal-foot">
                   <button type="button" onClick={() => setShowOverrideModal(false)} className="utc-btn-cancel">Hủy</button>
                   <button type="submit" className="utc-btn-primary">Xác Nhận Điều Chỉnh</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL 4: MANUAL DEFENSE SLOT CREATE / EDIT */}
+        {showManualSlotModal && (
+          <div className="utc-modal-backdrop">
+            <div className="utc-modal-card">
+              <div className="utc-modal-head">
+                <h4>{editingSlotId ? '✏️ Chỉnh Sửa Slot Lịch Bảo Vệ' : '➕ Xếp Slot Lịch Bảo Vệ Thủ Công'}</h4>
+                <button onClick={() => setShowManualSlotModal(false)} className="utc-btn-close">✕</button>
+              </div>
+              <form onSubmit={handleSaveManualSlot}>
+                <div className="utc-modal-body">
+                  <div className="utc-form-group">
+                    <label>Sinh viên đủ ĐK bảo vệ (*):</label>
+                    <select
+                      required
+                      disabled={Boolean(editingSlotId)}
+                      className="utc-input"
+                      value={slotProjectId}
+                      onChange={(e) => setSlotProjectId(e.target.value ? Number(e.target.value) : '')}
+                    >
+                      <option value="">-- Chọn sinh viên --</option>
+                      {eligibleProjects.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.student_reg_no} - {formatFullName(p.student_name)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="utc-form-group">
+                    <label>Hội đồng bảo vệ (*):</label>
+                    <select
+                      required
+                      className="utc-input"
+                      value={slotCouncilId}
+                      onChange={(e) => setSlotCouncilId(e.target.value ? Number(e.target.value) : '')}
+                    >
+                      <option value="">-- Chọn Hội đồng --</option>
+                      {councils.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.council_name} ({c.defense_room || 'Phòng ?'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div className="utc-form-group">
+                      <label>Ngày bảo vệ (*):</label>
+                      <input type="date" required value={slotDate} onChange={(e) => setSlotDate(e.target.value)} className="utc-input" />
+                    </div>
+                    <div className="utc-form-group">
+                      <label>Phòng bảo vệ:</label>
+                      <input type="text" value={slotRoom} onChange={(e) => setSlotRoom(e.target.value)} placeholder="VD: P301-A5" className="utc-input" />
+                    </div>
+                    <div className="utc-form-group">
+                      <label>Giờ bắt đầu (*):</label>
+                      <input type="time" required value={slotStartTime} onChange={(e) => setSlotStartTime(e.target.value)} className="utc-input" />
+                    </div>
+                    <div className="utc-form-group">
+                      <label>Giờ kết thúc (*):</label>
+                      <input type="time" required value={slotEndTime} onChange={(e) => setSlotEndTime(e.target.value)} className="utc-input" />
+                    </div>
+                  </div>
+                  <div className="utc-form-group">
+                    <label>Thứ tự (STT trong ca):</label>
+                    <input type="number" min={1} value={slotOrderNumber} onChange={(e) => setSlotOrderNumber(Number(e.target.value))} className="utc-input" />
+                  </div>
+                </div>
+                <div className="utc-modal-foot">
+                  <button type="button" onClick={() => setShowManualSlotModal(false)} className="utc-btn-cancel">Hủy</button>
+                  <button type="submit" disabled={savingSlot} className="utc-btn-primary">
+                    {savingSlot ? 'Đang kiểm tra & lưu...' : '💾 Lưu Slot Bảo Vệ'}
+                  </button>
                 </div>
               </form>
             </div>

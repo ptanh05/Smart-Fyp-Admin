@@ -115,8 +115,8 @@ class AdminGoogleSSOLoginAPIView(APIView):
         except Exception:
             pass
 
-        refresh = RefreshToken.for_user(user)
-        access_token = str(refresh.access_token)
+        from .session_auth import issue_tracked_session_tokens
+        refresh, access_token, _ = issue_tracked_session_tokens(user, request, portal="admin_sso")
 
         response = Response({
             "access": access_token,

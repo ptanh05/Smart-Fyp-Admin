@@ -379,6 +379,52 @@ def compute_batch_progress(batch):
         BATCH_STAGE_DEFINITIONS[0],
     )
 
+    milestones_data = []
+    current_milestone = None
+    days_left = None
+    try:
+        from django.utils import timezone
+        from app.models import BatchMilestone
+
+        now = timezone.now()
+        today = timezone.localdate()
+        ms_qs = list(
+            BatchMilestone.objects.filter(batch=batch, is_active=True).order_by("order_index", "start_date", "id")
+        )
+        for m in ms_qs:
+            if m.start_date and m.start_date > now:
+                m_status = "UPCOMING"
+            elif m.end_date and m.end_date < now:
+                m_status = "EXPIRED"
+            elif m.start_date or m.end_date:
+                m_status = "ACTIVE"
+            else:
+                m_status = "UNSCHEDULED"
+
+            m_days = (m.end_date.date() - today).days if m.end_date else None
+            item = {
+                "id": m.id,
+                "name": m.name,
+                "stage_number": m.stage_number,
+                "start_date": m.start_date.isoformat() if m.start_date else None,
+                "end_date": m.end_date.isoformat() if m.end_date else None,
+                "description": m.description or "",
+                "order_index": m.order_index,
+                "status": m_status,
+                "days_left": m_days,
+            }
+            milestones_data.append(item)
+
+        current_milestone = (
+            next((item for item in milestones_data if item["stage_number"] == current_number), None)
+            or next((item for item in milestones_data if item["status"] == "ACTIVE"), None)
+            or (milestones_data[0] if milestones_data else None)
+        )
+        if current_milestone is not None:
+            days_left = current_milestone.get("days_left")
+    except Exception:
+        milestones_data = []
+
     return {
         "batch": {
             "id": batch.id,
@@ -388,10 +434,12 @@ def compute_batch_progress(batch):
             "current_stage": batch.current_stage,
             "is_active": batch.is_active,
             "is_closed": batch.is_closed,
+            "supplementary_open": bool(getattr(batch, "supplementary_open", False)),
             "start_date": batch.start_date,
             "end_date": batch.end_date,
         },
         "is_open": is_open,
+        "supplementary_open": bool(getattr(batch, "supplementary_open", False)),
         "current_stage_number": current_number,
         "current_stage_key": current_stage_def["key"],
         "current_stage_label": current_stage_def["label"],
@@ -399,6 +447,9 @@ def compute_batch_progress(batch):
         "current_stage": current_stage_def,
         "overall_percent": overall,
         "stages": stages,
+        "milestones": milestones_data,
+        "current_milestone": current_milestone,
+        "days_left": days_left,
         "next_actions": next_actions,
         "summary": {
             "total_students": total_students,

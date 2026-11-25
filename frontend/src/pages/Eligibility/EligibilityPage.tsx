@@ -36,6 +36,15 @@ export const EligibilityPage: React.FC = () => {
   const [forceProject, setForceProject] = useState<ProjectEligibility | null>(null);
   const [forceReason, setForceReason] = useState('');
   const [submittingForce, setSubmittingForce] = useState(false);
+
+  // Manual Academic Edit Modal
+  const [editProject, setEditProject] = useState<ProjectEligibility | null>(null);
+  const [editGpa, setEditGpa] = useState<string>('');
+  const [editDebtCredits, setEditDebtCredits] = useState<string>('0');
+  const [editEligibility, setEditEligibility] = useState<string>('AUTO');
+  const [editReason, setEditReason] = useState<string>('');
+  const [savingAcademic, setSavingAcademic] = useState(false);
+
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   useEffect(() => {
@@ -213,6 +222,46 @@ export const EligibilityPage: React.FC = () => {
       fetchProjects();
     } catch (err: any) {
       setToast({ type: 'error', message: 'Lỗi: ' + (err.response?.data?.detail || err.message) });
+    }
+  };
+
+  const openAcademicEditModal = (p: ProjectEligibility) => {
+    setEditProject(p);
+    setEditGpa(p.gpa_score !== null && p.gpa_score !== undefined ? String(p.gpa_score) : '');
+    setEditDebtCredits(String(p.debt_credits ?? 0));
+    setEditEligibility('AUTO');
+    setEditReason(p.ineligibility_reason || '');
+  };
+
+  const handleSaveAcademicEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editProject || savingAcademic) return;
+    try {
+      setSavingAcademic(true);
+      const targetId = editProject.id > 0 ? editProject.id : (editProject.student || Math.abs(editProject.id));
+      const payload: any = {
+        batch_id: selectedBatchId,
+        debt_credits: Number(editDebtCredits || 0),
+        ineligibility_reason: editReason.trim(),
+        auto_evaluate: editEligibility === 'AUTO',
+      };
+      if (editGpa.trim() !== '') {
+        payload.gpa_score = Number(editGpa);
+      }
+      if (editEligibility !== 'AUTO') {
+        payload.initial_eligibility = editEligibility;
+      }
+      await apiClient.patch(`/admin/projects/${targetId}/academic-record/`, payload);
+      setToast({
+        type: 'success',
+        message: `Đã cập nhật điểm học vụ cho SV ${formatFullName(editProject.student_name)} (${editProject.student_reg_no}).`,
+      });
+      setEditProject(null);
+      fetchProjects();
+    } catch (err: any) {
+      setToast({ type: 'error', message: 'Lỗi cập nhật học vụ: ' + (err.response?.data?.detail || err.message) });
+    } finally {
+      setSavingAcademic(false);
     }
   };
 
@@ -417,6 +466,13 @@ export const EligibilityPage: React.FC = () => {
                           {p.initial_eligibility === 'DISQUALIFIED' && (
                             <span className="text-xs text-red-600 font-bold">🚫 Đã loại</span>
                           )}
+                          <button
+                            onClick={() => openAcademicEditModal(p)}
+                            className="utc-btn-sm-subtle"
+                            title="Sửa thủ công CPA/GPA, tín chỉ nợ và điều kiện"
+                          >
+                            ✏️ Sửa học vụ
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -546,6 +602,80 @@ export const EligibilityPage: React.FC = () => {
                     className="utc-btn-primary"
                   >
                     {submittingForce ? 'Đang xử lý Force Approve...' : 'Xác Nhận Force Approve'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL 3: MANUAL ACADEMIC RECORD EDIT */}
+        {editProject && (
+          <div className="utc-modal-backdrop">
+            <div className="utc-modal-card utc-modal-force">
+              <div className="utc-modal-head">
+                <h4>✏️ Chỉnh Sửa Điểm Tích Lũy & Điều Kiện Học Vụ</h4>
+                <button onClick={() => setEditProject(null)} className="utc-btn-close">✕</button>
+              </div>
+              <form onSubmit={handleSaveAcademicEdit}>
+                <div style={{ marginBottom: '0.75rem', fontSize: '0.9rem', color: '#334155' }}>
+                  Sinh viên: <strong>{formatFullName(editProject.student_name)}</strong> ({editProject.student_reg_no})
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <div className="utc-form-group">
+                    <label>Điểm tích lũy (CPA / hệ 4.0):</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="4"
+                      value={editGpa}
+                      onChange={(e) => setEditGpa(e.target.value)}
+                      placeholder="VD: 2.85"
+                      className="utc-input"
+                    />
+                  </div>
+                  <div className="utc-form-group">
+                    <label>Số tín chỉ nợ:</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="200"
+                      required
+                      value={editDebtCredits}
+                      onChange={(e) => setEditDebtCredits(e.target.value)}
+                      className="utc-input"
+                    />
+                  </div>
+                </div>
+                <div className="utc-form-group" style={{ marginTop: '0.75rem' }}>
+                  <label>Kết luận điều kiện:</label>
+                  <select
+                    value={editEligibility}
+                    onChange={(e) => setEditEligibility(e.target.value)}
+                    className="utc-input"
+                  >
+                    <option value="AUTO">Tự động xét theo quy chế (Nợ &lt; 10 TC → Đủ ĐK)</option>
+                    <option value="ELIGIBLE">✅ Đủ Điều Kiện (ELIGIBLE)</option>
+                    <option value="INELIGIBLE">⚠️ Không Đủ Điều Kiện (INELIGIBLE)</option>
+                    <option value="FORCE_APPROVED">⭐ Đặc Cách (FORCE_APPROVED)</option>
+                    <option value="DISQUALIFIED">🚫 Loại khỏi đợt (DISQUALIFIED)</option>
+                  </select>
+                </div>
+                <div className="utc-form-group" style={{ marginTop: '0.75rem' }}>
+                  <label>Ghi chú / Lý do học vụ:</label>
+                  <textarea
+                    rows={3}
+                    value={editReason}
+                    onChange={(e) => setEditReason(e.target.value)}
+                    placeholder="Ghi chú rà soát học vụ..."
+                    className="utc-input"
+                  />
+                </div>
+                <div className="utc-modal-foot">
+                  <button type="button" disabled={savingAcademic} onClick={() => setEditProject(null)} className="utc-btn-cancel">Hủy</button>
+                  <button type="submit" disabled={savingAcademic} className="utc-btn-primary">
+                    {savingAcademic ? 'Đang lưu...' : '💾 Lưu Điều Chỉnh'}
                   </button>
                 </div>
               </form>

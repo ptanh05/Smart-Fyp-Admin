@@ -1,0 +1,549 @@
+"""
+Tests for Smart-Fyp-Admin enhancement suite:
+- OpenAPI 3.0 schema & Swagger UI docs
+- Batch edit/delete guard & BatchMilestone CRUD/seed + progress sync
+- Supplementary Registration (open, preserve assigned, finalize, close/finalize guards)
+- Manual Academic Record edit + Admin Deferral creation
+- Manual DefenseScheduleSlot CRUD + conflict checks (Room, Time, COI) + Reopen/Notify + Signatures
+- Real Security Center (UserSessionLog tracking, instant remote revocation, dynamic SecurityPolicy)
+- ProjectTopicArea CRUD + in-use delete protection
+"""
+import datetime
+
+from django.core.cache import cache
+from django.utils import timezone
+from rest_framework import status
+from rest_framework.test import APIClient, APITestCase
+
+from app.models import (
+    AcademicBatch,
+    BatchMilestone,
+    CouncilMember,
+    CustomUser,
+    DefenseCouncil,
+    DefenseMinutesSignature,
+    DefenseScheduleSlot,
+    Department,
+    GraduationProject,
+    InternshipInfo,
+    Notification,
+    ProjectTopicArea,
+    SecurityPolicy,
+    Student,
+    StudentPreference,
+    Supervisor,
+    SupervisorQuota,
+    SupervisorTopicArea,
+    ThesisDeferralRequest,
+    UserSessionLog,
+)
+
+
+class EnhancementsBaseTestCase(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.admin = CustomUser.objects.create_user(
+            username="enh_admin",
+            email="enh_admin@utc.edu.vn",
+            password="AdminPass123!",
+            user_type="admin",
+            is_staff=True,
+            is_superuser=True,
+        )
+        self.client.force_authenticate(user=self.admin)
+
+        self.dept = Department.objects.create(code="CNPM", name="Công nghệ phần mềm")
+        self.topic_sw = ProjectTopicArea.objects.create(code="SW", name="Phát triển phần mềm", is_active=True)
+        self.topic_ai = ProjectTopicArea.objects.create(code="AI", name="Trí tuệ nhân tạo", is_active=True)
+
+        self.batch = AcademicBatch.objects.create(
+            batch_code="K64-ENH",
+            batch_name="Đợt Nâng Cấp K64",
+            program_type="BACHELOR",
+            current_stage="PHASE_2_ALLOCATING",
+            start_date=datetime.date(2026, 9, 1),
+            end_date=datetime.date(2027, 1, 15),
+            is_active=True,
+            is_closed=False,
+        )
+
+        self.sup1_user = CustomUser.objects.create_user(
+            username="gv1_enh",
+            email="gv1_enh@utc.edu.vn",
+            password="GvPass123!",
+            first_name="An",
+            last_name="Nguyễn Văn",
+            user_type="supervisor",
+        )
+        self.sup1 = Supervisor.objects.create(
+            user=self.sup1_user,
+            supervisor_id="GV001",
+            academic_title="TS",
+            department_obj=self.dept,
+            department_name=self.dept.name,
+            academic_rank_multiplier=1.2,
+        )
+        SupervisorTopicArea.objects.create(supervisor=self.sup1, topic_area=self.topic_sw)
+
+        self.sup2_user = CustomUser.objects.create_user(
+            username="gv2_enh",
+            email="gv2_enh@utc.edu.vn",
+            password="GvPass123!",
+            first_name="Bình",
+            last_name="Trần Thị",
+            user_type="supervisor",
+        )
+        self.sup2 = Supervisor.objects.create(
+            user=self.sup2_user,
+            supervisor_id="GV002",
+            academic_title="PGS.TS",
+            department_obj=self.dept,
+            department_name=self.dept.name,
+            academic_rank_multiplier=1.5,
+        )
+        SupervisorTopicArea.objects.create(supervisor=self.sup2, topic_area=self.topic_ai)
+
+        self.sv1_user = CustomUser.objects.create_user(
+            username="sv1_enh",
+            email="sv1_enh@utc.edu.vn",
+            password="SvPass123!",
+            first_name="Cường",
+            last_name="Lê",
+            user_type="student",
+        )
+        self.sv1 = Student.objects.create(
+            user=self.sv1_user,
+            registration_no="20260001",
+            academic_batch=self.batch,
+            education_program="BACHELOR",
+        )
+
+        self.sv2_user = CustomUser.objects.create_user(
+            username="sv2_enh",
+            email="sv2_enh@utc.edu.vn",
+            password="SvPass123!",
+            first_name="Dung",
+            last_name="Phạm",
+            user_type="student",
+        )
+        self.sv2 = Student.objects.create(
+            user=self.sv2_user,
+            registration_no="20260002",
+            academic_batch=self.batch,
+            education_program="BACHELOR",
+        )
+
+
+class OpenAPIAndBatchMilestoneTests(EnhancementsBaseTestCase):
+    def test_openapi_schema_and_swagger_ui_served(self):
+        schema_res = self.client.get("/api/schema/")
+        self.assertEqual(schema_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(schema_res.json().get("openapi"), "3.0.3")
+        self.assertIn("/admin/batches/", schema_res.json().get("paths", {}))
+
+        docs_res = self.client.get("/api/docs/")
+        self.assertEqual(docs_res.status_code, status.HTTP_200_OK)
+        self.assertIn(b"swagger-ui", docs_res.content)
+
+    def test_batch_edit_and_delete_protection(self):
+        patch_res = self.client.patch(
+            f"/admin/batches/{self.batch.id}/",
+            {"batch_name": "Đợt Đã Đổi Tên", "start_date": "2026-09-05"},
+            format="json",
+        )
+        self.assertEqual(patch_res.status_code, status.HTTP_200_OK)
+        self.batch.refresh_from_db()
+        self.assertEqual(self.batch.batch_name, "Đợt Đã Đổi Tên")
+
+        # Has enrolled students -> protected unless force=true (409 Conflict)
+        del_blocked = self.client.delete(f"/admin/batches/{self.batch.id}/")
+        self.assertEqual(del_blocked.status_code, status.HTTP_409_CONFLICT)
+
+        empty_batch = AcademicBatch.objects.create(batch_code="EMPTY", batch_name="Rỗng")
+        del_ok = self.client.delete(f"/admin/batches/{empty_batch.id}/")
+        self.assertIn(del_ok.status_code, (status.HTTP_200_OK, status.HTTP_204_NO_CONTENT))
+
+    def test_milestones_seed_crud_and_progress_sync(self):
+        seed_res = self.client.post(f"/admin/batches/{self.batch.id}/milestones/seed-default/", {}, format="json")
+        self.assertEqual(seed_res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(len(seed_res.data), 6)
+
+        # Duplicate seed without replace -> 409
+        dup_res = self.client.post(f"/admin/batches/{self.batch.id}/milestones/seed-default/", {}, format="json")
+        self.assertEqual(dup_res.status_code, status.HTTP_409_CONFLICT)
+
+        # Create custom milestone & update it
+        now = timezone.now()
+        c_res = self.client.post(
+            f"/admin/batches/{self.batch.id}/milestones/",
+            {
+                "name": "Mốc Nộp Bản Nháp Bổ Sung",
+                "stage_number": 4,
+                "start_date": (now - datetime.timedelta(days=1)).isoformat(),
+                "end_date": (now + datetime.timedelta(days=5)).isoformat(),
+            },
+            format="json",
+        )
+        self.assertEqual(c_res.status_code, status.HTTP_201_CREATED)
+        ms_id = c_res.data["id"]
+
+        upd = self.client.patch(f"/admin/milestones/{ms_id}/", {"name": "Mốc Đã Sửa"}, format="json")
+        self.assertEqual(upd.status_code, status.HTTP_200_OK)
+        self.assertEqual(upd.data["name"], "Mốc Đã Sửa")
+
+        prog_res = self.client.get(f"/admin/batches/{self.batch.id}/progress/")
+        self.assertEqual(prog_res.status_code, status.HTTP_200_OK)
+        self.assertIn("milestones", prog_res.data)
+        self.assertGreaterEqual(len(prog_res.data["milestones"]), 6)
+
+        del_res = self.client.delete(f"/admin/milestones/{ms_id}/")
+        self.assertEqual(del_res.status_code, status.HTTP_200_OK)
+
+
+class SupplementaryAndAcademicRecordTests(EnhancementsBaseTestCase):
+    def setUp(self):
+        super().setUp()
+        SupervisorQuota.objects.create(batch=self.batch, supervisor=self.sup1, base_quota=3, max_total_quota=3)
+        SupervisorQuota.objects.create(batch=self.batch, supervisor=self.sup2, base_quota=3, max_total_quota=3)
+        # sv1 already assigned to sup1 with APPROVED outline -> MUST NEVER BE SCRAMBLED
+        self.proj1 = GraduationProject.objects.create(
+            student=self.sv1,
+            supervisor=self.sup1,
+            batch=self.batch,
+            status="OUTLINE_APPROVED",
+            topic_review_status="APPROVED",
+            topic_title_vi="Đề tài đã ổn định của SV1",
+        )
+        # sv2 unassigned, prefers sup2
+        StudentPreference.objects.create(
+            student=self.sv2,
+            batch=self.batch,
+            topic_direction=self.topic_ai,
+            preference_1=self.sup2,
+        )
+        InternshipInfo.objects.create(
+            student=self.sv2,
+            batch=self.batch,
+            topic_direction=self.topic_ai,
+            tentative_title="Đề tài AI SV2",
+        )
+
+    def test_supplementary_open_preserves_assigned_and_finalize_matches_unassigned(self):
+        self.batch.current_stage = "PHASE_3_TOPIC"
+        self.batch.save(update_fields=["current_stage"])
+
+        open_res = self.client.post(f"/admin/batches/{self.batch.id}/supplementary/open/", {}, format="json")
+        self.assertEqual(open_res.status_code, status.HTTP_200_OK)
+        self.assertTrue(open_res.data["supplementary_open"])
+        self.assertEqual(open_res.data["unassigned_count"], 1)
+
+        # Notification sent only to sv2 (unassigned)
+        self.assertTrue(Notification.objects.filter(user=self.sv2_user).exists())
+        self.assertFalse(Notification.objects.filter(user=self.sv1_user).exists())
+
+        # Blocking PHASE_5 transition & finalize_allocation while supplementary_open=True
+        phase5_blocked = self.client.patch(
+            f"/admin/batches/{self.batch.id}/",
+            {"current_stage": "PHASE_5_IN_PROGRESS"},
+            format="json",
+        )
+        self.assertEqual(phase5_blocked.status_code, status.HTTP_409_CONFLICT)
+
+        fin_alloc_blocked = self.client.post(
+            "/admin/allocations/finalize/",
+            {"batch_id": self.batch.id},
+            format="json",
+        )
+        self.assertEqual(fin_alloc_blocked.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # Finalize supplementary runs only_unassigned MCMF
+        fin_res = self.client.post(
+            f"/admin/batches/{self.batch.id}/supplementary/finalize/",
+            {"run_auto_allocate": True},
+            format="json",
+        )
+        self.assertEqual(fin_res.status_code, status.HTTP_200_OK)
+        self.assertFalse(fin_res.data["supplementary_open"])
+        self.batch.refresh_from_db()
+        self.assertFalse(self.batch.supplementary_open)
+
+        # sv1 still has exact original supervisor & status
+        self.proj1.refresh_from_db()
+        self.assertEqual(self.proj1.supervisor_id, self.sup1.id)
+        self.assertEqual(self.proj1.status, "OUTLINE_APPROVED")
+
+        # sv2 got assigned!
+        proj2 = GraduationProject.objects.get(student=self.sv2)
+        self.assertIsNotNone(proj2.supervisor_id)
+        self.assertEqual(proj2.supervisor_id, self.sup2.id)
+
+    def test_manual_academic_record_edit_and_admin_deferral(self):
+        # Set low debt -> auto-evaluates ELIGIBLE & IN_PROGRESS
+        edit_res = self.client.patch(
+            f"/admin/projects/{self.proj1.id}/academic-record/",
+            {"gpa_score": 3.25, "debt_credits": 4},
+            format="json",
+        )
+        self.assertEqual(edit_res.status_code, status.HTTP_200_OK)
+        self.proj1.refresh_from_db()
+        self.assertEqual(self.proj1.gpa_score, 3.25)
+        self.assertEqual(self.proj1.debt_credits, 4)
+        self.assertEqual(self.proj1.initial_eligibility, "ELIGIBLE")
+        self.assertEqual(self.proj1.status, "IN_PROGRESS")
+
+        # Invalid GPA > 4.0 -> 400
+        bad_gpa = self.client.patch(
+            f"/admin/projects/{self.proj1.id}/academic-record/",
+            {"gpa_score": 4.8},
+            format="json",
+        )
+        self.assertEqual(bad_gpa.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # High debt -> auto INELIGIBLE & drops from IN_PROGRESS
+        edit_bad = self.client.patch(
+            f"/admin/projects/{self.proj1.id}/academic-record/",
+            {"debt_credits": 12},
+            format="json",
+        )
+        self.assertEqual(edit_bad.status_code, status.HTTP_200_OK)
+        self.proj1.refresh_from_db()
+        self.assertEqual(self.proj1.initial_eligibility, "INELIGIBLE")
+
+        # Admin creates deferral on behalf of sv1 & auto-approves
+        def_res = self.client.post(
+            "/admin/deferrals/",
+            {
+                "project_id": self.proj1.id,
+                "reason": "Khoa lập bảo lưu do SV nhập viện",
+                "auto_approve": True,
+            },
+            format="json",
+        )
+        self.assertEqual(def_res.status_code, status.HTTP_201_CREATED)
+        req = ThesisDeferralRequest.objects.get(id=def_res.data["deferral"]["id"])
+        self.assertTrue(req.created_by_admin)
+        self.assertEqual(req.status, "APPROVED")
+        self.proj1.refresh_from_db()
+        self.assertEqual(self.proj1.status, "DEFERRED")
+
+
+class ManualDefenseSlotAndSignaturesTests(EnhancementsBaseTestCase):
+    def setUp(self):
+        super().setUp()
+        self.council_users = [
+            CustomUser.objects.create_user(username=f"cm_{i}", email=f"cm_{i}@utc.edu.vn", password="x", user_type="supervisor")
+            for i in range(5)
+        ]
+        self.council1 = DefenseCouncil.objects.create(
+            batch=self.batch,
+            council_number=1,
+            council_name="Hội đồng 1",
+            defense_room="P301",
+            session_date=datetime.date(2026, 12, 20),
+            session_time="MORNING",
+        )
+        roles = ["CHAIR", "SECRETARY", "SECRETARY", "MEMBER", "MEMBER"]
+        self.c1_members = [
+            CouncilMember.objects.create(council=self.council1, user=u, role=r)
+            for u, r in zip(self.council_users, roles)
+        ]
+        self.council2 = DefenseCouncil.objects.create(
+            batch=self.batch,
+            council_number=2,
+            council_name="Hội đồng 2",
+            defense_room="P302",
+            session_date=datetime.date(2026, 12, 20),
+            session_time="MORNING",
+        )
+        # Share one member (council_users[0]) with council2 to test lecturer time conflict!
+        CouncilMember.objects.create(council=self.council2, user=self.council_users[0], role="CHAIR")
+
+        self.proj1 = GraduationProject.objects.create(
+            student=self.sv1, supervisor=self.sup1, batch=self.batch, council=self.council1, status="DEFENSE_READY"
+        )
+        self.proj2 = GraduationProject.objects.create(
+            student=self.sv2, supervisor=self.sup2, batch=self.batch, council=self.council2, status="DEFENSE_READY"
+        )
+
+    def test_manual_slot_conflicts_reopen_and_signatures(self):
+        # Create valid slot on council1
+        s1_res = self.client.post(
+            "/admin/defense/slots/",
+            {
+                "council": self.council1.id,
+                "project": self.proj1.id,
+                "slot_date": "2026-12-20",
+                "start_time": "08:00",
+                "end_time": "08:40",
+                "room": "P301",
+                "order_number": 1,
+            },
+            format="json",
+        )
+        self.assertEqual(s1_res.status_code, status.HTTP_201_CREATED)
+        slot1_id = s1_res.data["id"]
+
+        # Same room + overlapping time -> 400
+        room_conflict = self.client.post(
+            "/admin/defense/slots/",
+            {
+                "council": self.council2.id,
+                "project": self.proj2.id,
+                "slot_date": "2026-12-20",
+                "start_time": "08:20",
+                "end_time": "09:00",
+                "room": "p301",
+            },
+            format="json",
+        )
+        self.assertEqual(room_conflict.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("phòng", room_conflict.data["detail"].lower())
+
+        # Different room, same shared council member + overlapping time -> 400
+        member_conflict = self.client.post(
+            "/admin/defense/slots/",
+            {
+                "council": self.council2.id,
+                "project": self.proj2.id,
+                "slot_date": "2026-12-20",
+                "start_time": "08:20",
+                "end_time": "09:00",
+                "room": "P302",
+            },
+            format="json",
+        )
+        self.assertEqual(member_conflict.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("giảng viên", member_conflict.data["detail"].lower())
+
+        # COI check: put sup1 into council2 -> block scheduling proj with sup1? Test sup2 in council2
+        coi_proj_user = CustomUser.objects.create_user(username="sv3_coi", password="x", user_type="student")
+        coi_sv = Student.objects.create(user=coi_proj_user, registration_no="20260099", academic_batch=self.batch)
+        CouncilMember.objects.create(council=self.council2, user=self.sup2_user, supervisor=self.sup2, role="MEMBER")
+        coi_proj = GraduationProject.objects.create(
+            student=coi_sv, supervisor=self.sup2, batch=self.batch, council=self.council2, status="DEFENSE_READY"
+        )
+        coi_err = self.client.post(
+            "/admin/defense/slots/",
+            {
+                "council": self.council2.id,
+                "project": coi_proj.id,
+                "slot_date": "2026-12-20",
+                "start_time": "10:00",
+                "end_time": "10:40",
+                "room": "P302",
+            },
+            format="json",
+        )
+        self.assertEqual(coi_err.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("COI", coi_err.data["detail"])
+
+        # Edit slot1 & delete slot1
+        patch_slot = self.client.patch(f"/admin/defense/slots/{slot1_id}/", {"room": "P305"}, format="json")
+        self.assertEqual(patch_slot.status_code, status.HTTP_200_OK)
+        self.assertEqual(patch_slot.data["room"], "P305")
+
+        # Council Reopen & Notify
+        self.council1.is_finalized = True
+        self.council1.save(update_fields=["is_finalized"])
+        reopen_res = self.client.post(
+            f"/admin/councils/{self.council1.id}/reopen-and-notify/",
+            {"reopen": True, "notify": True},
+            format="json",
+        )
+        self.assertEqual(reopen_res.status_code, status.HTTP_200_OK)
+        self.assertTrue(reopen_res.data["reopened"])
+        self.council1.refresh_from_db()
+        self.assertFalse(self.council1.is_finalized)
+        self.assertGreaterEqual(reopen_res.data["notified_count"], 5)
+
+        # Signatures check
+        DefenseMinutesSignature.objects.create(council=self.council1, project=self.proj1, member=self.c1_members[0], signed_by=self.c1_members[0].user)
+        sig_res = self.client.get(f"/admin/defense/councils/{self.council1.id}/signatures/")
+        self.assertEqual(sig_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(sig_res.data["by_project"][str(self.proj1.id)]["signed_count"], 1)
+        self.assertEqual(sig_res.data["by_project"][str(self.proj1.id)]["total_members"], 5)
+
+        del_slot = self.client.delete(f"/admin/defense/slots/{slot1_id}/")
+        self.assertEqual(del_slot.status_code, status.HTTP_200_OK)
+
+
+class RealSecurityCenterAndTopicAreaTests(EnhancementsBaseTestCase):
+    def test_tracked_session_revocation_and_dynamic_policy(self):
+        anon = APIClient()
+        login_res = anon.post(
+            "/admin/login/",
+            {"username": "enh_admin", "password": "AdminPass123!"},
+            format="json",
+        )
+        self.assertEqual(login_res.status_code, status.HTTP_200_OK)
+        access = login_res.data["access"]
+
+        sess_log = UserSessionLog.objects.filter(user=self.admin, is_active=True).first()
+        self.assertIsNotNone(sess_log)
+
+        # Token works initially
+        bearer_client = APIClient()
+        bearer_client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+        sec_res = bearer_client.get("/admin/security-center/")
+        self.assertEqual(sec_res.status_code, status.HTTP_200_OK)
+        self.assertIn("active_sessions", sec_res.data)
+        self.assertIn("policies", sec_res.data)
+        self.assertIn("rbac_matrix", sec_res.data)
+        self.assertFalse(sec_res.data["security_headers"]["hsts_production"])
+
+        # Revoke session remotely
+        rev_res = self.client.post(
+            f"/admin/security-center/sessions/{sess_log.id}/revoke/",
+            {"reason": "Kiểm thử thu hồi phiên"},
+            format="json",
+        )
+        self.assertEqual(rev_res.status_code, status.HTTP_200_OK)
+
+        # Same JWT access token must immediately fail with 401!
+        after_revoke = bearer_client.get("/admin/security-center/")
+        self.assertEqual(after_revoke.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        # Dynamic security policy: update max_login_attempts to 2
+        pol_res = self.client.put(
+            "/admin/security-center/policies/",
+            {"policies": [{"policy_key": "max_login_attempts", "policy_value": "2"}]},
+            format="json",
+        )
+        self.assertEqual(pol_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(SecurityPolicy.objects.get(policy_key="max_login_attempts").policy_value, "2")
+
+        # 2 wrong attempts trigger 429 lockout
+        r1 = anon.post("/admin/login/", {"username": "enh_admin", "password": "wrong1"}, format="json")
+        self.assertEqual(r1.status_code, status.HTTP_401_UNAUTHORIZED)
+        r2 = anon.post("/admin/login/", {"username": "enh_admin", "password": "wrong2"}, format="json")
+        self.assertEqual(r2.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    def test_topic_area_crud_and_in_use_protection(self):
+        # Create new area
+        c_res = self.client.post(
+            "/admin/topic-areas/",
+            {"code": "BLOCKCHAIN", "name": "Blockchain & Fintech"},
+            format="json",
+        )
+        self.assertEqual(c_res.status_code, status.HTTP_201_CREATED)
+        area_id = c_res.data["id"]
+
+        # Patch it
+        p_res = self.client.patch(f"/admin/topic-areas/{area_id}/", {"name": "Chuỗi khối"}, format="json")
+        self.assertEqual(p_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(p_res.data["name"], "Chuỗi khối")
+
+        # Cannot delete self.topic_sw because sup1 uses it -> 409
+        del_in_use = self.client.delete(f"/admin/topic-areas/{self.topic_sw.id}/")
+        self.assertEqual(del_in_use.status_code, status.HTTP_409_CONFLICT)
+
+        # Can delete unused area -> 200
+        del_ok = self.client.delete(f"/admin/topic-areas/{area_id}/")
+        self.assertEqual(del_ok.status_code, status.HTTP_200_OK)
+
+        # Non-admin student forbidden -> 403
+        stu_client = APIClient()
+        stu_client.force_authenticate(user=self.sv1_user)
+        forb = stu_client.post("/admin/topic-areas/", {"code": "X", "name": "Y"}, format="json")
+        self.assertEqual(forb.status_code, status.HTTP_403_FORBIDDEN)

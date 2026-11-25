@@ -62,6 +62,7 @@ export const AllocationsPage: React.FC = () => {
   const [showOverrideModal, setShowOverrideModal] = useState(false);
   const [overrideStudent, setOverrideStudent] = useState<ProjectAdmin | null>(null);
   const [selectedSupervisorId, setSelectedSupervisorId] = useState<number | ''>('');
+  const [togglingSupplementary, setTogglingSupplementary] = useState(false);
 
   const fetchBatches = async () => {
     try {
@@ -117,10 +118,16 @@ export const AllocationsPage: React.FC = () => {
   }, [selectedBatchId]);
 
   const currentBatch = batches.find((b) => b.id === selectedBatchId);
+  const isSupplementaryOpen = Boolean(currentBatch?.supplementary_open);
   const isAllocationLocked = currentBatch?.current_stage === 'PHASE_2_LOCKED';
   const isAllocationPublished = Boolean(
     currentBatch?.is_allocation_published ||
     (currentBatch?.current_stage && !['PHASE_1_SETUP', 'PHASE_2_ALLOCATING', 'PHASE_2_LOCKED'].includes(currentBatch.current_stage))
+  );
+  const canToggleSupplementary = Boolean(
+    currentBatch &&
+    !currentBatch.is_closed &&
+    !['PHASE_1_SETUP', 'PHASE_5_IN_PROGRESS', 'PHASE_6_DEFENSE', 'COMPLETED'].includes(currentBatch.current_stage)
   );
 
   const totalQuota = quotas.reduce((s, q) => s + (q.max_total_quota || 0), 0);
@@ -287,6 +294,43 @@ export const AllocationsPage: React.FC = () => {
     }
   };
 
+  const handleOpenSupplementary = async () => {
+    if (!selectedBatchId || togglingSupplementary) return;
+    if (!confirm('Mở đăng ký nguyện vọng bổ sung cho sinh viên chưa có GVHD? (Các sinh viên đã có GVHD sẽ được giữ nguyên tuyệt đối)')) return;
+    try {
+      setTogglingSupplementary(true);
+      const res = await apiClient.post(`/admin/batches/${selectedBatchId}/supplementary/open/`);
+      showToast(res.data?.message || '✓ Đã mở đăng ký bổ sung cho SV chưa có GVHD.', 'success');
+      await fetchBatches();
+      await fetchData();
+    } catch (err: any) {
+      const errMsg = err.response?.data?.detail || err.response?.data?.error || err.message || 'Không thể mở ĐK bổ sung';
+      showToast(`❌ ${errMsg}`, 'error');
+    } finally {
+      setTogglingSupplementary(false);
+    }
+  };
+
+  const handleFinalizeSupplementary = async () => {
+    if (!selectedBatchId || togglingSupplementary) return;
+    if (!confirm('Chốt đăng ký bổ sung & tự động chạy ghép GVHD cho các SV còn thiếu (không xáo trộn SV đã ghép)?')) return;
+    try {
+      setTogglingSupplementary(true);
+      const res = await apiClient.post(`/admin/batches/${selectedBatchId}/supplementary/finalize/`, {
+        run_auto_allocate: true,
+      });
+      if (res.data?.allocation) setMatchResult(res.data.allocation);
+      showToast(res.data?.message || '✓ Đã chốt đăng ký bổ sung thành công!', 'success');
+      await fetchBatches();
+      await fetchData();
+    } catch (err: any) {
+      const errMsg = err.response?.data?.detail || err.response?.data?.error || err.message || 'Lỗi chốt ĐK bổ sung';
+      showToast(`❌ ${errMsg}`, 'error');
+    } finally {
+      setTogglingSupplementary(false);
+    }
+  };
+
   return (
     <AdminLayout>
       <div className="utc-allocations-portal">
@@ -339,10 +383,12 @@ export const AllocationsPage: React.FC = () => {
 
             <button
               onClick={handleFinalizeAllocation}
-              disabled={isAllocationPublished || isAllocationLocked}
+              disabled={isAllocationPublished || isAllocationLocked || isSupplementaryOpen}
               className={`utc-btn-warning ${isAllocationLocked ? 'utc-btn-is-locked' : ''}`}
               title={
-                isAllocationPublished
+                isSupplementaryOpen
+                  ? 'Vui lòng chốt đăng ký bổ sung trước khi khóa phân công'
+                  : isAllocationPublished
                   ? 'Khoa đã chốt và công bố kết quả phân công'
                   : isAllocationLocked
                   ? 'Đợt này đã được chốt phân công (Bước 17)'
@@ -354,10 +400,12 @@ export const AllocationsPage: React.FC = () => {
 
             <button
               onClick={handlePublishAllocation}
-              disabled={isAllocationPublished || sendingEmails || matching}
+              disabled={isAllocationPublished || sendingEmails || matching || isSupplementaryOpen}
               className={`utc-btn-primary ${isAllocationLocked && !isAllocationPublished ? 'utc-btn-pulse' : ''}`}
               title={
-                isAllocationPublished
+                isSupplementaryOpen
+                  ? 'Vui lòng chốt đăng ký bổ sung trước khi công bố kết quả'
+                  : isAllocationPublished
                   ? 'Đã công bố và gửi thông báo kết quả cho toàn bộ GV & SV'
                   : isAllocationLocked
                   ? 'Công bố và gửi email kết quả cho SV & GV (Chuyển sang Giai đoạn 3)'
@@ -366,8 +414,42 @@ export const AllocationsPage: React.FC = () => {
             >
               <span>📢</span> {isAllocationPublished ? '✓ Đã Công Bố & Gửi Thông Báo' : sendingEmails ? 'Đang công bố & gửi thông báo...' : 'Công Bố & Gửi Thông Báo'}
             </button>
+
+            {canToggleSupplementary && !isSupplementaryOpen && (
+              <button
+                onClick={handleOpenSupplementary}
+                disabled={togglingSupplementary || matching}
+                className="utc-btn-secondary"
+                style={{ background: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74', padding: '0.55rem 0.9rem', borderRadius: '8px', fontWeight: 700, cursor: 'pointer' }}
+                title="Mở lại đăng ký nguyện vọng bổ sung cho SV chưa có GVHD mà không xáo trộn SV đã có GVHD"
+              >
+                <span>🔓</span> {togglingSupplementary ? 'Đang mở...' : 'Mở ĐK Bổ Sung'}
+              </button>
+            )}
+
+            {isSupplementaryOpen && (
+              <button
+                onClick={handleFinalizeSupplementary}
+                disabled={togglingSupplementary || matching}
+                className="utc-btn-gradient-green"
+                title="Chốt đăng ký bổ sung & chạy MCMF ghép cho riêng SV chưa có GVHD"
+              >
+                <span>✅</span> {togglingSupplementary ? 'Đang chốt & ghép...' : 'Chốt ĐK Bổ Sung & Ghép SV'}
+              </button>
+            )}
           </div>
         </div>
+
+        {isSupplementaryOpen && (
+          <div style={{ marginBottom: '1rem', padding: '0.85rem 1.15rem', borderRadius: '10px', background: '#fffbeb', border: '1px solid #f59e0b', color: '#92400e', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <div>
+              <strong>🔓 Đang Mở Đăng Ký Nguyện Vọng Bổ Sung</strong>
+              <div style={{ fontSize: '0.85rem', marginTop: '2px' }}>
+                Các sinh viên chưa có GVHD có thể gửi/cập nhật nguyện vọng tại Cổng Sinh viên. Sinh viên đã có GVHD được giữ nguyên 100%. Hãy nhấn <b>"Chốt ĐK Bổ Sung & Ghép SV"</b> khi kết thúc thời gian bổ sung.
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Workflow Stepper Guide */}
         <div className="utc-workflow-stepper">

@@ -62,6 +62,23 @@ from .views import (
 )
 
 from .views_auth_sso import AdminGoogleSSOLoginAPIView
+from .views_enhancements import (
+    BatchMilestoneListCreateAPIView,
+    BatchMilestoneDetailAPIView,
+    BatchMilestoneSeedDefaultAPIView,
+    OpenSupplementaryRegistrationAPIView,
+    FinalizeSupplementaryRegistrationAPIView,
+    AdminEditAcademicRecordAPIView,
+    AdminDeferralListCreateAPIView,
+    AdminDefenseScheduleSlotListCreateAPIView,
+    AdminDefenseScheduleSlotDetailAPIView,
+    CouncilReopenAndNotifyAPIView,
+    DefenseMinutesSignatureAdminView,
+    AdminSessionRevokeAPIView,
+    AdminSecurityPolicyAPIView,
+    TopicAreaManageListCreateAPIView,
+    TopicAreaManageDetailAPIView,
+)
 from .feature_views import (
     FacultyAnalyticsAPIView,
     ScoreDiscrepancyListAPIView,
@@ -108,7 +125,8 @@ urlpatterns = [
     # Giai đoạn 1: Thiết lập quan hệ Khoa - Bộ môn - Giảng viên
     path("admin/departments/", DepartmentListCreateAPIView.as_view(), name="admin-departments-list"),
     path("admin/departments/<int:pk>/", DepartmentDetailAPIView.as_view(), name="admin-departments-detail"),
-    path("admin/topic-areas/", TopicAreaListAPIView.as_view(), name="admin-topic-areas-list"),
+    path("admin/topic-areas/", TopicAreaManageListCreateAPIView.as_view(), name="admin-topic-areas-list"),
+    path("admin/topic-areas/<int:pk>/", TopicAreaManageDetailAPIView.as_view(), name="admin-topic-areas-detail"),
     path("admin/supervisors/", SupervisorListAPIView.as_view(), name="admin-supervisors-list"),
     path("supervisors/", SupervisorListAPIView.as_view(), name="supervisors-list"),
     path("admin/supervisors/<int:pk>/profile/", SupervisorProfileUpdateAPIView.as_view(), name="admin-supervisors-update-profile"),
@@ -225,4 +243,25 @@ urlpatterns = [
 
     # Feature-scoped Audit Logs
     path("admin/audit-logs/features/", FeatureAuditLogListAPIView.as_view(), name="admin-audit-logs-features"),
+
+    # Batch Timeline Milestones
+    path("admin/batches/<int:batch_id>/milestones/", BatchMilestoneListCreateAPIView.as_view(), name="admin-batch-milestones"),
+    path("admin/batches/<int:batch_id>/milestones/seed-default/", BatchMilestoneSeedDefaultAPIView.as_view(), name="admin-batch-milestones-seed"),
+    path("admin/milestones/<int:pk>/", BatchMilestoneDetailAPIView.as_view(), name="admin-milestone-detail"),
+
+    # Supplementary Registration, Academic Record Edit & Deferral Creation
+    path("admin/batches/<int:batch_id>/supplementary/open/", OpenSupplementaryRegistrationAPIView.as_view(), name="admin-batch-supplementary-open"),
+    path("admin/batches/<int:batch_id>/supplementary/finalize/", FinalizeSupplementaryRegistrationAPIView.as_view(), name="admin-batch-supplementary-finalize"),
+    path("admin/projects/<int:pk>/academic-record/", AdminEditAcademicRecordAPIView.as_view(), name="admin-project-academic-record"),
+    path("admin/deferrals/", AdminDeferralListCreateAPIView.as_view(), name="admin-deferrals"),
+
+    # Manual Defense Schedule Slots, Reopen/Notify & Minutes Signatures
+    path("admin/defense/slots/", AdminDefenseScheduleSlotListCreateAPIView.as_view(), name="admin-defense-slots"),
+    path("admin/defense/slots/<int:pk>/", AdminDefenseScheduleSlotDetailAPIView.as_view(), name="admin-defense-slot-detail"),
+    path("admin/councils/<int:pk>/reopen-and-notify/", CouncilReopenAndNotifyAPIView.as_view(), name="admin-council-reopen-notify"),
+    path("admin/defense/councils/<int:council_id>/signatures/", DefenseMinutesSignatureAdminView.as_view(), name="admin-council-signatures"),
+
+    # Security Center Enhancements (Sessions + Policies)
+    path("admin/security-center/sessions/<int:pk>/revoke/", AdminSessionRevokeAPIView.as_view(), name="admin-security-session-revoke"),
+    path("admin/security-center/policies/", AdminSecurityPolicyAPIView.as_view(), name="admin-security-policies"),
 ]

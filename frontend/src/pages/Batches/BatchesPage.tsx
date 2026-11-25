@@ -17,6 +17,7 @@ interface AcademicBatch {
   end_date: string | null;
   is_active: boolean;
   is_closed: boolean;
+  supplementary_open?: boolean;
   student_count: number;
   project_count: number;
   classes: Array<{
@@ -28,6 +29,20 @@ interface AcademicBatch {
     class_group: string;
     student_count: number;
   }>;
+}
+
+interface BatchMilestoneItem {
+  id: number;
+  batch: number;
+  name: string;
+  stage_number: number;
+  start_date: string | null;
+  end_date: string | null;
+  description: string;
+  order_index: number;
+  is_active: boolean;
+  status?: 'UPCOMING' | 'ACTIVE' | 'EXPIRED' | 'UNSCHEDULED';
+  days_left?: number | null;
 }
 
 interface Department {
@@ -99,11 +114,22 @@ export const BatchesPage: React.FC = () => {
   const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null);
   const [showBatchConfigModal, setShowBatchConfigModal] = useState(false);
 
-  // Subtabs inside selected batch: 'students' | 'classes' | 'supervisors'
-  const [batchDetailTab, setBatchDetailTab] = useState<'students' | 'classes' | 'supervisors'>('students');
+  // Subtabs inside selected batch: 'students' | 'classes' | 'supervisors' | 'milestones'
+  const [batchDetailTab, setBatchDetailTab] = useState<'students' | 'classes' | 'supervisors' | 'milestones'>('students');
   const [students, setStudents] = useState<any[]>([]);
   const [studentsLoading, setStudentsLoading] = useState(false);
   const [studentSearch, setStudentSearch] = useState('');
+
+  // Milestones of selected batch
+  const [milestones, setMilestones] = useState<BatchMilestoneItem[]>([]);
+  const [milestonesLoading, setMilestonesLoading] = useState(false);
+  const [editingMilestoneId, setEditingMilestoneId] = useState<number | null>(null);
+  const [msName, setMsName] = useState('');
+  const [msStage, setMsStage] = useState(1);
+  const [msStart, setMsStart] = useState('');
+  const [msEnd, setMsEnd] = useState('');
+  const [msDesc, setMsDesc] = useState('');
+  const [msSaving, setMsSaving] = useState(false);
 
   // Quota của giảng viên trong đợt (GĐ1 - cấu hình chỉ tiêu hướng dẫn)
   const [quotas, setQuotas] = useState<any[]>([]);
@@ -127,6 +153,17 @@ export const BatchesPage: React.FC = () => {
   const [newBatchCode, setNewBatchCode] = useState('');
   const [newBatchName, setNewBatchName] = useState('');
   const [newProgramType, setNewProgramType] = useState<'BACHELOR' | 'ENGINEER' | 'BOTH'>('BACHELOR');
+  const [newStartDate, setNewStartDate] = useState('');
+  const [newEndDate, setNewEndDate] = useState('');
+
+  // Edit batch modal
+  const [editingBatch, setEditingBatch] = useState<AcademicBatch | null>(null);
+  const [editBatchCode, setEditBatchCode] = useState('');
+  const [editBatchName, setEditBatchName] = useState('');
+  const [editProgramType, setEditProgramType] = useState<'BACHELOR' | 'ENGINEER' | 'BOTH'>('BACHELOR');
+  const [editStartDate, setEditStartDate] = useState('');
+  const [editEndDate, setEditEndDate] = useState('');
+  const [editBatchSaving, setEditBatchSaving] = useState(false);
 
   // Import Excel form
   const [showImportModal, setShowImportModal] = useState(false);
@@ -372,6 +409,87 @@ export const BatchesPage: React.FC = () => {
     }
   };
 
+  const fetchMilestones = async (batchId: number) => {
+    try {
+      setMilestonesLoading(true);
+      const res = await apiClient.get(`/admin/batches/${batchId}/milestones/?_t=${Date.now()}`);
+      setMilestones(Array.isArray(res.data) ? res.data : []);
+    } catch {
+      setMilestones([]);
+    } finally {
+      setMilestonesLoading(false);
+    }
+  };
+
+  const resetMilestoneForm = () => {
+    setEditingMilestoneId(null);
+    setMsName('');
+    setMsStage(1);
+    setMsStart('');
+    setMsEnd('');
+    setMsDesc('');
+  };
+
+  const handleSaveMilestone = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBatchId || !msName.trim()) return;
+    try {
+      setMsSaving(true);
+      const payload = {
+        name: msName.trim(),
+        stage_number: msStage,
+        start_date: msStart ? `${msStart}T08:00:00` : null,
+        end_date: msEnd ? `${msEnd}T17:00:00` : null,
+        description: msDesc.trim(),
+      };
+      if (editingMilestoneId) {
+        await apiClient.patch(`/admin/milestones/${editingMilestoneId}/`, payload);
+        showToast('✓ Đã cập nhật mốc thời gian thành công!', 'success');
+      } else {
+        await apiClient.post(`/admin/batches/${selectedBatchId}/milestones/`, payload);
+        showToast('✓ Đã thêm mốc thời gian mới thành công!', 'success');
+      }
+      resetMilestoneForm();
+      await fetchMilestones(selectedBatchId);
+    } catch (err: any) {
+      const msg = err.response?.data?.end_date?.[0] || err.response?.data?.detail || err.message || 'Lỗi lưu mốc thời gian';
+      showToast(`❌ ${msg}`, 'error');
+    } finally {
+      setMsSaving(false);
+    }
+  };
+
+  const handleDeleteMilestone = async (milestoneId: number) => {
+    if (!selectedBatchId || !confirm('Bạn có chắc chắn muốn xóa mốc thời gian này?')) return;
+    try {
+      await apiClient.delete(`/admin/milestones/${milestoneId}/`);
+      showToast('✓ Đã xóa mốc thời gian.', 'success');
+      await fetchMilestones(selectedBatchId);
+    } catch (err: any) {
+      showToast(`❌ Lỗi xóa mốc: ${err.response?.data?.detail || err.message}`, 'error');
+    }
+  };
+
+  const handleSeedDefaultMilestones = async () => {
+    if (!selectedBatchId) return;
+    const hasExisting = milestones.length > 0;
+    if (hasExisting && !confirm('Đợt đã có mốc thời gian. Bạn có muốn thay thế bằng bộ 6 mốc chuẩn UTC mặc định?')) {
+      return;
+    }
+    try {
+      setMsSaving(true);
+      await apiClient.post(`/admin/batches/${selectedBatchId}/milestones/seed-default/`, {
+        replace: hasExisting,
+      });
+      showToast('✓ Đã khởi tạo 6 mốc thời gian chuẩn UTC!', 'success');
+      await fetchMilestones(selectedBatchId);
+    } catch (err: any) {
+      showToast(`❌ ${err.response?.data?.detail || err.message}`, 'error');
+    } finally {
+      setMsSaving(false);
+    }
+  };
+
   useEffect(() => {
     Promise.all([fetchBatches(), fetchDepartments(), fetchSupervisors(), fetchTopicAreas()]);
   }, []);
@@ -380,6 +498,7 @@ export const BatchesPage: React.FC = () => {
     if (selectedBatchId) {
       fetchStudents(selectedBatchId);
       fetchQuotas(selectedBatchId);
+      fetchMilestones(selectedBatchId);
     }
   }, [selectedBatchId]);
 
@@ -405,17 +524,70 @@ export const BatchesPage: React.FC = () => {
         batch_code: newBatchCode,
         batch_name: newBatchName,
         program_type: newProgramType,
+        start_date: newStartDate || null,
+        end_date: newEndDate || null,
         is_active: true
       });
       setShowCreateModal(false);
       setNewBatchCode('');
       setNewBatchName('');
       setNewProgramType('BACHELOR');
+      setNewStartDate('');
+      setNewEndDate('');
       showToast('✓ Tạo đợt đồ án tốt nghiệp mới thành công!', 'success');
       fetchBatches();
     } catch (err: any) {
       const msg = err.response?.data?.detail || err.message || 'Lỗi tạo đợt đồ án';
       showToast(`❌ ${msg}`, 'error');
+    }
+  };
+
+  const handleOpenEditBatch = (batch: AcademicBatch, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setEditingBatch(batch);
+    setEditBatchCode(batch.batch_code);
+    setEditBatchName(batch.batch_name);
+    setEditProgramType(batch.program_type);
+    setEditStartDate(batch.start_date || '');
+    setEditEndDate(batch.end_date || '');
+  };
+
+  const handleSaveEditBatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingBatch) return;
+    try {
+      setEditBatchSaving(true);
+      await apiClient.patch(`/admin/batches/${editingBatch.id}/`, {
+        batch_code: editBatchCode.trim(),
+        batch_name: editBatchName.trim(),
+        program_type: editProgramType,
+        start_date: editStartDate || null,
+        end_date: editEndDate || null,
+      });
+      setEditingBatch(null);
+      showToast('✓ Đã cập nhật thông tin đợt đồ án!', 'success');
+      await fetchBatches();
+    } catch (err: any) {
+      showToast(`❌ ${err.response?.data?.detail || err.message || 'Lỗi cập nhật đợt'}`, 'error');
+    } finally {
+      setEditBatchSaving(false);
+    }
+  };
+
+  const handleDeleteBatch = async (batch: AcademicBatch, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const hasData = (batch.student_count || 0) > 0 || (batch.project_count || 0) > 0;
+    const msg = hasData
+      ? `Đợt ${batch.batch_code} đang có ${batch.student_count} sinh viên và ${batch.project_count} đồ án. Bạn có chắc muốn XÓA VĨNH VIỄN đợt này không?`
+      : `Bạn có chắc muốn xóa đợt trống "${batch.batch_name}" (${batch.batch_code})?`;
+    if (!confirm(msg)) return;
+    try {
+      await apiClient.delete(`/admin/batches/${batch.id}/${hasData ? '?force=true' : ''}`);
+      if (selectedBatchId === batch.id) setSelectedBatchId(null);
+      showToast(`✓ Đã xóa đợt ${batch.batch_code}.`, 'success');
+      await fetchBatches();
+    } catch (err: any) {
+      showToast(`❌ ${err.response?.data?.detail || err.message || 'Không thể xóa đợt'}`, 'error');
     }
   };
 
@@ -1149,6 +1321,24 @@ export const BatchesPage: React.FC = () => {
                             </button>
                           )}
                           <button
+                            type="button"
+                            className="utc-btn-outline"
+                            onClick={(e) => handleOpenEditBatch(batch, e)}
+                            title="Chỉnh sửa tên, mã, thời gian bắt đầu/kết thúc đợt"
+                            style={{ padding: '0.45rem 0.7rem', fontSize: '0.8rem' }}
+                          >
+                            ✏️ Sửa
+                          </button>
+                          <button
+                            type="button"
+                            className="utc-btn-outline"
+                            onClick={(e) => handleDeleteBatch(batch, e)}
+                            title="Xóa đợt đồ án"
+                            style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#fecaca' }}
+                          >
+                            🗑️
+                          </button>
+                          <button
                             onClick={(e) => {
                               e.stopPropagation();
                               handleCloseBatch(batch.id);
@@ -1246,7 +1436,197 @@ export const BatchesPage: React.FC = () => {
                     <span>👨‍🏫</span> Giảng Viên Trong Đợt &amp; Quota
                     <span className="utc-batch-subtab-badge">{quotas.length}</span>
                   </button>
+                  <button
+                    type="button"
+                    className={`utc-batch-subtab-btn ${batchDetailTab === 'milestones' ? 'active' : ''}`}
+                    onClick={() => setBatchDetailTab('milestones')}
+                  >
+                    <span>🗓️</span> Mốc Thời Gian (Timeline)
+                    <span className="utc-batch-subtab-badge">{milestones.length}</span>
+                  </button>
                 </div>
+
+                {/* Subtab Content: Milestones */}
+                {batchDetailTab === 'milestones' && (
+                  <div style={{ display: 'grid', gap: '1rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+                      <div>
+                        <h4 style={{ margin: 0 }}>Lộ trình các mốc thời gian của đợt {currBatch?.batch_code}</h4>
+                        <span style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                          Sinh viên &amp; Giảng viên sẽ thấy hạn chót đếm ngược theo các mốc này
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleSeedDefaultMilestones}
+                        disabled={msSaving}
+                        className="utc-btn-emerald"
+                      >
+                        ⚡ {milestones.length > 0 ? 'Đặt lại 6 mốc chuẩn UTC' : 'Tạo nhanh 6 mốc chuẩn UTC'}
+                      </button>
+                    </div>
+
+                    <form
+                      onSubmit={handleSaveMilestone}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+                        gap: '0.75rem',
+                        padding: '1rem',
+                        background: '#f8fafc',
+                        borderRadius: '10px',
+                        border: '1px solid #e2e8f0',
+                        alignItems: 'end',
+                      }}
+                    >
+                      <div className="utc-form-group" style={{ marginBottom: 0 }}>
+                        <label>Giai đoạn (1–6):</label>
+                        <select
+                          value={msStage}
+                          onChange={(e) => setMsStage(Number(e.target.value))}
+                          className="utc-input"
+                        >
+                          <option value={1}>GĐ 1: Khởi tạo đợt</option>
+                          <option value={2}>GĐ 2: Nguyện vọng &amp; Phân công</option>
+                          <option value={3}>GĐ 3: Đề cương &amp; Ký duyệt</option>
+                          <option value={4}>GĐ 4: Xét ĐK &amp; Bản nháp</option>
+                          <option value={5}>GĐ 5: Task, Nhật ký &amp; Báo cáo</option>
+                          <option value={6}>GĐ 6: Bảo vệ &amp; Chấm điểm</option>
+                        </select>
+                      </div>
+                      <div className="utc-form-group" style={{ marginBottom: 0, gridColumn: 'span 2' }}>
+                        <label>Tên mốc thời gian (*):</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="VD: Hạn nộp đề cương chi tiết ĐATN"
+                          value={msName}
+                          onChange={(e) => setMsName(e.target.value)}
+                          className="utc-input"
+                        />
+                      </div>
+                      <div className="utc-form-group" style={{ marginBottom: 0 }}>
+                        <label>Ngày bắt đầu:</label>
+                        <input
+                          type="date"
+                          value={msStart}
+                          onChange={(e) => setMsStart(e.target.value)}
+                          className="utc-input"
+                        />
+                      </div>
+                      <div className="utc-form-group" style={{ marginBottom: 0 }}>
+                        <label>Hạn chót (Kết thúc):</label>
+                        <input
+                          type="date"
+                          value={msEnd}
+                          onChange={(e) => setMsEnd(e.target.value)}
+                          className="utc-input"
+                        />
+                      </div>
+                      <div className="utc-form-group" style={{ marginBottom: 0, gridColumn: 'span 2' }}>
+                        <label>Ghi chú / Mô tả ngắn:</label>
+                        <input
+                          type="text"
+                          placeholder="Hướng dẫn nhanh cho sinh viên & giảng viên..."
+                          value={msDesc}
+                          onChange={(e) => setMsDesc(e.target.value)}
+                          className="utc-input"
+                        />
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button type="submit" disabled={msSaving} className="utc-btn-primary">
+                          {msSaving ? 'Đang lưu...' : editingMilestoneId ? '💾 Cập nhật mốc' : '➕ Thêm mốc'}
+                        </button>
+                        {editingMilestoneId && (
+                          <button type="button" onClick={resetMilestoneForm} className="utc-btn-cancel">
+                            Hủy
+                          </button>
+                        )}
+                      </div>
+                    </form>
+
+                    {milestonesLoading ? (
+                      <div className="utc-loading-box">Đang tải danh sách mốc thời gian...</div>
+                    ) : milestones.length === 0 ? (
+                      <div className="utc-empty-box">Chưa có mốc thời gian nào. Hãy nhấn &quot;Tạo nhanh 6 mốc chuẩn UTC&quot; hoặc thêm thủ công phía trên.</div>
+                    ) : (
+                      <div className="utc-classes-table-wrapper">
+                        <table className="utc-classes-table">
+                          <thead>
+                            <tr>
+                              <th>GĐ</th>
+                              <th>Tên mốc thời gian</th>
+                              <th>Bắt đầu</th>
+                              <th>Hạn chót</th>
+                              <th>Trạng thái</th>
+                              <th style={{ width: '140px', textAlign: 'center' }}>Thao tác</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {milestones.map((m) => (
+                              <tr key={m.id}>
+                                <td className="font-bold">GĐ {m.stage_number}</td>
+                                <td>
+                                  <div className="font-bold">{m.name}</div>
+                                  {m.description && <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{m.description}</div>}
+                                </td>
+                                <td>{m.start_date ? new Date(m.start_date).toLocaleDateString('vi-VN') : '—'}</td>
+                                <td>{m.end_date ? new Date(m.end_date).toLocaleDateString('vi-VN') : '—'}</td>
+                                <td>
+                                  <span
+                                    style={{
+                                      padding: '2px 8px',
+                                      borderRadius: '999px',
+                                      fontSize: '0.75rem',
+                                      fontWeight: 700,
+                                      background: m.status === 'ACTIVE' ? '#dcfce7' : m.status === 'EXPIRED' ? '#fee2e2' : '#e0f2fe',
+                                      color: m.status === 'ACTIVE' ? '#15803d' : m.status === 'EXPIRED' ? '#b91c1c' : '#0369a1',
+                                    }}
+                                  >
+                                    {m.status === 'ACTIVE'
+                                      ? `Đang mở${m.days_left !== null && m.days_left !== undefined ? ` (${m.days_left} ngày)` : ''}`
+                                      : m.status === 'EXPIRED'
+                                      ? 'Đã qua'
+                                      : m.status === 'UPCOMING'
+                                      ? 'Sắp tới'
+                                      : 'Chưa đặt ngày'}
+                                  </span>
+                                </td>
+                                <td style={{ textAlign: 'center' }}>
+                                  <div style={{ display: 'inline-flex', gap: '6px' }}>
+                                    <button
+                                      type="button"
+                                      className="utc-btn-outline"
+                                      style={{ padding: '4px 8px', fontSize: '0.78rem' }}
+                                      onClick={() => {
+                                        setEditingMilestoneId(m.id);
+                                        setMsName(m.name);
+                                        setMsStage(m.stage_number);
+                                        setMsStart(m.start_date ? m.start_date.slice(0, 10) : '');
+                                        setMsEnd(m.end_date ? m.end_date.slice(0, 10) : '');
+                                        setMsDesc(m.description || '');
+                                      }}
+                                    >
+                                      ✏️
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="utc-btn-outline"
+                                      style={{ padding: '4px 8px', fontSize: '0.78rem', color: '#dc2626', borderColor: '#fca5a5' }}
+                                      onClick={() => handleDeleteMilestone(m.id)}
+                                    >
+                                      🗑️
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Subtab Content: Supervisors in batch + quota */}
                 {batchDetailTab === 'supervisors' && (
@@ -2280,9 +2660,102 @@ export const BatchesPage: React.FC = () => {
                   </div>
                 </div>
 
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <div className="utc-form-group">
+                    <label>Ngày Bắt Đầu (tuỳ chọn):</label>
+                    <input
+                      type="date"
+                      value={newStartDate}
+                      onChange={(e) => setNewStartDate(e.target.value)}
+                      className="utc-input"
+                    />
+                  </div>
+                  <div className="utc-form-group">
+                    <label>Ngày Kết Thúc Dự Kiến:</label>
+                    <input
+                      type="date"
+                      value={newEndDate}
+                      onChange={(e) => setNewEndDate(e.target.value)}
+                      className="utc-input"
+                    />
+                  </div>
+                </div>
+
                 <div className="utc-modal-foot">
                   <button type="button" onClick={() => setShowCreateModal(false)} className="utc-btn-cancel">Hủy</button>
                   <button type="submit" className="utc-btn-primary">Khởi Tạo Đợt</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL 1B: EDIT BATCH */}
+        {editingBatch && (
+          <div className="utc-modal-backdrop">
+            <div className="utc-modal-card">
+              <div className="utc-modal-head">
+                <h4>✏️ Chỉnh Sửa Đợt Đồ Án: {editingBatch.batch_code}</h4>
+                <button onClick={() => setEditingBatch(null)} className="utc-btn-close">✕</button>
+              </div>
+              <form onSubmit={handleSaveEditBatch}>
+                <div className="utc-form-group">
+                  <label>Mã Đợt Đồ Án:</label>
+                  <input
+                    type="text"
+                    required
+                    value={editBatchCode}
+                    onChange={(e) => setEditBatchCode(e.target.value)}
+                    className="utc-input"
+                  />
+                </div>
+                <div className="utc-form-group">
+                  <label>Tên Đợt Đồ Án:</label>
+                  <input
+                    type="text"
+                    required
+                    value={editBatchName}
+                    onChange={(e) => setEditBatchName(e.target.value)}
+                    className="utc-input"
+                  />
+                </div>
+                <div className="utc-form-group">
+                  <label>Chương Trình Đào Tạo:</label>
+                  <select
+                    value={editProgramType}
+                    onChange={(e) => setEditProgramType(e.target.value as 'BACHELOR' | 'ENGINEER' | 'BOTH')}
+                    className="utc-input"
+                  >
+                    <option value="BACHELOR">🎓 Cử nhân (Bachelor)</option>
+                    <option value="ENGINEER">⚙️ Kỹ sư (Engineer)</option>
+                    <option value="BOTH">🔄 Cả Cử nhân &amp; Kỹ sư</option>
+                  </select>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <div className="utc-form-group">
+                    <label>Ngày Bắt Đầu:</label>
+                    <input
+                      type="date"
+                      value={editStartDate}
+                      onChange={(e) => setEditStartDate(e.target.value)}
+                      className="utc-input"
+                    />
+                  </div>
+                  <div className="utc-form-group">
+                    <label>Ngày Kết Thúc:</label>
+                    <input
+                      type="date"
+                      value={editEndDate}
+                      onChange={(e) => setEditEndDate(e.target.value)}
+                      className="utc-input"
+                    />
+                  </div>
+                </div>
+                <div className="utc-modal-foot">
+                  <button type="button" onClick={() => setEditingBatch(null)} className="utc-btn-cancel">Hủy</button>
+                  <button type="submit" disabled={editBatchSaving} className="utc-btn-primary">
+                    {editBatchSaving ? 'Đang lưu...' : '💾 Lưu Thay Đổi'}
+                  </button>
                 </div>
               </form>
             </div>
