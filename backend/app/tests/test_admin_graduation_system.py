@@ -332,7 +332,8 @@ class AdminGraduationSystemTests(TestCase):
             student=s1,
             supervisor=self.sup1,  # Sup1 is GVHD
             batch=self.batch,
-            topic_title_vi="ĐATN 1"
+            topic_title_vi="ĐATN 1",
+            is_eligible_for_defense=True,
         )
 
         council = DefenseCouncil.objects.create(

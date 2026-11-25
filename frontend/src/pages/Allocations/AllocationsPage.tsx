@@ -66,7 +66,7 @@ export const AllocationsPage: React.FC = () => {
 
   const fetchBatches = async () => {
     try {
-      const res = await apiClient.get('/admin/batches/');
+      const res = await apiClient.get(`/admin/batches/?_t=${Date.now()}`);
       const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
       setBatches(list);
       if (list.length > 0 && !selectedBatchId) {

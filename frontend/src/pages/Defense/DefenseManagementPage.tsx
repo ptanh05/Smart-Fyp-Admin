@@ -409,7 +409,8 @@ export const DefenseManagementPage: React.FC = () => {
     (p) =>
       p.deferral_status === 'REQUESTED' ||
       p.deferral_status === 'APPROVED' ||
-      p.final_academic_eligibility === 'INELIGIBLE'
+      p.final_academic_eligibility === 'INELIGIBLE' ||
+      deferralByProjectId.get(p.id)?.status === 'PENDING'
   );
 
   return (

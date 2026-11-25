@@ -81,11 +81,12 @@ const getBatchStageInfo = (stage: string) => {
       return { step: 3, label: 'GĐ 3: Duyệt đề cương', color: '#4338ca', bg: '#e0e7ff', border: '#c7d2fe' };
     case 'PHASE_4_ELIGIBILITY':
     case 'PHASE_4_WEEKLY':
+      return { step: 4, label: 'GĐ 4: Bản nháp & Xét điều kiện', color: '#6d28d9', bg: '#ede9fe', border: '#ddd6fe' };
     case 'PHASE_5_IN_PROGRESS':
-      return { step: 4, label: 'GĐ 4: Thực hiện đồ án', color: '#6d28d9', bg: '#ede9fe', border: '#ddd6fe' };
     case 'PHASE_5_REVIEW':
+      return { step: 5, label: 'GĐ 5: Thực hiện đồ án', color: '#9d174d', bg: '#fce7f3', border: '#fbcfe8' };
     case 'PHASE_6_DEFENSE':
-      return { step: 5, label: 'GĐ 5: Hội đồng & bảo vệ', color: '#be185d', bg: '#fce7f3', border: '#fbcfe8' };
+      return { step: 6, label: 'GĐ 6: Hội đồng & bảo vệ', color: '#be185d', bg: '#fce7f3', border: '#fbcfe8' };
     case 'COMPLETED':
       return { step: 6, label: 'GĐ 6: Chấm điểm & đóng đợt', color: '#047857', bg: '#d1fae5', border: '#a7f3d0' };
     default:

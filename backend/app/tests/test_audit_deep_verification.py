@@ -205,7 +205,8 @@ class AuditDeepVerificationTests(TestCase):
         u = CustomUser.objects.create_user(username="sv_nc_1", user_type="student")
         s = Student.objects.create(user=u, registration_no="2112000NC1", academic_batch=self.batch)
         p = GraduationProject.objects.create(
-            student=s, supervisor=self.sup1, batch=self.batch, topic_title_vi="Đề tài An toàn No-Conflict"
+            student=s, supervisor=self.sup1, batch=self.batch, topic_title_vi="Đề tài An toàn No-Conflict",
+            is_eligible_for_defense=True,
         )
 
         # Council 1 contains Sup1 (Chair) and Sup2 (Secretary)

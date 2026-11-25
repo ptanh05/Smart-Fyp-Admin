@@ -584,7 +584,7 @@ export const TopicApprovalPage: React.FC = () => {
                           ) : (
                             <div className="utc-student-info-cell">
                               <div className="utc-avatar-badge">
-                                {p.student_name ? p.student_name.trim().slice(-1).toUpperCase() : 'S'}
+                                {p.student_name ? (p.student_name.trim().split(/\s+/).pop() || 'S').charAt(0).toUpperCase() : 'S'}
                               </div>
                               <div>
                                 <div className="utc-student-name">{formatFullName(p.student_name)}</div>
