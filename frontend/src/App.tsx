@@ -2,6 +2,7 @@ import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AdminAuthProvider, useAdminAuth } from './auth/AdminAuthContext';
 import { ProtectedAdminRoute } from './auth/ProtectedAdminRoute';
+import { AdminLayout } from './components/layout/AdminLayout';
 
 // Route Code Splitting: Lazy-load admin pages for fast initial load & reduced bundle size
 const AdminLoginPage = lazy(() => import('./pages/Login/AdminLoginPage').then(m => ({ default: m.AdminLoginPage })));
@@ -61,7 +62,17 @@ const RoleRoute: React.FC<{
   if (!allow.includes(role)) {
     return <Navigate to={role === 'academic_staff' ? '/academic-staff' : '/dashboard'} replace />;
   }
-  return <>{children}</>;
+  return (
+    <Suspense
+      fallback={
+        <AdminLayout>
+          <AdminLoadingFallback />
+        </AdminLayout>
+      }
+    >
+      {children}
+    </Suspense>
+  );
 };
 
 export const App: React.FC = () => {

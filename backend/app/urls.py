@@ -59,6 +59,11 @@ from .views import (
     AcademicStaffExportClassGradesExcelAPIView,
     AcademicStaffCompleteBatchAPIView,
     AdminSeedDataAPIView,
+    OutlineGroupListCreateAPIView,
+    OutlineGroupDetailAPIView,
+    OutlineReviewListAPIView,
+    OutlineReviewDetailAPIView,
+    OutlineReviewAssignAPIView,
 )
 
 from .views_auth_sso import AdminGoogleSSOLoginAPIView
@@ -179,6 +184,11 @@ urlpatterns = [
     path("admin/projects/", GraduationProjectsAdminListAPIView.as_view(), name="admin-projects-list"),
     path("admin/projects/<int:pk>/topic-approval/", TopicApprovalAPIView.as_view(), name="admin-projects-topic-approval"),
     path("admin/projects/<int:pk>/download-outline/", DownloadProjectOutlineAPIView.as_view(), name="admin-projects-download-outline"),
+    path("admin/outline-groups/", OutlineGroupListCreateAPIView.as_view(), name="admin-outline-groups-list"),
+    path("admin/outline-groups/<int:pk>/", OutlineGroupDetailAPIView.as_view(), name="admin-outline-groups-detail"),
+    path("admin/outline-reviews/", OutlineReviewListAPIView.as_view(), name="admin-outline-reviews-list"),
+    path("admin/outline-reviews/assign/", OutlineReviewAssignAPIView.as_view(), name="admin-outline-reviews-assign"),
+    path("admin/outline-reviews/<int:pk>/", OutlineReviewDetailAPIView.as_view(), name="admin-outline-reviews-detail"),
 
     # Xét điều kiện làm đồ án & Force Approve (Giai đoạn 4)
     path("admin/eligibility/import-excel/", ExcelEligibilityImportAPIView.as_view(), name="admin-eligibility-import-excel"),

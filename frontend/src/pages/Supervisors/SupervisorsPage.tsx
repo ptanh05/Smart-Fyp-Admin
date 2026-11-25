@@ -687,7 +687,7 @@ export const SupervisorsPage: React.FC = () => {
         {/* TopicArea CRUD Modal */}
         {showTopicAreaModal && (
           <div className="utc-modal-backdrop">
-            <div className="utc-modal-card" style={{ maxWidth: '680px' }}>
+            <div className="utc-modal-card" style={{ maxWidth: '780px' }}>
               <div className="utc-modal-head">
                 <h4>📚 Quản Lý Danh Mục Chuyên Ngành / Hướng Nghiên Cứu</h4>
                 <button onClick={() => setShowTopicAreaModal(false)} className="utc-btn-close">✕</button>
@@ -724,7 +724,7 @@ export const SupervisorsPage: React.FC = () => {
                       setSavingArea(false);
                     }
                   }}
-                  style={{ display: 'grid', gridTemplateColumns: '140px 1fr auto', gap: '8px', alignItems: 'end', padding: '0.75rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}
+                  style={{ display: 'grid', gridTemplateColumns: '130px 1fr 1fr auto', gap: '8px', alignItems: 'end', padding: '0.75rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}
                 >
                   <div>
                     <label style={{ fontSize: '0.78rem', fontWeight: 600 }}>Mã CN (*)</label>
@@ -734,12 +734,16 @@ export const SupervisorsPage: React.FC = () => {
                     <label style={{ fontSize: '0.78rem', fontWeight: 600 }}>Tên chuyên ngành (*)</label>
                     <input type="text" required value={areaName} onChange={(e) => setAreaName(e.target.value)} placeholder="VD: Dữ liệu & Trí tuệ nhân tạo" className="utc-input" />
                   </div>
+                  <div>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 600 }}>Mô tả</label>
+                    <input type="text" value={areaDesc} onChange={(e) => setAreaDesc(e.target.value)} placeholder="Mô tả ngắn gọn (tùy chọn)" className="utc-input" />
+                  </div>
                   <div style={{ display: 'flex', gap: '4px' }}>
-                    <button type="submit" disabled={savingArea} className="utc-btn-primary">
+                    <button type="submit" disabled={savingArea} className="utc-btn-primary" style={{ whiteSpace: 'nowrap' }}>
                       {editingAreaId ? '💾 Cập nhật' : '➕ Thêm'}
                     </button>
                     {editingAreaId && (
-                      <button type="button" onClick={() => { setEditingAreaId(null); setAreaCode(''); setAreaName(''); setAreaDesc(''); }} className="utc-btn-cancel">Hủy</button>
+                      <button type="button" onClick={() => { setEditingAreaId(null); setAreaCode(''); setAreaName(''); setAreaDesc(''); }} className="utc-btn-cancel" style={{ whiteSpace: 'nowrap' }}>Hủy</button>
                     )}
                   </div>
                 </form>
@@ -748,29 +752,34 @@ export const SupervisorsPage: React.FC = () => {
                   <table className="utc-custom-table" style={{ width: '100%' }}>
                     <thead>
                       <tr>
-                        <th>Mã</th>
+                        <th style={{ whiteSpace: 'nowrap' }}>Mã</th>
                         <th>Tên chuyên ngành</th>
-                        <th>Trạng thái</th>
-                        <th>Thao tác</th>
+                        <th style={{ whiteSpace: 'nowrap' }}>Trạng thái</th>
+                        <th style={{ whiteSpace: 'nowrap' }}>Thao tác</th>
                       </tr>
                     </thead>
                     <tbody>
                       {topicAreas.map((a) => (
                         <tr key={a.id}>
-                          <td style={{ fontFamily: 'monospace', fontWeight: 700 }}>{a.code}</td>
-                          <td>{a.name}</td>
+                          <td style={{ fontFamily: 'monospace', fontWeight: 700, whiteSpace: 'nowrap' }}>{a.code}</td>
                           <td>
-                            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: a.is_active ? '#059669' : '#64748b' }}>
+                            <div style={{ fontWeight: 600 }}>{a.name}</div>
+                            {a.description && (
+                              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>{a.description}</div>
+                            )}
+                          </td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: a.is_active ? '#059669' : '#64748b', whiteSpace: 'nowrap' }}>
                               {a.is_active ? '● Đang mở' : '○ Đã ẩn'}
                             </span>
                           </td>
-                          <td>
-                            <div style={{ display: 'flex', gap: '6px' }}>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'nowrap', alignItems: 'center' }}>
                               <button
                                 type="button"
                                 onClick={() => { setEditingAreaId(a.id); setAreaCode(a.code); setAreaName(a.name); setAreaDesc(a.description || ''); }}
                                 className="utc-btn-cancel"
-                                style={{ padding: '2px 8px', fontSize: '0.78rem' }}
+                                style={{ padding: '4px 10px', fontSize: '0.78rem', whiteSpace: 'nowrap' }}
                               >
                                 ✏️ Sửa
                               </button>
@@ -781,7 +790,7 @@ export const SupervisorsPage: React.FC = () => {
                                   fetchTopicAreas();
                                 }}
                                 className="utc-btn-cancel"
-                                style={{ padding: '2px 8px', fontSize: '0.78rem' }}
+                                style={{ padding: '4px 10px', fontSize: '0.78rem', whiteSpace: 'nowrap' }}
                               >
                                 {a.is_active ? 'Ẩn' : 'Hiện'}
                               </button>
@@ -797,7 +806,7 @@ export const SupervisorsPage: React.FC = () => {
                                   }
                                 }}
                                 className="utc-btn-cancel"
-                                style={{ padding: '2px 8px', fontSize: '0.78rem', color: '#dc2626' }}
+                                style={{ padding: '4px 10px', fontSize: '0.78rem', color: '#dc2626', whiteSpace: 'nowrap' }}
                               >
                                 🗑️
                               </button>

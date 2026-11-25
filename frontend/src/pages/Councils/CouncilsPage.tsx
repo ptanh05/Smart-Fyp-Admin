@@ -1243,8 +1243,21 @@ export const CouncilsPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => handleOpenManualSlotModal()}
+                  disabled={councils.length === 0 || eligibleProjects.length === 0}
+                  title={
+                    councils.length === 0
+                      ? 'Cần thành lập Hội đồng trước khi xếp slot thủ công'
+                      : eligibleProjects.length === 0
+                      ? 'Chưa có sinh viên đủ điều kiện bảo vệ để xếp lịch'
+                      : 'Thêm thủ công một slot lịch bảo vệ theo giờ và phòng cụ thể'
+                  }
                   className="utc-btn-create"
-                  style={{ padding: '0.45rem 0.85rem', fontSize: '0.84rem' }}
+                  style={{
+                    padding: '0.45rem 0.85rem',
+                    fontSize: '0.84rem',
+                    opacity: councils.length === 0 || eligibleProjects.length === 0 ? 0.55 : 1,
+                    cursor: councils.length === 0 || eligibleProjects.length === 0 ? 'not-allowed' : 'pointer',
+                  }}
                 >
                   ➕ Xếp Slot Thủ Công
                 </button>

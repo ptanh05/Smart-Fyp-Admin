@@ -2435,15 +2435,18 @@ class OutlineReviewListAPIView(APIView):
         if not batch_id:
             return Response([], status=status.HTTP_200_OK)
 
-        projects = GraduationProject.objects.filter(batch_id=batch_id).select_related("student__user")
+        projects = GraduationProject.objects.filter(batch_id=batch_id, student__isnull=False).select_related("student__user")
 
-        # Ensure OutlineReview exists for all projects (bulk create to avoid N+1 queries)
+        # Ensure OutlineReview exists for all student projects (bulk create to avoid N+1 queries)
         existing_pids = set(OutlineReview.objects.filter(project__batch_id=batch_id).values_list("project_id", flat=True))
         missing_projects = [p for p in projects if p.id not in existing_pids]
         if missing_projects:
             OutlineReview.objects.bulk_create([OutlineReview(project=p) for p in missing_projects], ignore_conflicts=True)
 
-        reviews = OutlineReview.objects.filter(project__batch_id=batch_id).select_related(
+        reviews = OutlineReview.objects.filter(
+            project__batch_id=batch_id,
+            project__student__isnull=False,
+        ).select_related(
             "project__student__user",
             "project__student__course_class",
             "project__supervisor__user",
@@ -2552,7 +2555,11 @@ class OutlineReviewAssignAPIView(APIView):
             if not groups:
                 return Response({"error": "Cần tạo ít nhất một nhóm xét duyệt đề cương trước khi phân nhóm tự động."}, status=status.HTTP_400_BAD_REQUEST)
 
-            projects = GraduationProject.objects.filter(batch_id=batch_id) if batch_id else GraduationProject.objects.all()
+            projects = (
+                GraduationProject.objects.filter(batch_id=batch_id, student__isnull=False)
+                if batch_id
+                else GraduationProject.objects.filter(student__isnull=False)
+            )
             assigned_count = 0
             for idx, p in enumerate(projects):
                 review, _ = OutlineReview.objects.get_or_create(project=p)

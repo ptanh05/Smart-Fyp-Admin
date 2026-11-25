@@ -115,7 +115,7 @@ class OutlineReviewGroupSerializer(serializers.ModelSerializer):
 
 class OutlineReviewSerializer(serializers.ModelSerializer):
     student_name = serializers.SerializerMethodField()
-    student_reg_no = serializers.CharField(source="project.student.registration_no", read_only=True, default="")
+    student_reg_no = serializers.SerializerMethodField()
     student_class = serializers.SerializerMethodField()
     supervisor_name = serializers.SerializerMethodField()
     topic_title = serializers.CharField(source="project.topic_title_vi", read_only=True, default="")
@@ -136,11 +136,19 @@ class OutlineReviewSerializer(serializers.ModelSerializer):
         ]
 
     def get_student_name(self, obj):
-        user = obj.project.student.user
-        return user.get_full_name() or user.username
+        student = getattr(obj.project, "student", None)
+        if not student or not student.user:
+            return ""
+        return student.user.get_full_name() or student.user.username
+
+    def get_student_reg_no(self, obj):
+        student = getattr(obj.project, "student", None)
+        return student.registration_no if student else ""
 
     def get_student_class(self, obj):
-        student = obj.project.student
+        student = getattr(obj.project, "student", None)
+        if not student:
+            return ""
         if student.course_class:
             return student.course_class.class_name
         return student.department or ""
