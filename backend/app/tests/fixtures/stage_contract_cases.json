@@ -17,7 +17,8 @@
   "batch_defaults": {
     "current_stage": "PHASE_1_SETUP",
     "is_closed": false,
-    "is_active": true
+    "is_active": true,
+    "supplementary_open": false
   },
   "cases": [
     {
@@ -811,6 +812,34 @@
           false,
           false,
           true,
+          false,
+          false
+        ]
+      }
+    },
+    {
+      "id": "R01_supplementary_open_allows_gd2",
+      "description": "Đợt GĐ3+ nhưng đang mở đăng ký bổ sung -> SV chưa có GVHD được sửa GĐ2",
+      "batch": {
+        "current_stage": "PHASE_3_TOPIC",
+        "supplementary_open": true
+      },
+      "project": null,
+      "expected": {
+        "current_stage_number": 2,
+        "statuses": [
+          "completed",
+          "active",
+          "locked",
+          "locked",
+          "locked",
+          "locked"
+        ],
+        "editable": [
+          false,
+          true,
+          false,
+          false,
           false,
           false
         ]

@@ -149,16 +149,41 @@ class ReviewerAndCouncilAllocationEngine:
         # Step 2: Assign Reviewer from Council Members (Least Loaded, != Supervisor)
         assignments = []
         with transaction.atomic():
+            from app.models import Supervisor, SupervisorQuota, CouncilMember as CM, GraduationProject as GP
+
+            batch_sup_ids = (
+                set(SupervisorQuota.objects.filter(batch=batch).values_list("supervisor_id", flat=True))
+                | set(GP.objects.filter(batch=batch, supervisor__isnull=False).values_list("supervisor_id", flat=True))
+                | set(CM.objects.filter(council__batch=batch, supervisor__isnull=False).values_list("supervisor_id", flat=True))
+            )
+            all_batch_sups = list(Supervisor.objects.filter(id__in=batch_sup_ids, is_active=True)) if batch_sup_ids else []
+
             for c in councils:
                 c_projects = council_assigned_projects[c.id]
                 candidates = council_reviewers[c.id]
+                council_sup_ids = set(
+                    CM.objects.filter(council=c, supervisor__isnull=False).values_list("supervisor_id", flat=True)
+                )
 
                 for proj in c_projects:
-                    valid_revs = [rev for rev in candidates if rev.id != proj.supervisor_id]
+                    # 1) Ưu tiên GVPB ngoài hội đồng (tránh xung đột lợi ích trong hội đồng)
+                    external_valid = [
+                        rev for rev in all_batch_sups
+                        if rev.id != proj.supervisor_id and rev.id not in council_sup_ids
+                    ]
+                    if external_valid:
+                        external_valid.sort(key=lambda rev: reviewer_load.get(rev.id, 0))
+                        chosen_rev = external_valid[0]
+                    else:
+                        valid_revs = [rev for rev in candidates if rev.id != proj.supervisor_id]
 
-                    if valid_revs:
-                        valid_revs.sort(key=lambda rev: reviewer_load.get(rev.id, 0))
-                        chosen_rev = valid_revs[0]
+                        if valid_revs:
+                            valid_revs.sort(key=lambda rev: reviewer_load.get(rev.id, 0))
+                            chosen_rev = valid_revs[0]
+                        else:
+                            chosen_rev = None
+
+                    if chosen_rev is not None:
                         reviewer_load[chosen_rev.id] = reviewer_load.get(chosen_rev.id, 0) + 1
 
                         proj.council = c

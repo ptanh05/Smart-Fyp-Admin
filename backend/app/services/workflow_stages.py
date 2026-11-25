@@ -268,6 +268,7 @@ def compute_project_progress(project=None, batch=None):
     batch = _project_batch(project, batch)
     batch_num = batch_stage_number(batch)
     closed_batch = batch_is_closed(batch)
+    supplementary_open = bool(_get(batch, "supplementary_open", False))
     p_stage = achieved_stage(project)
     blocking = _blocking_state(project)
 
@@ -336,8 +337,11 @@ def compute_project_progress(project=None, batch=None):
             elif closed_batch:
                 entry["reason"] = "Đợt đồ án đã đóng, chỉ được xem."
             elif n < batch_num:
-                # Bị trần giữ lại trong khi đợt đã đi tiếp -> chỉ xem.
-                entry["reason"] = cap_reason or f"Khoa đã chuyển đợt sang GĐ{batch_num}."
+                if project is None and n == 2 and supplementary_open:
+                    entry["editable"] = True
+                else:
+                    # Bị trần giữ lại trong khi đợt đã đi tiếp -> chỉ xem.
+                    entry["reason"] = cap_reason or f"Khoa đã chuyển đợt sang GĐ{batch_num}."
             else:
                 entry["editable"] = True
                 if n == 6 and not defense_eligible:

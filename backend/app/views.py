@@ -3094,7 +3094,9 @@ class FinalizeCouncilScoresAPIView(APIView):
             live_scores = list(CouncilLiveScore.objects.filter(project=proj))
             scored_member_ids = {s.member_id for s in live_scores}
 
-            excluded_sup_ids = {proj.supervisor_id} if proj.supervisor_id is not None else set()
+            excluded_sup_ids = {
+                sid for sid in (proj.supervisor_id, proj.reviewer_id) if sid is not None
+            }
             eligible_members = [
                 m for m in council_members
                 if m.supervisor_id is None or m.supervisor_id not in excluded_sup_ids

@@ -71,7 +71,7 @@ export const ArchivedBatchesPage: React.FC = () => {
     try {
       setStudentsLoading(true);
       const res = await apiClient.get(`/admin/users/?role=student&batch_id=${batchId}&_t=${Date.now()}`);
-      const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+      const list = Array.isArray(res.data) ? res.data : (res.data?.users || res.data?.results || []);
       setStudents(list);
     } catch (err) {
       console.error('Error fetching students:', err);

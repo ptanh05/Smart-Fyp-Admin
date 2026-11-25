@@ -140,18 +140,40 @@ export const DefenseManagementPage: React.FC = () => {
         url += `&council_id=${selectedCouncilId}`;
       }
 
-      const [counRes, projRes, defRes, sigRes] = await Promise.all([
+      const [counRes, projRes, defRes] = await Promise.all([
         apiClient.get(`/admin/councils/?batch_id=${selectedBatchId}&_t=${Date.now()}`),
         apiClient.get(url),
         apiClient.get(`/admin/deferrals/?batch_id=${selectedBatchId}`).catch(() => ({ data: [] })),
-        selectedCouncilId
-          ? apiClient.get(`/admin/defense/councils/${selectedCouncilId}/signatures/`).catch(() => ({ data: null }))
-          : Promise.resolve({ data: null }),
       ]);
-      setCouncils(Array.isArray(counRes.data) ? counRes.data : (counRes.data?.results || []));
+      const councilsList = Array.isArray(counRes.data) ? counRes.data : (counRes.data?.results || []);
+      setCouncils(councilsList);
       setProjects(Array.isArray(projRes.data) ? projRes.data : (projRes.data?.results || []));
       setDeferralRequests(Array.isArray(defRes.data) ? defRes.data : (defRes.data?.results || []));
-      setCouncilSignatures(sigRes?.data || null);
+
+      if (selectedCouncilId) {
+        const sigRes = await apiClient
+          .get(`/admin/defense/councils/${selectedCouncilId}/signatures/`)
+          .catch(() => ({ data: null }));
+        setCouncilSignatures(sigRes?.data || null);
+      } else if (councilsList.length > 0) {
+        const allSigs = await Promise.all(
+          councilsList.map((c: any) =>
+            apiClient
+              .get(`/admin/defense/councils/${c.id}/signatures/`)
+              .catch(() => ({ data: null }))
+          )
+        );
+        const mergedByProject: Record<string, any> = {};
+        allSigs.forEach((sigRes) => {
+          const mapObj = sigRes?.data?.by_project;
+          if (mapObj && typeof mapObj === 'object') {
+            Object.assign(mergedByProject, mapObj);
+          }
+        });
+        setCouncilSignatures({ by_project: mergedByProject });
+      } else {
+        setCouncilSignatures(null);
+      }
     } catch (err) {
       console.error(err);
       setCouncils([]);
@@ -615,7 +637,7 @@ export const DefenseManagementPage: React.FC = () => {
             <div className="utc-panel-head">
               <div>
                 <h4>Bảng Tổng Hợp Điểm Bảo Vệ & Xếp Loại Đồ Án Tốt Nghiệp ({projects.length})</h4>
-                <span className="utc-panel-subtitle">Tổng hợp tự động: Điểm GVHD (40%), Điểm Phản biện (20%), Điểm Hội đồng (40%)</span>
+                <span className="utc-panel-subtitle">Tổng hợp tự động: Điểm GVHD (30%), Điểm Phản biện (20%), Điểm Hội đồng (50%)</span>
               </div>
             </div>
 
@@ -755,8 +777,18 @@ export const DefenseManagementPage: React.FC = () => {
                           </span>
                         </td>
                         <td>
-                          <span className={`utc-pill ${proj.final_academic_eligibility === 'ELIGIBLE' ? 'pill-green' : 'pill-red'}`}>
-                            {proj.final_academic_eligibility === 'ELIGIBLE' ? 'Đủ ĐK Học Vụ' : 'Nợ CĐR / Học phí'}
+                          <span className={`utc-pill ${
+                            proj.final_academic_eligibility === 'ELIGIBLE'
+                              ? 'pill-green'
+                              : proj.final_academic_eligibility === 'INELIGIBLE'
+                              ? 'pill-red'
+                              : 'pill-amber'
+                          }`}>
+                            {proj.final_academic_eligibility === 'ELIGIBLE'
+                              ? 'Đủ ĐK Học Vụ'
+                              : proj.final_academic_eligibility === 'INELIGIBLE'
+                              ? 'Nợ CĐR / Học phí'
+                              : 'Chờ xét ĐK'}
                           </span>
                         </td>
                         <td>
@@ -769,7 +801,9 @@ export const DefenseManagementPage: React.FC = () => {
                           </span>
                         </td>
                         <td className="utc-cell-notes-col">
-                          <span className="utc-cell-notes">{proj.deferral_reason || proj.final_academic_notes || '—'}</span>
+                          <span className="utc-cell-notes">
+                            {proj.deferral_reason || deferralByProjectId.get(proj.id)?.reason || proj.final_academic_notes || '—'}
+                          </span>
                           {deferralByProjectId.get(proj.id)?.supervisor_feedback && (
                             <div style={{ marginTop: '4px', fontSize: '0.78rem', color: '#0369a1', background: '#f0f9ff', padding: '4px 6px', borderRadius: '6px', border: '1px solid #bae6fd' }}>
                               💬 <b>GVHD:</b> {deferralByProjectId.get(proj.id).supervisor_feedback}
