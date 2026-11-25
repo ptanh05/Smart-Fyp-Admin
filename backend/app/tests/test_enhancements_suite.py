@@ -698,3 +698,202 @@ class MilestoneLifecycleAndTimezoneTests(EnhancementsBaseTestCase):
         serialized = self.client.get(f"/admin/batches/{valid.data['id']}/milestones/").data
         self.assertIn(serialized[0]["status"], ("UPCOMING", "ACTIVE"))
         self.assertTrue(all(item["status"] == "UPCOMING" for item in serialized[1:]))
+
+
+class StageDeadlineEnforcementTests(EnhancementsBaseTestCase):
+    def _make_student(self, code, batch):
+        user = CustomUser.objects.create_user(
+            username=f"sd_{code}",
+            email=f"sd_{code}@utc.edu.vn",
+            password="Password123!",
+            first_name=code,
+            last_name="Sinh Viên",
+            user_type="student",
+        )
+        return Student.objects.create(user=user, registration_no=f"SD{code}", academic_batch=batch)
+
+    def test_preview_and_enforce_g2_to_g5_deadlines_and_exemptions(self):
+        from django.core.management import call_command
+        from app.feature_models import SubmissionVersion
+        from app.models import Notification
+        from app.tasks import enforce_stage_deadlines_task
+
+        now = timezone.now()
+        past_end = now - datetime.timedelta(hours=3)
+        future_end = now + datetime.timedelta(days=5)
+        start_past = now - datetime.timedelta(days=20)
+
+        batch = AcademicBatch.objects.create(
+            batch_code="K65-ENF",
+            batch_name="Đợt Quá Hạn",
+            current_stage="PHASE_4_ELIGIBILITY",
+            is_active=True,
+            is_closed=False,
+        )
+        # GĐ1 & GĐ6 expired milestones MUST be ignored
+        BatchMilestone.objects.create(
+            batch=batch, name="GĐ1", stage_number=1, start_date=start_past, end_date=past_end, order_index=1, is_active=True
+        )
+        # GĐ2 expired, GĐ3 has one past + one still future -> GĐ3 NOT expired yet!
+        BatchMilestone.objects.create(
+            batch=batch, name="GĐ2 Phân công", stage_number=2, start_date=start_past, end_date=past_end, order_index=2, is_active=True
+        )
+        BatchMilestone.objects.create(
+            batch=batch, name="GĐ3 Đợt 1", stage_number=3, start_date=start_past, end_date=past_end, order_index=3, is_active=True
+        )
+        BatchMilestone.objects.create(
+            batch=batch, name="GĐ3 Đợt 2", stage_number=3, start_date=start_past, end_date=future_end, order_index=4, is_active=True
+        )
+        BatchMilestone.objects.create(
+            batch=batch, name="GĐ4 Bản nháp & ĐK", stage_number=4, start_date=start_past, end_date=past_end, order_index=5, is_active=True
+        )
+
+        sv_unassigned = self._make_student("01", batch)
+        sv_outline_ok_but_no_draft = self._make_student("02", batch)
+        sv_ineligible = self._make_student("03", batch)
+        sv_draft_ok = self._make_student("04", batch)
+        sv_forced = self._make_student("05", batch)
+        sv_deferred = self._make_student("06", batch)
+
+        p_no_draft = GraduationProject.objects.create(
+            student=sv_outline_ok_but_no_draft, supervisor=self.sup1, batch=batch,
+            status="OUTLINE_APPROVED", topic_review_status="APPROVED", initial_eligibility="ELIGIBLE"
+        )
+        p_inelig = GraduationProject.objects.create(
+            student=sv_ineligible, supervisor=self.sup1, batch=batch,
+            status="OUTLINE_APPROVED", topic_review_status="APPROVED", initial_eligibility="INELIGIBLE"
+        )
+        p_draft_ok = GraduationProject.objects.create(
+            student=sv_draft_ok, supervisor=self.sup1, batch=batch,
+            status="OUTLINE_APPROVED", topic_review_status="APPROVED", initial_eligibility="ELIGIBLE"
+        )
+        SubmissionVersion.objects.create(
+            project=p_draft_ok, uploaded_by=sv_draft_ok.user, kind="REPORT",
+            version_no=1, file="/tmp/draft.pdf", supervisor_review_status="APPROVED"
+        )
+        p_forced = GraduationProject.objects.create(
+            student=sv_forced, supervisor=self.sup1, batch=batch,
+            status="IN_PROGRESS", topic_review_status="APPROVED", initial_eligibility="FORCE_APPROVED", is_force_approved=True
+        )
+        p_deferred = GraduationProject.objects.create(
+            student=sv_deferred, supervisor=self.sup1, batch=batch,
+            status="DEFERRED", deferral_status="APPROVED"
+        )
+
+        # Preview (dry-run) must NOT mutate DB
+        prev = self.client.get(f"/admin/batches/{batch.id}/enforce-deadlines/")
+        self.assertEqual(prev.status_code, status.HTTP_200_OK)
+        self.assertEqual([s["stage_number"] for s in prev.data["expired_stages"]], [2, 4])
+        self.assertEqual(prev.data["candidate_count"], 3)
+        sv_unassigned.refresh_from_db()
+        self.assertEqual(sv_unassigned.academic_batch_id, batch.id)
+
+        # Execute via API
+        exec_res = self.client.post(f"/admin/batches/{batch.id}/enforce-deadlines/", {}, format="json")
+        self.assertEqual(exec_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(exec_res.data["removed_count"], 3)
+
+        sv_unassigned.refresh_from_db()
+        sv_outline_ok_but_no_draft.refresh_from_db()
+        sv_ineligible.refresh_from_db()
+        sv_draft_ok.refresh_from_db()
+        sv_forced.refresh_from_db()
+        sv_deferred.refresh_from_db()
+        p_no_draft.refresh_from_db()
+        p_inelig.refresh_from_db()
+
+        self.assertIsNone(sv_unassigned.academic_batch_id)
+        self.assertIsNone(sv_outline_ok_but_no_draft.academic_batch_id)
+        self.assertIsNone(sv_ineligible.academic_batch_id)
+        self.assertEqual(p_no_draft.status, "DISQUALIFIED")
+        self.assertEqual(p_no_draft.initial_eligibility, "DISQUALIFIED")
+        self.assertEqual(p_inelig.status, "DISQUALIFIED")
+
+        # Compliant & exempt students kept intact
+        self.assertEqual(sv_draft_ok.academic_batch_id, batch.id)
+        self.assertEqual(sv_forced.academic_batch_id, batch.id)
+        self.assertEqual(sv_deferred.academic_batch_id, batch.id)
+        self.assertTrue(Notification.objects.filter(user=sv_unassigned.user, title__startswith="[Loại khỏi đợt K65-ENF]").exists())
+
+        # Now expire GĐ3 + GĐ5 + GĐ6 -> advance batch to GĐ5 & test GĐ5 + GĐ6 guard
+        BatchMilestone.objects.filter(batch=batch, stage_number=3).update(end_date=past_end)
+        batch.current_stage = "PHASE_6_DEFENSE"
+        batch.save(update_fields=["current_stage"])
+        BatchMilestone.objects.create(
+            batch=batch, name="GĐ5", stage_number=5, start_date=start_past, end_date=past_end, order_index=6, is_active=True
+        )
+        BatchMilestone.objects.create(
+            batch=batch, name="GĐ6", stage_number=6, start_date=start_past, end_date=past_end, order_index=7, is_active=True
+        )
+        p_draft_ok.status = "IN_PROGRESS"
+        p_draft_ok.save(update_fields=["status"])
+        p_forced.is_eligible_for_defense = True
+        p_forced.status = "DEFENSE_READY"
+        p_forced.save(update_fields=["is_eligible_for_defense", "status"])
+
+        summary = enforce_stage_deadlines_task()
+        self.assertGreaterEqual(summary["total_removed"], 1)
+        sv_draft_ok.refresh_from_db()
+        sv_forced.refresh_from_db()
+        self.assertIsNone(sv_draft_ok.academic_batch_id)  # Failed GĐ5
+        self.assertEqual(sv_forced.academic_batch_id, batch.id)  # Ready for GĐ6, never expelled at GĐ6!
+
+        # Closed batch rejects POST enforce-deadlines & management command works cleanly
+        call_command("enforce_stage_deadlines", batch_id=batch.id, dry_run=True)
+        batch.is_closed = True
+        batch.save(update_fields=["is_closed"])
+        closed_res = self.client.post(f"/admin/batches/{batch.id}/enforce-deadlines/", {}, format="json")
+        self.assertEqual(closed_res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_auto_enforce_on_finalize_and_advance_to_stage5(self):
+        from app.feature_models import SubmissionVersion
+
+        now = timezone.now()
+        past_end = now - datetime.timedelta(hours=2)
+        batch = AcademicBatch.objects.create(
+            batch_code="K65-TRN",
+            batch_name="Đợt Chuyển GĐ",
+            current_stage="PHASE_2_ALLOCATING",
+            is_active=True,
+            is_closed=False,
+        )
+        BatchMilestone.objects.create(
+            batch=batch, name="GĐ2 Hết Hạn", stage_number=2, start_date=now - datetime.timedelta(days=10), end_date=past_end, order_index=1, is_active=True
+        )
+        sv_ok = self._make_student("11", batch)
+        sv_lazy = self._make_student("12", batch)
+        p_ok = GraduationProject.objects.create(
+            student=sv_ok, supervisor=self.sup1, batch=batch,
+            status="OUTLINE_APPROVED", topic_review_status="APPROVED", initial_eligibility="ELIGIBLE"
+        )
+        SubmissionVersion.objects.create(
+            project=p_ok, uploaded_by=sv_ok.user, kind="REPORT",
+            version_no=1, file="/tmp/ok.pdf", supervisor_review_status="APPROVED"
+        )
+
+        # Finalize GĐ2 succeeds by auto-removing sv_lazy
+        fin_res = self.client.post("/admin/allocations/finalize/", {"batch_id": batch.id}, format="json")
+        self.assertEqual(fin_res.status_code, status.HTTP_200_OK)
+        sv_lazy.refresh_from_db()
+        self.assertIsNone(sv_lazy.academic_batch_id)
+
+        # Advance to GĐ5 when GĐ4 expired auto-removes sv_late_g4 so remaining draft-ok cohort succeeds
+        batch.current_stage = "PHASE_4_ELIGIBILITY"
+        batch.save(update_fields=["current_stage"])
+        BatchMilestone.objects.create(
+            batch=batch, name="GĐ4 Hết Hạn", stage_number=4, start_date=now - datetime.timedelta(days=5), end_date=past_end, order_index=2, is_active=True
+        )
+        sv_late_g4 = self._make_student("13", batch)
+        p_late_g4 = GraduationProject.objects.create(
+            student=sv_late_g4, supervisor=self.sup1, batch=batch,
+            status="OUTLINE_APPROVED", topic_review_status="APPROVED", initial_eligibility="ELIGIBLE"
+        )
+
+        adv_res = self.client.patch(
+            f"/admin/batches/{batch.id}/", {"current_stage": "PHASE_5_IN_PROGRESS"}, format="json"
+        )
+        self.assertEqual(adv_res.status_code, status.HTTP_200_OK)
+        sv_late_g4.refresh_from_db()
+        p_late_g4.refresh_from_db()
+        self.assertIsNone(sv_late_g4.academic_batch_id)
+        self.assertEqual(p_late_g4.status, "DISQUALIFIED")

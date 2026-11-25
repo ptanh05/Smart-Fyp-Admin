@@ -179,6 +179,46 @@ class BatchMilestoneSeedDefaultAPIView(APIView):
         return Response(BatchMilestoneSerializer(created, many=True).data, status=status.HTTP_201_CREATED)
 
 
+class BatchEnforceStageDeadlinesAPIView(APIView):
+    """Xem trước (GET) hoặc thực thi loại sinh viên quá hạn mốc giai đoạn GĐ2–GĐ5 (POST)."""
+    permission_classes = [IsAuthenticated, IsAdminUserRole]
+
+    def get(self, request, batch_id):
+        from .services.stage_deadline_enforcement import enforce_batch_stage_deadlines
+
+        batch = get_object_or_404(AcademicBatch, pk=batch_id)
+        max_stage = request.query_params.get("max_stage")
+        try:
+            max_stage_int = int(max_stage) if max_stage is not None else None
+        except (TypeError, ValueError):
+            max_stage_int = None
+        result = enforce_batch_stage_deadlines(
+            batch, actor_user=request.user, max_stage=max_stage_int, dry_run=True
+        )
+        return Response(result, status=status.HTTP_200_OK)
+
+    def post(self, request, batch_id):
+        from .services.stage_deadline_enforcement import enforce_batch_stage_deadlines
+
+        batch = get_object_or_404(AcademicBatch, pk=batch_id)
+        if batch.is_closed or batch.current_stage == "COMPLETED":
+            return Response(
+                {"detail": "Đợt đồ án đã kết thúc. Không thể loại sinh viên khi đợt đang đóng."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        dry_run = str(request.data.get("dry_run", "")).lower() in ("1", "true", "yes")
+        max_stage = request.data.get("max_stage")
+        try:
+            max_stage_int = int(max_stage) if max_stage is not None else None
+        except (TypeError, ValueError):
+            max_stage_int = None
+
+        result = enforce_batch_stage_deadlines(
+            batch, actor_user=request.user, max_stage=max_stage_int, dry_run=dry_run
+        )
+        return Response(result, status=status.HTTP_200_OK)
+
+
 # ==============================================================================
 # 2. SUPPLEMENTARY REGISTRATION (MỞ / CHỐT ĐĂNG KÝ BỔ SUNG)
 # ==============================================================================

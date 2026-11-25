@@ -64,3 +64,17 @@ def dispatch_admin_broadcast_email(recipient_emails, subject, body_text):
         thread = threading.Thread(target=_fallback, daemon=True)
         thread.start()
         return True
+
+
+@shared_task(ignore_result=True)
+def enforce_stage_deadlines_task():
+    """Quét định kỳ các đợt đang mở và loại SV chưa hoàn thành ở các GĐ2–GĐ5 đã quá hạn."""
+    from .services.stage_deadline_enforcement import enforce_all_active_batches_stage_deadlines
+
+    summary = enforce_all_active_batches_stage_deadlines()
+    logger.info(
+        "[STAGE_DEADLINE_ENFORCE] scanned=%s removed=%s",
+        summary.get("scanned_batches", 0),
+        summary.get("total_removed", 0),
+    )
+    return summary

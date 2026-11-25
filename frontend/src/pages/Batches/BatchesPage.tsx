@@ -147,6 +147,21 @@ export const BatchesPage: React.FC = () => {
   const [msDesc, setMsDesc] = useState('');
   const [msSaving, setMsSaving] = useState(false);
   const [milestoneVersion, setMilestoneVersion] = useState(0);
+  const [deadlinePreview, setDeadlinePreview] = useState<{
+    expired_stages: Array<{ milestone_id: number; stage_number: number; name: string; end_date: string | null }>;
+    candidates: Array<{
+      student_id: number;
+      registration_no: string;
+      full_name: string;
+      failed_stage: number;
+      milestone_name: string;
+      current_status: string;
+      reason: string;
+    }>;
+    candidate_count: number;
+  } | null>(null);
+  const [enforcingDeadlines, setEnforcingDeadlines] = useState(false);
+  const [showDeadlineCandidates, setShowDeadlineCandidates] = useState(false);
 
   // Quota của giảng viên trong đợt (GĐ1 - cấu hình chỉ tiêu hướng dẫn)
   const [quotas, setQuotas] = useState<any[]>([]);
@@ -426,11 +441,51 @@ export const BatchesPage: React.FC = () => {
     }
   };
 
+  const fetchDeadlinePreview = async (batchId: number) => {
+    try {
+      const res = await apiClient.get(`/admin/batches/${batchId}/enforce-deadlines/?_t=${Date.now()}`);
+      setDeadlinePreview(res.data || null);
+    } catch {
+      setDeadlinePreview(null);
+    }
+  };
+
+  const handleEnforceDeadlines = async () => {
+    if (!selectedBatchId || !deadlinePreview || deadlinePreview.candidate_count === 0) return;
+    if (currBatch?.is_closed || currBatch?.current_stage === 'COMPLETED') {
+      showToast('❌ Đợt đã kết thúc. Không thể loại sinh viên khi đợt đang đóng.', 'error');
+      return;
+    }
+    const ok = confirm(
+      `Xác nhận loại ${deadlinePreview.candidate_count} sinh viên chưa hoàn thành các giai đoạn quá hạn ra khỏi đợt ${currBatch?.batch_code}? Hành động này sẽ gỡ sinh viên khỏi đợt, đánh dấu Bị loại (DISQUALIFIED) và gửi thông báo.`
+    );
+    if (!ok) return;
+    try {
+      setEnforcingDeadlines(true);
+      const res = await apiClient.post(`/admin/batches/${selectedBatchId}/enforce-deadlines/`, {});
+      const removed = res.data?.removed_count ?? 0;
+      showToast(`✓ Đã loại ${removed} sinh viên quá hạn khỏi đợt ${currBatch?.batch_code}.`, 'success');
+      setShowDeadlineCandidates(false);
+      await Promise.all([
+        fetchBatches(),
+        fetchStudents(selectedBatchId),
+        fetchQuotas(selectedBatchId),
+        fetchMilestones(selectedBatchId),
+      ]);
+      setMilestoneVersion((v) => v + 1);
+    } catch (err: any) {
+      showToast(`❌ Lỗi xử lý quá hạn: ${err.response?.data?.detail || err.message}`, 'error');
+    } finally {
+      setEnforcingDeadlines(false);
+    }
+  };
+
   const fetchMilestones = async (batchId: number) => {
     try {
       setMilestonesLoading(true);
       const res = await apiClient.get(`/admin/batches/${batchId}/milestones/?_t=${Date.now()}`);
       setMilestones(Array.isArray(res.data) ? res.data : []);
+      await fetchDeadlinePreview(batchId);
     } catch {
       setMilestones([]);
     } finally {
@@ -1496,6 +1551,15 @@ export const BatchesPage: React.FC = () => {
                   >
                     <span>🗓️</span> Mốc Thời Gian (Timeline)
                     <span className="utc-batch-subtab-badge">{milestones.length}</span>
+                    {deadlinePreview && deadlinePreview.candidate_count > 0 && !currBatch?.is_closed && currBatch?.current_stage !== 'COMPLETED' && (
+                      <span
+                        className="utc-batch-subtab-badge"
+                        style={{ background: '#dc2626', color: '#fff' }}
+                        title={`${deadlinePreview.candidate_count} sinh viên quá hạn giai đoạn cần loại`}
+                      >
+                        ⚠ {deadlinePreview.candidate_count}
+                      </span>
+                    )}
                   </button>
                 </div>
 
@@ -1522,6 +1586,69 @@ export const BatchesPage: React.FC = () => {
                     {(currBatch?.is_closed || currBatch?.current_stage === 'COMPLETED') && (
                       <div style={{ padding: '0.65rem 0.9rem', borderRadius: '8px', background: '#fef3c7', border: '1px solid #fcd34d', color: '#92400e', fontSize: '0.84rem', fontWeight: 600 }}>
                         🔒 Đợt đã kết thúc nên mốc thời gian đang ở chế độ chỉ đọc. Hãy mở lại đợt nếu cần điều chỉnh.
+                      </div>
+                    )}
+
+                    {deadlinePreview && deadlinePreview.candidate_count > 0 && !currBatch?.is_closed && currBatch?.current_stage !== 'COMPLETED' && (
+                      <div style={{ padding: '0.9rem 1rem', borderRadius: '10px', background: '#fef2f2', border: '1px solid #fecaca', display: 'grid', gap: '0.75rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+                          <div style={{ color: '#991b1b', fontSize: '0.88rem', lineHeight: 1.45 }}>
+                            <strong>⚠️ Phát hiện {deadlinePreview.candidate_count} sinh viên chưa hoàn thành giai đoạn đã hết hạn</strong>
+                            {' '}({deadlinePreview.expired_stages.map((s) => `GĐ ${s.stage_number}`).join(', ')}). Sinh viên sẽ bị loại khỏi đợt đồ án này.
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              className="utc-btn-outline"
+                              onClick={() => setShowDeadlineCandidates((v) => !v)}
+                              style={{ padding: '0.45rem 0.8rem', fontSize: '0.8rem', borderColor: '#fca5a5', color: '#991b1b', background: '#fff' }}
+                            >
+                              {showDeadlineCandidates ? '▲ Ẩn danh sách' : `👁️ Xem ${deadlinePreview.candidate_count} SV`}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleEnforceDeadlines}
+                              disabled={enforcingDeadlines}
+                              style={{
+                                padding: '0.45rem 0.9rem',
+                                fontSize: '0.8rem',
+                                fontWeight: 700,
+                                borderRadius: '8px',
+                                border: 'none',
+                                cursor: enforcingDeadlines ? 'wait' : 'pointer',
+                                background: '#dc2626',
+                                color: '#fff',
+                              }}
+                            >
+                              {enforcingDeadlines ? 'Đang xử lý...' : `🚫 Loại ${deadlinePreview.candidate_count} SV quá hạn khỏi đợt`}
+                            </button>
+                          </div>
+                        </div>
+
+                        {showDeadlineCandidates && (
+                          <div className="utc-classes-table-wrapper" style={{ background: '#fff', borderRadius: '8px' }}>
+                            <table className="utc-classes-table">
+                              <thead>
+                                <tr>
+                                  <th>MSSV</th>
+                                  <th>Họ tên</th>
+                                  <th>GĐ quá hạn</th>
+                                  <th>Lý do chưa hoàn thành</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {deadlinePreview.candidates.map((c) => (
+                                  <tr key={c.student_id}>
+                                    <td className="font-bold">{c.registration_no}</td>
+                                    <td>{c.full_name}</td>
+                                    <td><span style={{ color: '#b91c1c', fontWeight: 700 }}>GĐ {c.failed_stage}</span></td>
+                                    <td style={{ fontSize: '0.82rem', color: '#475569' }}>{c.reason}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
                       </div>
                     )}
 

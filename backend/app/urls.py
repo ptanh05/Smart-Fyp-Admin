@@ -71,6 +71,7 @@ from .views_enhancements import (
     BatchMilestoneListCreateAPIView,
     BatchMilestoneDetailAPIView,
     BatchMilestoneSeedDefaultAPIView,
+    BatchEnforceStageDeadlinesAPIView,
     OpenSupplementaryRegistrationAPIView,
     FinalizeSupplementaryRegistrationAPIView,
     AdminEditAcademicRecordAPIView,
@@ -257,6 +258,7 @@ urlpatterns = [
     # Batch Timeline Milestones
     path("admin/batches/<int:batch_id>/milestones/", BatchMilestoneListCreateAPIView.as_view(), name="admin-batch-milestones"),
     path("admin/batches/<int:batch_id>/milestones/seed-default/", BatchMilestoneSeedDefaultAPIView.as_view(), name="admin-batch-milestones-seed"),
+    path("admin/batches/<int:batch_id>/enforce-deadlines/", BatchEnforceStageDeadlinesAPIView.as_view(), name="admin-batch-enforce-deadlines"),
     path("admin/milestones/<int:pk>/", BatchMilestoneDetailAPIView.as_view(), name="admin-milestone-detail"),
 
     # Supplementary Registration, Academic Record Edit & Deferral Creation

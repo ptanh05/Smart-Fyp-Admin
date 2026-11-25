@@ -429,6 +429,9 @@ class MinCostMaxFlowAllocationEngine:
                 "error": "Đợt đồ án đang mở đăng ký bổ sung. Vui lòng chốt phân công bổ sung trước khi khóa danh sách."
             }
 
+        from app.services.stage_deadline_enforcement import enforce_batch_stage_deadlines
+        enforce_batch_stage_deadlines(batch, actor_user=user, max_stage=2)
+
         allocated_qs = GraduationProject.objects.filter(batch=batch, supervisor__isnull=False)
         if not allocated_qs.exists():
             return {

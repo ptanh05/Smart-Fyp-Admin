@@ -1162,7 +1162,25 @@ class AcademicBatchDetailAPIView(RetrieveUpdateDestroyAPIView):
         )
 
     def update(self, request, *args, **kwargs):
-        if request.data.get("current_stage") == "PHASE_5_IN_PROGRESS":
+        requested_stage = request.data.get("current_stage")
+        if requested_stage:
+            batch_for_deadline = self.get_object()
+            from .services.batch_progress import DB_STAGE_TO_NUMBER
+            from .services.stage_deadline_enforcement import enforce_batch_stage_deadlines
+            old_stage_num = DB_STAGE_TO_NUMBER.get(batch_for_deadline.current_stage, 1)
+            new_stage_num = DB_STAGE_TO_NUMBER.get(requested_stage, old_stage_num)
+            if (
+                new_stage_num > old_stage_num
+                and not batch_for_deadline.is_closed
+                and batch_for_deadline.current_stage != "COMPLETED"
+            ):
+                enforce_batch_stage_deadlines(
+                    batch_for_deadline,
+                    actor_user=request.user,
+                    max_stage=new_stage_num - 1,
+                )
+
+        if requested_stage == "PHASE_5_IN_PROGRESS":
             batch = self.get_object()
             if getattr(batch, "supplementary_open", False):
                 return Response(
@@ -1931,6 +1949,10 @@ class LockCouncilAllocationAPIView(APIView):
                     f"(hiện có {val.get('total_count')}/5 thành viên). Vui lòng điều chỉnh trước khi chốt."
                 )
                 return Response({"detail": msg, "error": msg}, status=status.HTTP_400_BAD_REQUEST)
+
+        from .services.stage_deadline_enforcement import enforce_batch_stage_deadlines
+        if not batch.is_closed and batch.current_stage != "COMPLETED":
+            enforce_batch_stage_deadlines(batch, actor_user=request.user, max_stage=5)
 
         eligible_q = (
             Q(is_eligible_for_defense=True)
