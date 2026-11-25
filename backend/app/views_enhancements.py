@@ -52,14 +52,7 @@ from .serializers import (
 from .services.allocation_engine import MinCostMaxFlowAllocationEngine
 
 
-DEFAULT_STAGE_MILESTONES = [
-    (1, "Khởi tạo đợt & Nhập danh sách SV/GV", 0, 14, "Thiết lập đợt đồ án, import sinh viên, gán GVHD & chỉ tiêu"),
-    (2, "Đăng ký nguyện vọng & Phân công GVHD", 14, 28, "Sinh viên đăng ký NV1-NV3, Khoa chạy thuật toán phân công & chốt"),
-    (3, "Xây dựng & Phê duyệt Đề cương ĐATN", 28, 49, "Sinh viên nộp đề cương, GVHD xác nhận, Khoa phê duyệt & cấp mã đề tài"),
-    (4, "Xét điều kiện & Nộp bản nháp đồ án", 49, 77, "Khoa rà soát điều kiện học vụ/đặc cách, SV nộp bản nháp báo cáo"),
-    (5, "Thực hiện đồ án, Task & Nhật ký hướng dẫn", 77, 105, "GVHD giao task, nhật ký định kỳ, báo cáo tiến độ tuần & xác nhận đủ ĐK bảo vệ"),
-    (6, "Bảo vệ trước Hội đồng & Chốt điểm", 105, 126, "Thành lập hội đồng, xếp lịch bảo vệ, chấm điểm, ký biên bản & đóng đợt"),
-]
+from .services.batch_progress import DEFAULT_STAGE_MILESTONES, seed_default_milestones_for_batch
 
 
 def _invalidate_batch_caches():
@@ -85,6 +78,11 @@ class BatchMilestoneListCreateAPIView(APIView):
 
     def post(self, request, batch_id):
         batch = get_object_or_404(AcademicBatch, pk=batch_id)
+        if batch.is_closed or batch.current_stage == "COMPLETED":
+            return Response(
+                {"detail": "Đợt đã kết thúc. Không thể thêm mốc thời gian khi đợt đang đóng."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         payload = dict(request.data)
         payload["batch"] = batch.id
         if not payload.get("order_index"):
@@ -114,6 +112,11 @@ class BatchMilestoneDetailAPIView(APIView):
 
     def patch(self, request, pk):
         milestone = get_object_or_404(BatchMilestone, pk=pk)
+        if milestone.batch and (milestone.batch.is_closed or milestone.batch.current_stage == "COMPLETED"):
+            return Response(
+                {"detail": "Đợt đã kết thúc. Không thể chỉnh sửa mốc thời gian khi đợt đang đóng."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         serializer = BatchMilestoneSerializer(milestone, data=request.data, partial=True)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -131,6 +134,11 @@ class BatchMilestoneDetailAPIView(APIView):
 
     def delete(self, request, pk):
         milestone = get_object_or_404(BatchMilestone, pk=pk)
+        if milestone.batch and (milestone.batch.is_closed or milestone.batch.current_stage == "COMPLETED"):
+            return Response(
+                {"detail": "Đợt đã kết thúc. Không thể xóa mốc thời gian khi đợt đang đóng."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         name = milestone.name
         milestone.delete()
         AuditLog.objects.create(
@@ -148,43 +156,24 @@ class BatchMilestoneSeedDefaultAPIView(APIView):
 
     def post(self, request, batch_id):
         batch = get_object_or_404(AcademicBatch, pk=batch_id)
+        if batch.is_closed or batch.current_stage == "COMPLETED":
+            return Response(
+                {"detail": "Đợt đã kết thúc. Không thể khởi tạo mốc thời gian khi đợt đang đóng."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         replace = str(request.data.get("replace", "")).lower() in ("1", "true", "yes")
-        if replace:
-            BatchMilestone.objects.filter(batch=batch).delete()
-        elif BatchMilestone.objects.filter(batch=batch).exists():
+        if not replace and BatchMilestone.objects.filter(batch=batch).exists():
             return Response(
                 {"detail": "Đợt này đã có mốc thời gian. Dùng replace=true nếu muốn tạo lại từ đầu."},
                 status=status.HTTP_409_CONFLICT,
             )
 
-        base_date = batch.start_date or timezone.localdate()
-        tz = timezone.get_current_timezone()
-        created = []
-        for idx, (stage_num, title, start_off, end_off, desc) in enumerate(DEFAULT_STAGE_MILESTONES, start=1):
-            start_dt = timezone.make_aware(
-                datetime.datetime.combine(base_date + datetime.timedelta(days=start_off), datetime.time(8, 0)),
-                tz,
-            )
-            end_dt = timezone.make_aware(
-                datetime.datetime.combine(base_date + datetime.timedelta(days=end_off), datetime.time(17, 0)),
-                tz,
-            )
-            m = BatchMilestone.objects.create(
-                batch=batch,
-                name=title,
-                stage_number=stage_num,
-                start_date=start_dt,
-                end_date=end_dt,
-                description=desc,
-                order_index=idx,
-                is_active=True,
-            )
-            created.append(m)
+        created = seed_default_milestones_for_batch(batch, replace=replace)
 
         AuditLog.objects.create(
             user=request.user,
             action_type="group_status_change",
-            description=f"Khoa đã khởi tạo 6 mốc thời gian mặc định cho đợt {batch.batch_code}.",
+            description=f"Khoa đã khởi tạo 6 mốc thời gian mặc định (tỉ lệ theo lịch đợt) cho đợt {batch.batch_code}.",
         )
         _invalidate_batch_caches()
         return Response(BatchMilestoneSerializer(created, many=True).data, status=status.HTTP_201_CREATED)

@@ -616,3 +616,90 @@
   background: rgba(255, 255, 255, 0.16) !important;
   color: #ffffff !important;
 }
+
+/* ---------- Per-stage milestone dates & countdown ---------- */
+.utc-bpb-step-ms-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+}
+
+.utc-bpb-step-ms-dates {
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.utc-bpb-step-ms-badge {
+  font-size: 0.6rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 0 5px;
+  line-height: 1.45;
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.utc-bpb-step-ms-badge.today {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.utc-bpb-step-ms-badge.overdue {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.utc-bpb-step-ms-badge.done {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.utc-bpb-step-ms-detail {
+  margin: 0 0 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #0f172a;
+  background: rgba(2, 132, 199, 0.08);
+  border-left: 3px solid #0284c7;
+  padding: 4px 7px;
+  border-radius: 4px;
+}
+
+[data-theme="dark"] .utc-bpb-step-ms-dates,
+.dark .utc-bpb-step-ms-dates {
+  color: #94a3b8 !important;
+}
+
+[data-theme="dark"] .utc-bpb-step-ms-badge,
+.dark .utc-bpb-step-ms-badge {
+  background: rgba(56, 189, 248, 0.18) !important;
+  color: #7dd3fc !important;
+}
+
+[data-theme="dark"] .utc-bpb-step-ms-badge.today,
+.dark .utc-bpb-step-ms-badge.today {
+  background: rgba(245, 158, 11, 0.22) !important;
+  color: #fcd34d !important;
+}
+
+[data-theme="dark"] .utc-bpb-step-ms-badge.overdue,
+.dark .utc-bpb-step-ms-badge.overdue {
+  background: rgba(239, 68, 68, 0.22) !important;
+  color: #fca5a5 !important;
+}
+
+[data-theme="dark"] .utc-bpb-step-ms-badge.done,
+.dark .utc-bpb-step-ms-badge.done {
+  background: rgba(16, 185, 129, 0.2) !important;
+  color: #6ee7b7 !important;
+}
+
+[data-theme="dark"] .utc-bpb-step-ms-detail,
+.dark .utc-bpb-step-ms-detail {
+  color: #e2e8f0 !important;
+  background: rgba(56, 189, 248, 0.12) !important;
+  border-left-color: #38bdf8 !important;
+}

@@ -547,3 +547,83 @@ class RealSecurityCenterAndTopicAreaTests(EnhancementsBaseTestCase):
         stu_client.force_authenticate(user=self.sv1_user)
         forb = stu_client.post("/admin/topic-areas/", {"code": "X", "name": "Y"}, format="json")
         self.assertEqual(forb.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class MilestoneLifecycleAndTimezoneTests(EnhancementsBaseTestCase):
+    def test_auto_seed_scales_proportionally_and_closed_guard(self):
+        res = self.client.post(
+            "/admin/batches/",
+            {
+                "batch_code": "K65-AUTO",
+                "batch_name": "Đợt Tự Động Seed",
+                "start_date": "2026-09-01",
+                "end_date": "2026-12-30",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        batch_id = res.data["id"]
+        seeded = BatchMilestone.objects.filter(batch_id=batch_id).order_by("stage_number")
+        self.assertEqual(seeded.count(), 6)
+        self.assertEqual(timezone.localtime(seeded.first().start_date).date(), datetime.date(2026, 9, 1))
+        self.assertEqual(timezone.localtime(seeded.last().end_date).date(), datetime.date(2026, 12, 30))
+
+        # Invalid dates & invalid stage rejected
+        bad_dates = self.client.post(
+            f"/admin/batches/{batch_id}/milestones/",
+            {
+                "name": "Mốc lỗi ngày",
+                "stage_number": 3,
+                "start_date": "2026-10-10T08:00:00+07:00",
+                "end_date": "2026-10-05T23:59:59+07:00",
+            },
+            format="json",
+        )
+        self.assertEqual(bad_dates.status_code, status.HTTP_400_BAD_REQUEST)
+
+        bad_stage = self.client.post(
+            f"/admin/batches/{batch_id}/milestones/",
+            {"name": "GĐ lỗi", "stage_number": 7},
+            format="json",
+        )
+        self.assertEqual(bad_stage.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # Closed batch rejects milestone CRUD & seed
+        ms_id = seeded.first().id
+        batch_obj = AcademicBatch.objects.get(pk=batch_id)
+        batch_obj.is_closed = True
+        batch_obj.save(update_fields=["is_closed"])
+
+        self.assertEqual(
+            self.client.post(f"/admin/batches/{batch_id}/milestones/", {"name": "Blocked", "stage_number": 2}, format="json").status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+        self.assertEqual(
+            self.client.patch(f"/admin/milestones/{ms_id}/", {"name": "Blocked Edit"}, format="json").status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+        self.assertEqual(self.client.delete(f"/admin/milestones/{ms_id}/").status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            self.client.post(f"/admin/batches/{batch_id}/milestones/seed-default/", {"replace": True}, format="json").status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+
+    def test_progress_timezone_days_left_and_stage_priority(self):
+        from app.services.batch_progress import compute_milestone_days_left, select_current_milestone
+
+        today = timezone.localdate()
+        tz = timezone.get_current_timezone()
+        # 00:30 local time tomorrow == 17:30 UTC today (when TZ=Asia/Ho_Chi_Minh)
+        tomorrow_early = timezone.make_aware(
+            datetime.datetime.combine(today + datetime.timedelta(days=1), datetime.time(0, 30)),
+            tz,
+        )
+        self.assertEqual(compute_milestone_days_left(tomorrow_early, today=today), 1)
+
+        milestones = [
+            {"id": 1, "stage_number": 2, "status": "ACTIVE", "days_left": 5},
+            {"id": 2, "stage_number": 4, "status": "UPCOMING", "days_left": 10},
+            {"id": 3, "stage_number": 4, "status": "ACTIVE", "days_left": 7},
+        ]
+        chosen = select_current_milestone(milestones, current_number=4, is_closed=False)
+        self.assertEqual(chosen["id"], 3)

@@ -103,6 +103,178 @@ def _pct(done, total):
     return round(min(100, (done / total) * 100), 1)
 
 
+DEFAULT_STAGE_MILESTONES = [
+    (1, "Khởi tạo đợt & Nhập danh sách SV/GV", 0, 14, "Thiết lập đợt đồ án, import sinh viên, gán GVHD & chỉ tiêu"),
+    (2, "Đăng ký nguyện vọng & Phân công GVHD", 14, 28, "Sinh viên đăng ký NV1-NV3, Khoa chạy thuật toán phân công & chốt"),
+    (3, "Xây dựng & Phê duyệt Đề cương ĐATN", 28, 49, "Sinh viên nộp đề cương, GVHD xác nhận, Khoa phê duyệt & cấp mã đề tài"),
+    (4, "Xét điều kiện & Nộp bản nháp đồ án", 49, 77, "Khoa rà soát điều kiện học vụ/đặc cách, SV nộp bản nháp báo cáo"),
+    (5, "Thực hiện đồ án, Task & Nhật ký hướng dẫn", 77, 105, "GVHD giao task, nhật ký định kỳ, báo cáo tiến độ tuần & xác nhận đủ ĐK bảo vệ"),
+    (6, "Bảo vệ trước Hội đồng & Chốt điểm", 105, 126, "Thành lập hội đồng, xếp lịch bảo vệ, chấm điểm, ký biên bản & đóng đợt"),
+]
+
+
+def compute_scaled_stage_offsets(batch):
+    """Tính offset [start_day, end_day] theo thời lượng đợt (co giãn từ chuẩn 126 ngày)."""
+    raw_boundaries = [0] + [item[3] for item in DEFAULT_STAGE_MILESTONES]
+    start_date = getattr(batch, "start_date", None)
+    end_date = getattr(batch, "end_date", None)
+    if start_date and end_date:
+        total_days = (end_date - start_date).days
+        if total_days >= 6:
+            scaled = [0]
+            total_stages = len(DEFAULT_STAGE_MILESTONES)
+            for idx, offset in enumerate(raw_boundaries[1:-1], start=1):
+                remaining = total_stages - idx
+                min_day = scaled[-1] + 1
+                max_day = total_days - remaining
+                val = round(offset * total_days / 126)
+                scaled.append(max(min_day, min(max_day, val)))
+            scaled.append(total_days)
+            return list(zip(scaled[:-1], scaled[1:]))
+    return [(item[2], item[3]) for item in DEFAULT_STAGE_MILESTONES]
+
+
+def seed_default_milestones_for_batch(batch, replace=False):
+    """Khởi tạo 6 mốc thời gian chuẩn UTC co giãn theo start_date..end_date của đợt."""
+    import datetime
+    from django.utils import timezone
+    from app.models import BatchMilestone
+
+    existing_qs = BatchMilestone.objects.filter(batch=batch)
+    if existing_qs.exists():
+        if not replace:
+            return []
+        existing_qs.delete()
+
+    base_date = getattr(batch, "start_date", None) or timezone.localdate()
+    tz = timezone.get_current_timezone()
+    offsets = compute_scaled_stage_offsets(batch)
+    created = []
+    for idx, ((stage_num, title, _s_off, _e_off, desc), (s_off, e_off)) in enumerate(
+        zip(DEFAULT_STAGE_MILESTONES, offsets), start=1
+    ):
+        s_date = base_date + datetime.timedelta(days=s_off)
+        e_date = base_date + datetime.timedelta(days=e_off)
+        start_dt = timezone.make_aware(datetime.datetime.combine(s_date, datetime.time(8, 0)), tz)
+        end_dt = timezone.make_aware(datetime.datetime.combine(e_date, datetime.time(23, 59)), tz)
+        created.append(
+            BatchMilestone.objects.create(
+                batch=batch,
+                name=title,
+                stage_number=stage_num,
+                start_date=start_dt,
+                end_date=end_dt,
+                description=desc,
+                order_index=idx,
+                is_active=True,
+            )
+        )
+    return created
+
+
+def ensure_stage_milestone_exists(batch, stage_number):
+    """Đảm bảo đợt có mốc thời gian cho giai đoạn mục tiêu (auto-seed khi đợt chưa có mốc nào)."""
+    import datetime
+    from django.utils import timezone
+    from app.models import BatchMilestone
+
+    if not batch:
+        return []
+    if not BatchMilestone.objects.filter(batch=batch).exists():
+        return seed_default_milestones_for_batch(batch, replace=False)
+    if BatchMilestone.objects.filter(batch=batch, stage_number=stage_number, is_active=True).exists():
+        return []
+
+    base_date = getattr(batch, "start_date", None) or timezone.localdate()
+    tz = timezone.get_current_timezone()
+    offsets = compute_scaled_stage_offsets(batch)
+    for (s_num, title, _s, _e, desc), (s_off, e_off) in zip(DEFAULT_STAGE_MILESTONES, offsets):
+        if s_num == stage_number:
+            s_date = base_date + datetime.timedelta(days=s_off)
+            e_date = base_date + datetime.timedelta(days=e_off)
+            return [
+                BatchMilestone.objects.create(
+                    batch=batch,
+                    name=title,
+                    stage_number=stage_number,
+                    start_date=timezone.make_aware(datetime.datetime.combine(s_date, datetime.time(8, 0)), tz),
+                    end_date=timezone.make_aware(datetime.datetime.combine(e_date, datetime.time(23, 59)), tz),
+                    description=desc,
+                    order_index=BatchMilestone.objects.filter(batch=batch).count() + 1,
+                    is_active=True,
+                )
+            ]
+    return []
+
+
+def milestone_local_date(dt):
+    """Chuyển datetime mốc thời gian về ngày theo múi giờ cục bộ (tránh lệch ngày UTC)."""
+    if not dt:
+        return None
+    from django.utils import timezone
+    return timezone.localtime(dt).date() if timezone.is_aware(dt) else dt.date()
+
+
+def compute_milestone_days_left(end_date, today=None):
+    """Tính số ngày còn lại đến hạn mốc theo ngày cục bộ (âm nếu đã quá hạn)."""
+    end_local = milestone_local_date(end_date)
+    if not end_local:
+        return None
+    if today is None:
+        from django.utils import timezone
+        today = timezone.localdate()
+    return (end_local - today).days
+
+
+def serialize_batch_milestone(m, now=None, today=None):
+    """Chuẩn hóa dữ liệu BatchMilestone thống nhất giữa progress bar, API công khai & serializer."""
+    from django.utils import timezone
+    if now is None:
+        now = timezone.now()
+    if today is None:
+        today = timezone.localdate()
+
+    if m.start_date and m.start_date > now:
+        m_status = "UPCOMING"
+    elif m.end_date and m.end_date < now:
+        m_status = "EXPIRED"
+    elif m.start_date or m.end_date:
+        m_status = "ACTIVE"
+    else:
+        m_status = "UNSCHEDULED"
+
+    return {
+        "id": m.id,
+        "name": m.name,
+        "stage_number": m.stage_number,
+        "start_date": m.start_date.isoformat() if m.start_date else None,
+        "end_date": m.end_date.isoformat() if m.end_date else None,
+        "description": m.description or "",
+        "order_index": m.order_index,
+        "status": m_status,
+        "days_left": compute_milestone_days_left(m.end_date, today=today),
+    }
+
+
+def select_current_milestone(milestones_data, current_number=None, is_closed=False):
+    """Chọn mốc hiện tại ưu tiên bám sát giai đoạn vận hành của đợt (trước khi fallback theo đồng hồ)."""
+    if not milestones_data:
+        return None
+    if not is_closed and current_number is not None:
+        stage_items = [item for item in milestones_data if item.get("stage_number") == current_number]
+        if stage_items:
+            return (
+                next((item for item in stage_items if item.get("status") == "ACTIVE"), None)
+                or next((item for item in stage_items if item.get("status") == "UPCOMING"), None)
+                or stage_items[0]
+            )
+    return (
+        next((item for item in milestones_data if item.get("status") == "ACTIVE"), None)
+        or next((item for item in milestones_data if item.get("status") == "UPCOMING"), None)
+        or milestones_data[0]
+    )
+
+
 def compute_batch_progress(batch):
     """
     Trả về cấu trúc tiến trình chi tiết của một Đợt đồ án.
@@ -391,34 +563,12 @@ def compute_batch_progress(batch):
         ms_qs = list(
             BatchMilestone.objects.filter(batch=batch, is_active=True).order_by("order_index", "start_date", "id")
         )
-        for m in ms_qs:
-            if m.start_date and m.start_date > now:
-                m_status = "UPCOMING"
-            elif m.end_date and m.end_date < now:
-                m_status = "EXPIRED"
-            elif m.start_date or m.end_date:
-                m_status = "ACTIVE"
-            else:
-                m_status = "UNSCHEDULED"
-
-            m_days = (m.end_date.date() - today).days if m.end_date else None
-            item = {
-                "id": m.id,
-                "name": m.name,
-                "stage_number": m.stage_number,
-                "start_date": m.start_date.isoformat() if m.start_date else None,
-                "end_date": m.end_date.isoformat() if m.end_date else None,
-                "description": m.description or "",
-                "order_index": m.order_index,
-                "status": m_status,
-                "days_left": m_days,
-            }
-            milestones_data.append(item)
-
-        current_milestone = (
-            next((item for item in milestones_data if item["stage_number"] == current_number), None)
-            or next((item for item in milestones_data if item["status"] == "ACTIVE"), None)
-            or (milestones_data[0] if milestones_data else None)
+        milestones_data = [serialize_batch_milestone(m, now=now, today=today) for m in ms_qs]
+        is_batch_closed = bool(getattr(batch, "is_closed", False) or getattr(batch, "current_stage", "") == "COMPLETED")
+        current_milestone = select_current_milestone(
+            milestones_data,
+            current_number=current_number,
+            is_closed=is_batch_closed,
         )
         if current_milestone is not None:
             days_left = current_milestone.get("days_left")

@@ -846,8 +846,11 @@ class BatchMilestoneSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
-        start = attrs.get("start_date") or getattr(self.instance, "start_date", None)
-        end = attrs.get("end_date") or getattr(self.instance, "end_date", None)
+        stage_num = attrs.get("stage_number", getattr(self.instance, "stage_number", None))
+        if stage_num is not None and not (1 <= int(stage_num) <= 6):
+            raise serializers.ValidationError({"stage_number": "Giai đoạn phải nằm trong khoảng từ 1 đến 6."})
+        start = attrs["start_date"] if "start_date" in attrs else getattr(self.instance, "start_date", None)
+        end = attrs["end_date"] if "end_date" in attrs else getattr(self.instance, "end_date", None)
         if start and end and end < start:
             raise serializers.ValidationError({"end_date": "Thời gian kết thúc không được nhỏ hơn thời gian bắt đầu."})
         return attrs
@@ -864,11 +867,8 @@ class BatchMilestoneSerializer(serializers.ModelSerializer):
         return "UNSCHEDULED"
 
     def get_days_left(self, obj):
-        if not obj.end_date:
-            return None
-        from django.utils import timezone
-        delta = (obj.end_date.date() - timezone.localdate()).days
-        return delta
+        from app.services.batch_progress import compute_milestone_days_left
+        return compute_milestone_days_left(obj.end_date)
 
 
 class ThesisDeferralRequestSerializer(serializers.ModelSerializer):

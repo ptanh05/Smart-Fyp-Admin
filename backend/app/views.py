@@ -765,6 +765,8 @@ class AdminImportExcelAPIView(APIView):
                     batch_name=f"Đợt Đồ Án {timezone.now().year}",
                     is_active=True
                 )
+                from .services.batch_progress import seed_default_milestones_for_batch
+                seed_default_milestones_for_batch(active_batch, replace=False)
             batch_id = active_batch.id
 
         res = ExcelImportService.import_students_from_excel(
@@ -1124,6 +1126,8 @@ class AcademicBatchListCreateAPIView(ListCreateAPIView):
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
+        from .services.batch_progress import seed_default_milestones_for_batch
+        seed_default_milestones_for_batch(serializer.instance, replace=False)
         headers = self.get_success_headers(serializer.data)
         cache.delete(BATCHES_CACHE_KEY)
         invalidate_user_summary_cache()
@@ -1293,6 +1297,9 @@ class OpenBatchAPIView(APIView):
             batch.current_stage = "PHASE_2_ALLOCATING"
         batch.save(update_fields=["is_active", "is_closed", "current_stage"])
 
+        from .services.batch_progress import ensure_stage_milestone_exists
+        ensure_stage_milestone_exists(batch, 2)
+
         try:
             cache.delete(BATCHES_CACHE_KEY)
             invalidate_user_summary_cache()
@@ -1377,6 +1384,8 @@ class ExcelStudentImportAPIView(APIView):
                         batch_name=f"Đợt Đồ Án {timezone.now().year}",
                         is_active=True
                     )
+                    from .services.batch_progress import seed_default_milestones_for_batch
+                    seed_default_milestones_for_batch(active_batch, replace=False)
                 batch_id = active_batch.id
             else:
                 try:

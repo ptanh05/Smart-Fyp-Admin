@@ -131,6 +131,7 @@ export const BatchesPage: React.FC = () => {
   const [msEnd, setMsEnd] = useState('');
   const [msDesc, setMsDesc] = useState('');
   const [msSaving, setMsSaving] = useState(false);
+  const [milestoneVersion, setMilestoneVersion] = useState(0);
 
   // Quota của giảng viên trong đợt (GĐ1 - cấu hình chỉ tiêu hướng dẫn)
   const [quotas, setQuotas] = useState<any[]>([]);
@@ -434,13 +435,21 @@ export const BatchesPage: React.FC = () => {
   const handleSaveMilestone = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedBatchId || !msName.trim()) return;
+    if (currBatch?.is_closed || currBatch?.current_stage === 'COMPLETED') {
+      showToast('❌ Đợt đã kết thúc. Không thể thay đổi mốc thời gian khi đợt đang đóng.', 'error');
+      return;
+    }
+    if (msStart && msEnd && msEnd < msStart) {
+      showToast('❌ Hạn chót không được nhỏ hơn ngày bắt đầu.', 'error');
+      return;
+    }
     try {
       setMsSaving(true);
       const payload = {
         name: msName.trim(),
         stage_number: msStage,
-        start_date: msStart ? `${msStart}T08:00:00` : null,
-        end_date: msEnd ? `${msEnd}T17:00:00` : null,
+        start_date: msStart ? `${msStart}T08:00:00+07:00` : null,
+        end_date: msEnd ? `${msEnd}T23:59:59+07:00` : null,
         description: msDesc.trim(),
       };
       if (editingMilestoneId) {
@@ -452,8 +461,9 @@ export const BatchesPage: React.FC = () => {
       }
       resetMilestoneForm();
       await fetchMilestones(selectedBatchId);
+      setMilestoneVersion((v) => v + 1);
     } catch (err: any) {
-      const msg = err.response?.data?.end_date?.[0] || err.response?.data?.detail || err.message || 'Lỗi lưu mốc thời gian';
+      const msg = err.response?.data?.end_date?.[0] || err.response?.data?.stage_number?.[0] || err.response?.data?.detail || err.message || 'Lỗi lưu mốc thời gian';
       showToast(`❌ ${msg}`, 'error');
     } finally {
       setMsSaving(false);
@@ -461,11 +471,17 @@ export const BatchesPage: React.FC = () => {
   };
 
   const handleDeleteMilestone = async (milestoneId: number) => {
-    if (!selectedBatchId || !confirm('Bạn có chắc chắn muốn xóa mốc thời gian này?')) return;
+    if (!selectedBatchId) return;
+    if (currBatch?.is_closed || currBatch?.current_stage === 'COMPLETED') {
+      showToast('❌ Đợt đã kết thúc. Không thể xóa mốc thời gian khi đợt đang đóng.', 'error');
+      return;
+    }
+    if (!confirm('Bạn có chắc chắn muốn xóa mốc thời gian này?')) return;
     try {
       await apiClient.delete(`/admin/milestones/${milestoneId}/`);
       showToast('✓ Đã xóa mốc thời gian.', 'success');
       await fetchMilestones(selectedBatchId);
+      setMilestoneVersion((v) => v + 1);
     } catch (err: any) {
       showToast(`❌ Lỗi xóa mốc: ${err.response?.data?.detail || err.message}`, 'error');
     }
@@ -473,6 +489,10 @@ export const BatchesPage: React.FC = () => {
 
   const handleSeedDefaultMilestones = async () => {
     if (!selectedBatchId) return;
+    if (currBatch?.is_closed || currBatch?.current_stage === 'COMPLETED') {
+      showToast('❌ Đợt đã kết thúc. Không thể khởi tạo mốc thời gian khi đợt đang đóng.', 'error');
+      return;
+    }
     const hasExisting = milestones.length > 0;
     if (hasExisting && !confirm('Đợt đã có mốc thời gian. Bạn có muốn thay thế bằng bộ 6 mốc chuẩn UTC mặc định?')) {
       return;
@@ -484,6 +504,7 @@ export const BatchesPage: React.FC = () => {
       });
       showToast('✓ Đã khởi tạo 6 mốc thời gian chuẩn UTC!', 'success');
       await fetchMilestones(selectedBatchId);
+      setMilestoneVersion((v) => v + 1);
     } catch (err: any) {
       showToast(`❌ ${err.response?.data?.detail || err.message}`, 'error');
     } finally {
@@ -1092,7 +1113,7 @@ export const BatchesPage: React.FC = () => {
         {/* Thanh trên cùng luôn bám theo đúng đợt người dùng chọn ở danh sách. */}
         {selectedBatchId && currBatch && (
           <SelectedBatchProgress
-            key={`tracked-${selectedBatchId}-${currBatch.current_stage}-${currBatch.is_closed}`}
+            key={`tracked-${selectedBatchId}-${currBatch.current_stage}-${currBatch.is_closed}-${milestoneVersion}`}
             batchId={selectedBatchId}
           />
         )}
@@ -1460,12 +1481,18 @@ export const BatchesPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={handleSeedDefaultMilestones}
-                        disabled={msSaving}
+                        disabled={msSaving || Boolean(currBatch?.is_closed || currBatch?.current_stage === 'COMPLETED')}
                         className="utc-btn-emerald"
                       >
                         ⚡ {milestones.length > 0 ? 'Đặt lại 6 mốc chuẩn UTC' : 'Tạo nhanh 6 mốc chuẩn UTC'}
                       </button>
                     </div>
+
+                    {(currBatch?.is_closed || currBatch?.current_stage === 'COMPLETED') && (
+                      <div style={{ padding: '0.65rem 0.9rem', borderRadius: '8px', background: '#fef3c7', border: '1px solid #fcd34d', color: '#92400e', fontSize: '0.84rem', fontWeight: 600 }}>
+                        🔒 Đợt đã kết thúc nên mốc thời gian đang ở chế độ chỉ đọc. Hãy mở lại đợt nếu cần điều chỉnh.
+                      </div>
+                    )}
 
                     <form
                       onSubmit={handleSaveMilestone}
@@ -1535,7 +1562,11 @@ export const BatchesPage: React.FC = () => {
                         />
                       </div>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button type="submit" disabled={msSaving} className="utc-btn-primary">
+                        <button
+                          type="submit"
+                          disabled={msSaving || Boolean(currBatch?.is_closed || currBatch?.current_stage === 'COMPLETED')}
+                          className="utc-btn-primary"
+                        >
                           {msSaving ? 'Đang lưu...' : editingMilestoneId ? '💾 Cập nhật mốc' : '➕ Thêm mốc'}
                         </button>
                         {editingMilestoneId && (
@@ -1585,7 +1616,7 @@ export const BatchesPage: React.FC = () => {
                                     }}
                                   >
                                     {m.status === 'ACTIVE'
-                                      ? `Đang mở${m.days_left !== null && m.days_left !== undefined ? ` (${m.days_left} ngày)` : ''}`
+                                      ? `Đang mở${m.days_left !== null && m.days_left !== undefined ? (m.days_left === 0 ? ' (Hạn hôm nay)' : m.days_left > 0 ? ` (Còn ${m.days_left} ngày)` : ` (Quá hạn ${Math.abs(m.days_left)} ngày)`) : ''}`
                                       : m.status === 'EXPIRED'
                                       ? 'Đã qua'
                                       : m.status === 'UPCOMING'
@@ -1600,13 +1631,23 @@ export const BatchesPage: React.FC = () => {
                                       className="utc-btn-outline"
                                       style={{ padding: '4px 8px', fontSize: '0.78rem' }}
                                       onClick={() => {
+                                        const toLocalDateStr = (iso?: string | null) => {
+                                          if (!iso) return '';
+                                          const d = new Date(iso);
+                                          if (Number.isNaN(d.getTime())) return String(iso).slice(0, 10);
+                                          const y = d.getFullYear();
+                                          const mNum = String(d.getMonth() + 1).padStart(2, '0');
+                                          const day = String(d.getDate()).padStart(2, '0');
+                                          return `${y}-${mNum}-${day}`;
+                                        };
                                         setEditingMilestoneId(m.id);
                                         setMsName(m.name);
                                         setMsStage(m.stage_number);
-                                        setMsStart(m.start_date ? m.start_date.slice(0, 10) : '');
-                                        setMsEnd(m.end_date ? m.end_date.slice(0, 10) : '');
+                                        setMsStart(toLocalDateStr(m.start_date));
+                                        setMsEnd(toLocalDateStr(m.end_date));
                                         setMsDesc(m.description || '');
                                       }}
+                                      disabled={Boolean(currBatch?.is_closed || currBatch?.current_stage === 'COMPLETED')}
                                     >
                                       ✏️
                                     </button>
@@ -1987,7 +2028,7 @@ export const BatchesPage: React.FC = () => {
                 </div>
 
                 <SelectedBatchProgress
-                  key={`${selectedBatchId}-${currBatch?.current_stage}-${currBatch?.is_closed}`}
+                  key={`${selectedBatchId}-${currBatch?.current_stage}-${currBatch?.is_closed}-${milestoneVersion}`}
                   batchId={selectedBatchId}
                 />
 

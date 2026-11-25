@@ -89,6 +89,27 @@ const STATUS_LABEL: Record<BatchStage['status'], string> = {
   locked: 'Đang khóa',
 };
 
+const shortDateVi = (iso?: string | null): string => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+};
+
+const pickStageMilestone = (milestones: BatchMilestoneItem[] | undefined, stageNumber: number): BatchMilestoneItem | undefined => {
+  if (!milestones || milestones.length === 0) return undefined;
+  const list = milestones.filter((m) => m.stage_number === stageNumber);
+  if (list.length === 0) return undefined;
+  return list.find((m) => m.status === 'ACTIVE') || list.find((m) => m.status === 'UPCOMING') || list[0];
+};
+
+const formatMilestoneCountdown = (daysLeft?: number | null, compact = false): { text: string; cls: string } | null => {
+  if (daysLeft === null || daysLeft === undefined) return null;
+  if (daysLeft < 0) return { text: compact ? `Quá ${Math.abs(daysLeft)}n` : `Quá hạn ${Math.abs(daysLeft)} ngày`, cls: 'overdue' };
+  if (daysLeft === 0) return { text: compact ? 'Hôm nay' : 'Hạn hôm nay', cls: 'today' };
+  return { text: compact ? `Còn ${daysLeft}n` : `Còn ${daysLeft} ngày`, cls: '' };
+};
+
 export const BatchProgressBar: React.FC<Props> = ({
   data,
   loading = false,
@@ -213,11 +234,42 @@ export const BatchProgressBar: React.FC<Props> = ({
                 <span className="utc-bpb-step-body">
                   <span className="utc-bpb-step-label">{stage.short_label}</span>
                   <span className="utc-bpb-step-status">{STATUS_LABEL[stage.status]}</span>
+                  {(() => {
+                    const ms = pickStageMilestone(data.milestones, stage.number);
+                    if (!ms) return null;
+                    const sStr = shortDateVi(ms.start_date);
+                    const eStr = shortDateVi(ms.end_date);
+                    const dateRange = sStr && eStr ? `${sStr}–${eStr}` : eStr ? `Hạn ${eStr}` : sStr ? `Từ ${sStr}` : '';
+                    const badge =
+                      stage.status === 'done'
+                        ? { text: '✓ Xong', cls: 'done' }
+                        : formatMilestoneCountdown(ms.days_left, true);
+                    if (!dateRange && !badge) return null;
+                    return (
+                      <span className="utc-bpb-step-ms-meta">
+                        {dateRange && <span className="utc-bpb-step-ms-dates">{dateRange}</span>}
+                        {badge && <span className={`utc-bpb-step-ms-badge ${badge.cls}`}>{badge.text}</span>}
+                      </span>
+                    );
+                  })()}
                 </span>
               </button>
 
               {showStats && isExpanded && (
                 <div className="utc-bpb-step-detail">
+                  {(() => {
+                    const ms = pickStageMilestone(data.milestones, stage.number);
+                    if (!ms) return null;
+                    const sStr = shortDateVi(ms.start_date);
+                    const eStr = shortDateVi(ms.end_date);
+                    const rangeText = sStr && eStr ? `${sStr} → ${eStr}` : eStr ? `Hạn ${eStr}` : sStr ? `Từ ${sStr}` : '';
+                    const cd = stage.status === 'done' ? null : formatMilestoneCountdown(ms.days_left, false);
+                    return (
+                      <p className="utc-bpb-step-ms-detail">
+                        🗓️ {ms.name}{rangeText ? ` (${rangeText})` : ''}{cd ? ` · ${cd.text}` : ''}
+                      </p>
+                    );
+                  })()}
                   <p className="utc-bpb-step-desc">{stage.description}</p>
                   {stage.role_hint && (
                     <p className="utc-bpb-step-role">👤 Trách nhiệm: {stage.role_hint}</p>
@@ -261,10 +313,12 @@ export const BatchProgressBar: React.FC<Props> = ({
             <span className="utc-bpb-next-hint">· {data.next_actions[0]}</span>
           )}
           {data.current_milestone && (
-            <span className="utc-bpb-next-hint" style={{ fontWeight: 700, color: (data.current_milestone.days_left ?? 1) < 0 ? '#dc2626' : '#0369a1' }}>
+            <span className="utc-bpb-next-hint" style={{ fontWeight: 700, color: (data.current_milestone.days_left ?? 1) < 0 ? '#dc2626' : data.current_milestone.days_left === 0 ? '#b45309' : '#0369a1' }}>
               · 🗓️ {data.current_milestone.name}
               {data.current_milestone.days_left !== null && data.current_milestone.days_left !== undefined
-                ? (data.current_milestone.days_left >= 0
+                ? (data.current_milestone.days_left === 0
+                    ? ' (Hạn hôm nay)'
+                    : data.current_milestone.days_left > 0
                     ? ` (Còn ${data.current_milestone.days_left} ngày)`
                     : ` (Quá hạn ${Math.abs(data.current_milestone.days_left)} ngày)`)
                 : ''}
