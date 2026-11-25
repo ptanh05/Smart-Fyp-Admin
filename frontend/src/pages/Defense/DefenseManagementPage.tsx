@@ -164,13 +164,27 @@ export const DefenseManagementPage: React.FC = () => {
           )
         );
         const mergedByProject: Record<string, any> = {};
+        let totalSigned = 0;
+        let totalProjectsCount = 0;
         allSigs.forEach((sigRes) => {
-          const mapObj = sigRes?.data?.by_project;
+          const data = sigRes?.data;
+          if (!data) return;
+          if (typeof data.fully_signed_projects === 'number') {
+            totalSigned += data.fully_signed_projects;
+          }
+          if (typeof data.total_projects === 'number') {
+            totalProjectsCount += data.total_projects;
+          }
+          const mapObj = data.by_project;
           if (mapObj && typeof mapObj === 'object') {
             Object.assign(mergedByProject, mapObj);
           }
         });
-        setCouncilSignatures({ by_project: mergedByProject });
+        setCouncilSignatures({
+          by_project: mergedByProject,
+          fully_signed_projects: totalSigned,
+          total_projects: totalProjectsCount,
+        });
       } else {
         setCouncilSignatures(null);
       }

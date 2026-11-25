@@ -2974,17 +2974,31 @@ class DeferralDecisionAPIView(APIView):
     permission_classes = [IsAuthenticated, IsAdminUserRole]
 
     def patch(self, request, pk):
+        from .models import ThesisDeferralRequest
+
         project = get_object_or_404(GraduationProject, pk=pk)
         decision = request.data.get("decision")  # "APPROVE_DEFERRAL" hoặc "REJECT_DEFERRAL"
-        reason = request.data.get("reason", "")
+        reason = (request.data.get("reason") or request.data.get("admin_notes") or "").strip()
 
         if decision == "APPROVE_DEFERRAL":
-            project.deferral_status = "APPROVED"
-            project.status = "DEFERRED"
-            project.deferral_reason = reason or project.deferral_reason or "Bảo lưu theo quy định học vụ"
-            project.deferral_decided_at = timezone.now()
-            project.is_eligible_for_defense = False
-            project.save()
+            final_reason = reason or project.deferral_reason or "Bảo lưu theo quy định học vụ"
+            now = timezone.now()
+            with transaction.atomic():
+                project.deferral_status = "APPROVED"
+                project.status = "DEFERRED"
+                project.deferral_reason = final_reason
+                project.deferral_decided_at = now
+                project.is_eligible_for_defense = False
+                project.save()
+
+                ThesisDeferralRequest.objects.filter(
+                    project=project, status="PENDING"
+                ).update(
+                    status="APPROVED",
+                    admin_notes=reason or "Đạt điều kiện bảo lưu theo quy định học vụ",
+                    reviewed_by=request.user,
+                    reviewed_at=now,
+                )
 
             AuditLog.objects.create(
                 user=request.user,
@@ -2994,12 +3008,24 @@ class DeferralDecisionAPIView(APIView):
             return Response({"message": "Khoa đã duyệt bảo lưu thành công.", "status": "DEFERRED"}, status=status.HTTP_200_OK)
 
         elif decision == "REJECT_DEFERRAL":
-            project.deferral_status = "REJECTED"
-            project.status = "FAILED"
-            project.is_eligible_for_defense = False
-            project.deferral_reason = reason or "Khoa từ chối đơn bảo lưu -> Không đạt"
-            project.deferral_decided_at = timezone.now()
-            project.save()
+            final_reason = reason or "Khoa từ chối đơn bảo lưu -> Không đạt"
+            now = timezone.now()
+            with transaction.atomic():
+                project.deferral_status = "REJECTED"
+                project.status = "FAILED"
+                project.is_eligible_for_defense = False
+                project.deferral_reason = final_reason
+                project.deferral_decided_at = now
+                project.save()
+
+                ThesisDeferralRequest.objects.filter(
+                    project=project, status="PENDING"
+                ).update(
+                    status="REJECTED",
+                    admin_notes=final_reason,
+                    reviewed_by=request.user,
+                    reviewed_at=now,
+                )
 
             AuditLog.objects.create(
                 user=request.user,

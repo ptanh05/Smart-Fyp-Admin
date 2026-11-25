@@ -14,6 +14,7 @@ from app.models import (
     Student,
     Supervisor,
     SupervisorQuota,
+    ThesisDeferralRequest,
 )
 from app.services.reviewer_engine import ReviewerAndCouncilAllocationEngine
 
@@ -126,3 +127,21 @@ class GD6AdminFixesTests(APITestCase):
         self.proj.refresh_from_db()
         self.assertEqual(self.proj.council_id, self.council.id)
         self.assertEqual(self.proj.reviewer_id, ext_sup.id)
+
+    def test_deferral_decision_syncs_pending_request(self):
+        req = ThesisDeferralRequest.objects.create(
+            project=self.proj,
+            student=self.st,
+            reason="Lý do sức khỏe",
+            status="PENDING",
+        )
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.patch(
+            f"/admin/projects/{self.proj.id}/deferral-decision/",
+            {"decision": "APPROVE_DEFERRAL", "reason": "Đủ điều kiện bảo lưu"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        req.refresh_from_db()
+        self.assertEqual(req.status, "APPROVED")
+        self.assertEqual(req.admin_notes, "Đủ điều kiện bảo lưu")
