@@ -149,7 +149,7 @@ class OpenAPIAndBatchMilestoneTests(EnhancementsBaseTestCase):
     def test_batch_edit_and_delete_protection(self):
         patch_res = self.client.patch(
             f"/admin/batches/{self.batch.id}/",
-            {"batch_name": "Đợt Đã Đổi Tên", "start_date": "2026-09-05"},
+            {"batch_name": "Đợt Đã Đổi Tên"},
             format="json",
         )
         self.assertEqual(patch_res.status_code, status.HTTP_200_OK)
@@ -551,13 +551,15 @@ class RealSecurityCenterAndTopicAreaTests(EnhancementsBaseTestCase):
 
 class MilestoneLifecycleAndTimezoneTests(EnhancementsBaseTestCase):
     def test_auto_seed_scales_proportionally_and_closed_guard(self):
+        start_date = timezone.localdate() + datetime.timedelta(days=1)
+        end_date = start_date + datetime.timedelta(days=120)
         res = self.client.post(
             "/admin/batches/",
             {
                 "batch_code": "K65-AUTO",
                 "batch_name": "Đợt Tự Động Seed",
-                "start_date": "2026-09-01",
-                "end_date": "2026-12-30",
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
             },
             format="json",
         )
@@ -565,8 +567,17 @@ class MilestoneLifecycleAndTimezoneTests(EnhancementsBaseTestCase):
         batch_id = res.data["id"]
         seeded = BatchMilestone.objects.filter(batch_id=batch_id).order_by("stage_number")
         self.assertEqual(seeded.count(), 6)
-        self.assertEqual(timezone.localtime(seeded.first().start_date).date(), datetime.date(2026, 9, 1))
-        self.assertEqual(timezone.localtime(seeded.last().end_date).date(), datetime.date(2026, 12, 30))
+        self.assertEqual(timezone.localtime(seeded.first().start_date).date(), start_date)
+        self.assertEqual(timezone.localtime(seeded.last().end_date).date(), end_date)
+        seeded_list = list(seeded)
+        for previous, following in zip(seeded_list, seeded_list[1:]):
+            previous_end = timezone.localtime(previous.end_date).date()
+            following_start = timezone.localtime(following.start_date).date()
+            self.assertEqual(following_start, previous_end + datetime.timedelta(days=1))
+
+        milestone_data = self.client.get(f"/admin/batches/{batch_id}/milestones/").data
+        self.assertEqual(milestone_data[0]["status"], "UPCOMING")
+        self.assertTrue(all(item["status"] == "UPCOMING" for item in milestone_data[1:]))
 
         # Invalid dates & invalid stage rejected
         bad_dates = self.client.post(
@@ -627,3 +638,63 @@ class MilestoneLifecycleAndTimezoneTests(EnhancementsBaseTestCase):
         ]
         chosen = select_current_milestone(milestones, current_number=4, is_closed=False)
         self.assertEqual(chosen["id"], 3)
+
+    def test_batch_creation_rejects_missing_past_and_short_schedule(self):
+        today = timezone.localdate()
+        common = {"batch_name": "Đợt kiểm tra lịch", "program_type": "BACHELOR"}
+
+        missing = self.client.post(
+            "/admin/batches/",
+            {**common, "batch_code": "DATE-MISSING"},
+            format="json",
+        )
+        self.assertEqual(missing.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("start_date", missing.data)
+        self.assertIn("end_date", missing.data)
+
+        past = self.client.post(
+            "/admin/batches/",
+            {
+                **common,
+                "batch_code": "DATE-PAST",
+                "start_date": (today - datetime.timedelta(days=1)).isoformat(),
+                "end_date": (today + datetime.timedelta(days=60)).isoformat(),
+            },
+            format="json",
+        )
+        self.assertEqual(past.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("start_date", past.data)
+
+        too_short = self.client.post(
+            "/admin/batches/",
+            {
+                **common,
+                "batch_code": "DATE-SHORT",
+                "start_date": today.isoformat(),
+                "end_date": (today + datetime.timedelta(days=49)).isoformat(),
+            },
+            format="json",
+        )
+        self.assertEqual(too_short.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("end_date", too_short.data)
+
+        valid = self.client.post(
+            "/admin/batches/",
+            {
+                **common,
+                "batch_code": "DATE-VALID",
+                "start_date": today.isoformat(),
+                "end_date": (today + datetime.timedelta(days=50)).isoformat(),
+            },
+            format="json",
+        )
+        self.assertEqual(valid.status_code, status.HTTP_201_CREATED)
+        statuses = list(
+            BatchMilestone.objects.filter(batch_id=valid.data["id"])
+            .order_by("stage_number")
+            .values_list("stage_number", flat=True)
+        )
+        self.assertEqual(statuses, [1, 2, 3, 4, 5, 6])
+        serialized = self.client.get(f"/admin/batches/{valid.data['id']}/milestones/").data
+        self.assertIn(serialized[0]["status"], ("UPCOMING", "ACTIVE"))
+        self.assertTrue(all(item["status"] == "UPCOMING" for item in serialized[1:]))

@@ -73,7 +73,7 @@ class BatchMilestoneListCreateAPIView(APIView):
 
     def get(self, request, batch_id):
         batch = get_object_or_404(AcademicBatch, pk=batch_id)
-        milestones = BatchMilestone.objects.filter(batch=batch).order_by("order_index", "start_date", "id")
+        milestones = BatchMilestone.objects.filter(batch=batch).select_related("batch").order_by("order_index", "start_date", "id")
         return Response(BatchMilestoneSerializer(milestones, many=True).data, status=status.HTTP_200_OK)
 
     def post(self, request, batch_id):

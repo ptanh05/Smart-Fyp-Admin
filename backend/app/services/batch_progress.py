@@ -114,24 +114,25 @@ DEFAULT_STAGE_MILESTONES = [
 
 
 def compute_scaled_stage_offsets(batch):
-    """Tính offset [start_day, end_day] theo thời lượng đợt (co giãn từ chuẩn 126 ngày)."""
+    """Tính 6 khoảng ngày liên tiếp, không chồng lấn, theo tỉ lệ chuẩn 126 ngày."""
     raw_boundaries = [0] + [item[3] for item in DEFAULT_STAGE_MILESTONES]
     start_date = getattr(batch, "start_date", None)
     end_date = getattr(batch, "end_date", None)
     if start_date and end_date:
         total_days = (end_date - start_date).days
-        if total_days >= 6:
+        total_span = total_days + 1  # tính cả ngày bắt đầu và ngày kết thúc
+        if total_span >= 6:
             scaled = [0]
             total_stages = len(DEFAULT_STAGE_MILESTONES)
             for idx, offset in enumerate(raw_boundaries[1:-1], start=1):
                 remaining = total_stages - idx
                 min_day = scaled[-1] + 1
-                max_day = total_days - remaining
-                val = round(offset * total_days / 126)
+                max_day = total_span - remaining
+                val = round(offset * total_span / 126)
                 scaled.append(max(min_day, min(max_day, val)))
-            scaled.append(total_days)
-            return list(zip(scaled[:-1], scaled[1:]))
-    return [(item[2], item[3]) for item in DEFAULT_STAGE_MILESTONES]
+            scaled.append(total_span)
+            return [(scaled[i], scaled[i + 1] - 1) for i in range(total_stages)]
+    return [(item[2], item[3] - 1) for item in DEFAULT_STAGE_MILESTONES]
 
 
 def seed_default_milestones_for_batch(batch, replace=False):
@@ -226,6 +227,31 @@ def compute_milestone_days_left(end_date, today=None):
     return (end_local - today).days
 
 
+def compute_milestone_status(m, now=None):
+    """Trạng thái lịch có xét giai đoạn nghiệp vụ, nên mốc tương lai không tự mở sớm."""
+    from django.utils import timezone
+    if now is None:
+        now = timezone.now()
+
+    batch = getattr(m, "batch", None)
+    if batch and not getattr(batch, "is_closed", False) and getattr(batch, "current_stage", "") != "COMPLETED":
+        current_number = DB_STAGE_TO_NUMBER.get(getattr(batch, "current_stage", ""), 1)
+        stage_number = getattr(m, "stage_number", None)
+        if stage_number is not None:
+            if stage_number > current_number:
+                return "UPCOMING"
+            if stage_number < current_number:
+                return "EXPIRED"
+
+    if m.start_date and m.start_date > now:
+        return "UPCOMING"
+    if m.end_date and m.end_date < now:
+        return "EXPIRED"
+    if m.start_date or m.end_date:
+        return "ACTIVE"
+    return "UNSCHEDULED"
+
+
 def serialize_batch_milestone(m, now=None, today=None):
     """Chuẩn hóa dữ liệu BatchMilestone thống nhất giữa progress bar, API công khai & serializer."""
     from django.utils import timezone
@@ -234,14 +260,7 @@ def serialize_batch_milestone(m, now=None, today=None):
     if today is None:
         today = timezone.localdate()
 
-    if m.start_date and m.start_date > now:
-        m_status = "UPCOMING"
-    elif m.end_date and m.end_date < now:
-        m_status = "EXPIRED"
-    elif m.start_date or m.end_date:
-        m_status = "ACTIVE"
-    else:
-        m_status = "UNSCHEDULED"
+    m_status = compute_milestone_status(m, now=now)
 
     return {
         "id": m.id,

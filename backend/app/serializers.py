@@ -542,6 +542,34 @@ class AcademicBatchSerializer(serializers.ModelSerializer):
             "project_count"
         ]
 
+    def validate(self, attrs):
+        """Enforce a schedulable window whenever a batch is created or its dates change."""
+        from django.utils import timezone
+
+        is_create = self.instance is None
+        dates_touched = "start_date" in attrs or "end_date" in attrs
+        if not (is_create or dates_touched):
+            return attrs
+
+        start = attrs.get("start_date", getattr(self.instance, "start_date", None))
+        end = attrs.get("end_date", getattr(self.instance, "end_date", None))
+        errors = {}
+        if not start:
+            errors["start_date"] = "Ngày bắt đầu là bắt buộc."
+        if not end:
+            errors["end_date"] = "Ngày kết thúc dự kiến là bắt buộc."
+        if errors:
+            raise serializers.ValidationError(errors)
+
+        start_changed = is_create or start != getattr(self.instance, "start_date", None)
+        if start_changed and start < timezone.localdate():
+            errors["start_date"] = "Ngày bắt đầu không được nằm trong quá khứ."
+        if (end - start).days < 50:
+            errors["end_date"] = "Ngày kết thúc phải cách ngày bắt đầu ít nhất 50 ngày."
+        if errors:
+            raise serializers.ValidationError(errors)
+        return attrs
+
     def get_student_count(self, obj):
         annotated = getattr(obj, "student_count", None)
         if annotated is not None:
@@ -856,15 +884,8 @@ class BatchMilestoneSerializer(serializers.ModelSerializer):
         return attrs
 
     def get_status(self, obj):
-        from django.utils import timezone
-        now = timezone.now()
-        if obj.start_date and obj.start_date > now:
-            return "UPCOMING"
-        if obj.end_date and obj.end_date < now:
-            return "EXPIRED"
-        if obj.start_date or obj.end_date:
-            return "ACTIVE"
-        return "UNSCHEDULED"
+        from app.services.batch_progress import compute_milestone_status
+        return compute_milestone_status(obj)
 
     def get_days_left(self, obj):
         from app.services.batch_progress import compute_milestone_days_left

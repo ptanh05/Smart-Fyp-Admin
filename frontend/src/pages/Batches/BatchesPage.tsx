@@ -45,6 +45,21 @@ interface BatchMilestoneItem {
   days_left?: number | null;
 }
 
+const toDateInputValue = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const todayDateInput = (): string => toDateInputValue(new Date());
+
+const addDaysToDateInput = (value: string, days: number): string => {
+  if (!value) return '';
+  const [year, month, day] = value.split('-').map(Number);
+  return toDateInputValue(new Date(year, month - 1, day + days));
+};
+
 interface Department {
   id: number;
   code: string;
@@ -540,6 +555,18 @@ export const BatchesPage: React.FC = () => {
   const handleCreateBatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBatchCode || !newBatchName) return;
+    if (!newStartDate || !newEndDate) {
+      showToast('❌ Vui lòng chọn đầy đủ ngày bắt đầu và ngày kết thúc dự kiến.', 'error');
+      return;
+    }
+    if (newStartDate < todayDateInput()) {
+      showToast('❌ Ngày bắt đầu không được nằm trong quá khứ.', 'error');
+      return;
+    }
+    if (newEndDate < addDaysToDateInput(newStartDate, 50)) {
+      showToast('❌ Ngày kết thúc phải cách ngày bắt đầu ít nhất 50 ngày.', 'error');
+      return;
+    }
 
     try {
       await apiClient.post('/admin/batches/', {
@@ -559,7 +586,11 @@ export const BatchesPage: React.FC = () => {
       showToast('✓ Tạo đợt đồ án tốt nghiệp mới thành công!', 'success');
       fetchBatches();
     } catch (err: any) {
-      const msg = err.response?.data?.detail || err.message || 'Lỗi tạo đợt đồ án';
+      const msg = err.response?.data?.start_date?.[0]
+        || err.response?.data?.end_date?.[0]
+        || err.response?.data?.detail
+        || err.message
+        || 'Lỗi tạo đợt đồ án';
       showToast(`❌ ${msg}`, 'error');
     }
   };
@@ -2704,22 +2735,36 @@ export const BatchesPage: React.FC = () => {
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                   <div className="utc-form-group">
-                    <label>Ngày Bắt Đầu (tuỳ chọn):</label>
+                    <label>Ngày Bắt Đầu (*):</label>
                     <input
                       type="date"
+                      required
+                      min={todayDateInput()}
                       value={newStartDate}
-                      onChange={(e) => setNewStartDate(e.target.value)}
+                      onChange={(e) => {
+                        const start = e.target.value;
+                        setNewStartDate(start);
+                        const minimumEnd = addDaysToDateInput(start, 50);
+                        if (minimumEnd && (!newEndDate || newEndDate < minimumEnd)) {
+                          setNewEndDate(minimumEnd);
+                        }
+                      }}
                       className="utc-input"
                     />
                   </div>
                   <div className="utc-form-group">
-                    <label>Ngày Kết Thúc Dự Kiến:</label>
+                    <label>Ngày Kết Thúc Dự Kiến (*):</label>
                     <input
                       type="date"
+                      required
+                      min={newStartDate ? addDaysToDateInput(newStartDate, 50) : todayDateInput()}
                       value={newEndDate}
                       onChange={(e) => setNewEndDate(e.target.value)}
                       className="utc-input"
                     />
+                    <small style={{ color: '#64748b', marginTop: '0.3rem', display: 'block' }}>
+                      Tối thiểu 50 ngày sau ngày bắt đầu.
+                    </small>
                   </div>
                 </div>
 
