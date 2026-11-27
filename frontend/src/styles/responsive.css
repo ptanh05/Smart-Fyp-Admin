@@ -1,0 +1,50 @@
+/* =====================================================================
+ * responsive.css — lớp sửa giao diện điện thoại dùng chung cho Admin.
+ * Lỗi gốc: <select> tự giãn theo option dài nhất (tên đợt, tên GV...) nên
+ * rộng 470–630px, bị khung chính cắt mất trên màn 375px.
+ * ===================================================================== */
+@media (max-width: 768px) {
+  select,
+  input,
+  textarea {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .utc-batch-select-group,
+  .utc-header-actions,
+  .utc-defense-filters-group,
+  .utc-defense-filter-item,
+  .filter-group {
+    flex-wrap: wrap;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .utc-batch-select-group select,
+  .utc-header-actions select,
+  .utc-defense-filter-item,
+  .utc-defense-filter-item select,
+  .filter-group select,
+  .utc-batch-dropdown,
+  .utc-select-filter {
+    flex: 1 1 100%;
+    width: 100%;
+    min-width: 0;
+    text-overflow: ellipsis;
+  }
+
+  /* Thẻ panel chứa bảng rộng: cho cuộn ngang thay vì bị cắt */
+  .utc-panel-card {
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+  }
+
+  /* Thanh tab ngang (Sinh viên / Giảng viên ...) */
+  [role='tablist'],
+  .role-tabs-container {
+    overflow-x: auto;
+    max-width: 100%;
+  }
+}

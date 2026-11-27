@@ -228,7 +228,7 @@
 /* Security Protocol Cards Grid */
 .sec-protocol-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(310px, 100%), 1fr));
   gap: 0.9rem;
 }
 
