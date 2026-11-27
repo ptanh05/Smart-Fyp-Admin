@@ -2839,6 +2839,11 @@ class TopicApprovalAPIView(APIView):
         student_label = project.student.registration_no if (project.student and hasattr(project.student, 'registration_no')) else f"Đề tài mở #{project.id}"
 
         if decision == "APPROVE":
+            # Đề tài của sinh viên phải được GVHD duyệt và gửi lên Khoa (GV_CONFIRMED)
+            # trước khi Khoa phê duyệt. Đề tài mở (chưa có SV) do GV đề xuất thì bỏ qua.
+            if project.student_id and project.topic_review_status != "GV_CONFIRMED":
+                msg = "GVHD chưa duyệt và gửi đề tài này lên Khoa nên Khoa chưa thể phê duyệt."
+                return Response({"detail": msg, "error": msg}, status=status.HTTP_409_CONFLICT)
             project.topic_review_status = "APPROVED"
             project.status = "OUTLINE_APPROVED"
             if notes:

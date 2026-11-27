@@ -240,7 +240,15 @@ class SixPhasesWorkflowTests(TestCase):
         proj.refresh_from_db()
         self.assertEqual(proj.topic_review_status, "REVISION_REQUIRED")
 
-        # Sau khi sửa, Khoa Approve
+        # Khoa chưa thể duyệt khi GVHD chưa duyệt lại và gửi lên Khoa
+        blocked = self.client.patch(f"/admin/projects/{proj.id}/topic-approval/", {
+            "decision": "APPROVE"
+        }, format="json")
+        self.assertEqual(blocked.status_code, status.HTTP_409_CONFLICT)
+
+        # SV sửa, GVHD duyệt và gửi lên Khoa -> Khoa Approve
+        proj.topic_review_status = "GV_CONFIRMED"
+        proj.save(update_fields=["topic_review_status"])
         app_resp = self.client.patch(f"/admin/projects/{proj.id}/topic-approval/", {
             "decision": "APPROVE"
         }, format="json")

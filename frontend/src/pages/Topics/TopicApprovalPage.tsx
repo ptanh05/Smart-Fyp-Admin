@@ -121,6 +121,11 @@ export const TopicApprovalPage: React.FC = () => {
       return;
     }
 
+    if (!isOffered && proj.topic_review_status !== 'GV_CONFIRMED') {
+      showToast('GVHD chưa duyệt và gửi đề tài lên Khoa, Khoa chưa thể phê duyệt!', 'error');
+      return;
+    }
+
     const confirmMsg = isOffered
       ? `Khoa xác nhận CHẤP THUẬN đề tài gợi ý:\n"${proj.topic_title_vi}"\nGVHD: ${proj.supervisor_name}?\n\nSau khi duyệt, sinh viên trong đợt có thể đăng ký đề tài này.`
       : `Khoa xác nhận PHÊ DUYỆT đề tài:\n"${proj.topic_title_vi}"\nSinh viên: ${proj.student_name} (${proj.student_reg_no})?`;
@@ -703,7 +708,15 @@ export const TopicApprovalPage: React.FC = () => {
                         <td>
                           <div className="utc-action-btn-group">
                             {p.topic_review_status !== 'APPROVED' && (
-                              hasRealTitle ? (
+                              hasRealTitle && !isOffered && p.topic_review_status !== 'GV_CONFIRMED' ? (
+                                <button
+                                  className="utc-btn-quick-approve-disabled"
+                                  disabled
+                                  title="GVHD chưa duyệt và gửi đề tài lên Khoa"
+                                >
+                                  Chờ GVHD duyệt
+                                </button>
+                              ) : hasRealTitle ? (
                                 <button
                                   onClick={() => handleQuickApprove(p)}
                                   className="utc-btn-quick-approve"
