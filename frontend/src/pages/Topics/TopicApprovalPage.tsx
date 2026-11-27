@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { PopOnChange } from '../../utils/motion';
 import { AdminLayout } from '../../components/layout/AdminLayout';
 import { apiClient } from '../../api/client';
 import { formatFullName } from '../../utils/nameHelper';
@@ -542,7 +543,7 @@ export const TopicApprovalPage: React.FC = () => {
             </div>
           ) : (
             <div className="utc-table-container">
-              <table className="utc-custom-table">
+              <table className="m-stagger utc-custom-table">
                 <thead>
                   <tr>
                     <th style={{ width: '130px' }}>Đối Tượng / MSSV</th>
@@ -674,6 +675,7 @@ export const TopicApprovalPage: React.FC = () => {
 
                         {/* 5. Review Status Badge */}
                         <td>
+                          <PopOnChange value={p.topic_review_status}>
                           <span className={`utc-topic-badge badge-${(p.topic_review_status || 'draft').toLowerCase()}`}>
                             {p.topic_review_status === 'APPROVED' ? (
                               <>
@@ -702,6 +704,7 @@ export const TopicApprovalPage: React.FC = () => {
                               </>
                             )}
                           </span>
+                          </PopOnChange>
                         </td>
 
                         {/* 6. Action Buttons */}

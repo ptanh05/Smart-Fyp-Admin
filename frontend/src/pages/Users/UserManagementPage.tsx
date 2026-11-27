@@ -545,7 +545,7 @@ export const UserManagementPage: React.FC = () => {
               disabled={seedLoading}
               title="Khôi phục hoặc nạp nhanh bộ dữ liệu mẫu UTC đầy đủ các giai đoạn (GĐ1 - GĐ6)"
             >
-              <span>⚡</span> {seedLoading ? 'Đang nạp...' : 'Nạp Dữ Liệu Mẫu'}
+              <span>⚡</span> {seedLoading ? <><span className="m-spinner" aria-hidden="true" /> Đang nạp...</> : 'Nạp Dữ Liệu Mẫu'}
             </button>
           </div>
         </div>
@@ -885,13 +885,13 @@ export const UserManagementPage: React.FC = () => {
                       boxShadow: '0 4px 12px rgba(2, 132, 199, 0.25)'
                     }}
                   >
-                    <span>⚡</span> {seedLoading ? 'Đang nạp dữ liệu...' : 'Nạp Dữ Liệu Mẫu UTC Ngay'}
+                    <span>⚡</span> {seedLoading ? <><span className="m-spinner" aria-hidden="true" /> Đang nạp dữ liệu...</> : 'Nạp Dữ Liệu Mẫu UTC Ngay'}
                   </button>
                 </div>
               )}
             </div>
           ) : (
-            <table className="user-table">
+            <table className="m-stagger user-table">
               <thead>
                 <tr>
                   {activeTab === 'student' ? (
@@ -1505,7 +1505,7 @@ export const UserManagementPage: React.FC = () => {
                     className="btn-action-primary"
                     style={{ border: 'none' }}
                   >
-                    {createLoading ? 'Đang tạo...' : 'Tạo Tài Khoản Ngay'}
+                    {createLoading ? <><span className="m-spinner" aria-hidden="true" /> Đang tạo...</> : 'Tạo Tài Khoản Ngay'}
                   </button>
                 </div>
               </form>
@@ -1686,7 +1686,7 @@ export const UserManagementPage: React.FC = () => {
                         className="btn-action-success"
                         style={{ border: 'none' }}
                       >
-                        {importLoading ? 'Đang Import & Tạo TK...' : 'Bắt Đầu Import'}
+                        {importLoading ? <><span className="m-spinner" aria-hidden="true" /> Đang Import & Tạo TK...</> : 'Bắt Đầu Import'}
                       </button>
                     </div>
                   </div>
@@ -1719,7 +1719,7 @@ export const UserManagementPage: React.FC = () => {
                     </h4>
 
                     <div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 8 }}>
-                      <table className="user-table" style={{ fontSize: '0.8rem' }}>
+                      <table className="m-stagger user-table" style={{ fontSize: '0.8rem' }}>
                         <thead>
                           <tr>
                             <th>Tên đăng nhập (MSSV)</th>
@@ -1848,7 +1848,7 @@ export const UserManagementPage: React.FC = () => {
                     className="btn-action-primary"
                     style={{ border: 'none' }}
                   >
-                    {resetLoading ? 'Đang cập nhật...' : 'Xác Nhận Đổi Mật Khẩu'}
+                    {resetLoading ? <><span className="m-spinner" aria-hidden="true" /> Đang cập nhật...</> : 'Xác Nhận Đổi Mật Khẩu'}
                   </button>
                 </div>
               </form>

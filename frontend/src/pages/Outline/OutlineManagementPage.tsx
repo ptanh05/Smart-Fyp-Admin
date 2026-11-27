@@ -716,7 +716,7 @@ export const OutlineManagementPage: React.FC = () => {
                 Không tìm thấy đề cương nào phù hợp với bộ lọc hiện tại.
               </div>
             ) : (
-              <table className="utc-table">
+              <table className="m-stagger utc-table">
                 <thead>
                   <tr>
                     <th style={{ width: '40px', textAlign: 'center' }}>
@@ -971,7 +971,7 @@ export const OutlineManagementPage: React.FC = () => {
               <div className="utc-modal-actions">
                 <button type="button" onClick={() => setShowCreateModal(false)} className="utc-btn-secondary">Hủy</button>
                 <button type="submit" disabled={actionLoading} className="utc-btn-primary">
-                  {actionLoading ? 'Đang tạo...' : 'Tạo Nhóm'}
+                  {actionLoading ? <><span className="m-spinner" aria-hidden="true" /> Đang tạo...</> : 'Tạo Nhóm'}
                 </button>
               </div>
             </form>
@@ -1037,7 +1037,7 @@ export const OutlineManagementPage: React.FC = () => {
               <div className="utc-modal-actions">
                 <button type="button" onClick={() => setShowEditGroupModal(false)} className="utc-btn-secondary">Hủy</button>
                 <button type="submit" disabled={actionLoading} className="utc-btn-primary">
-                  {actionLoading ? 'Đang lưu...' : 'Lưu thay đổi'}
+                  {actionLoading ? <><span className="m-spinner" aria-hidden="true" /> Đang lưu...</> : 'Lưu thay đổi'}
                 </button>
               </div>
             </form>
@@ -1075,7 +1075,7 @@ export const OutlineManagementPage: React.FC = () => {
               <div className="utc-modal-actions">
                 <button type="button" onClick={() => setShowAssignModal(false)} className="utc-btn-secondary">Hủy</button>
                 <button type="submit" disabled={actionLoading} className="utc-btn-primary">
-                  {actionLoading ? 'Đang phân công...' : 'Xác nhận Phân công'}
+                  {actionLoading ? <><span className="m-spinner" aria-hidden="true" /> Đang phân công...</> : 'Xác nhận Phân công'}
                 </button>
               </div>
             </form>
@@ -1133,7 +1133,7 @@ export const OutlineManagementPage: React.FC = () => {
               <div className="utc-modal-actions">
                 <button type="button" onClick={() => setShowReviewModal(false)} className="utc-btn-secondary">Hủy</button>
                 <button type="submit" disabled={actionLoading} className="utc-btn-primary">
-                  {actionLoading ? 'Đang lưu...' : 'Lưu kết quả thẩm định'}
+                  {actionLoading ? <><span className="m-spinner" aria-hidden="true" /> Đang lưu...</> : 'Lưu kết quả thẩm định'}
                 </button>
               </div>
             </form>

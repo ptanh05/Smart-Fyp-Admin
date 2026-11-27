@@ -641,7 +641,7 @@ export const RubricManagementPage: React.FC = () => {
                     fontWeight: 600,
                   }}
                 >
-                  {saving ? 'Đang lưu...' : editingRubric?.id ? 'Cập nhật' : 'Tạo mới'}
+                  {saving ? <><span className="m-spinner" aria-hidden="true" /> Đang lưu...</> : editingRubric?.id ? 'Cập nhật' : 'Tạo mới'}
                 </button>
               </div>
             </div>

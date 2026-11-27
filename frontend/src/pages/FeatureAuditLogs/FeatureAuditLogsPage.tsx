@@ -127,7 +127,7 @@ export const FeatureAuditLogsPage: React.FC = () => {
             </p>
           </div>
           <button onClick={fetchLogs} disabled={loading} className="fal-refresh-btn">
-            {loading ? 'Đang tải...' : 'Làm mới'}
+            {loading ? <><span className="m-spinner" aria-hidden="true" /> Đang tải...</> : 'Làm mới'}
           </button>
         </div>
 
@@ -166,7 +166,7 @@ export const FeatureAuditLogsPage: React.FC = () => {
               <div className="fal-empty">Chưa có nhật ký nào.</div>
             ) : (
               <div className="fal-table-card">
-                <table className="fal-table">
+                <table className="m-stagger fal-table">
                   <thead>
                     <tr>
                       <th>Thời gian</th>

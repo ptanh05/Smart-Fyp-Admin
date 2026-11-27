@@ -169,7 +169,7 @@ export const ProgressMonitoringPage: React.FC = () => {
             <div className="utc-empty-text">Không tìm thấy đồ án nào.</div>
           ) : (
             <div className="utc-table-container">
-              <table className="utc-custom-table">
+              <table className="m-stagger utc-custom-table">
                 <thead>
                   <tr>
                     <th>MSSV</th>

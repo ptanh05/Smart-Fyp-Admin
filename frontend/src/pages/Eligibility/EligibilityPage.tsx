@@ -381,7 +381,7 @@ export const EligibilityPage: React.FC = () => {
             <div className="utc-empty-text">Chưa có dữ liệu xét duyệt. Hãy nhấn Import Excel.</div>
           ) : (
             <div className="utc-table-container">
-              <table className="utc-custom-table">
+              <table className="m-stagger utc-custom-table">
                 <thead>
                   <tr>
                     <th>MSSV</th>
@@ -518,7 +518,7 @@ export const EligibilityPage: React.FC = () => {
                 <div className="utc-modal-foot">
                   <button type="button" onClick={() => setShowImportModal(false)} className="utc-btn-cancel">Đóng</button>
                   <button type="submit" disabled={importing} className="utc-btn-emerald">
-                    {importing ? 'Đang phân tích...' : 'Bắt Đầu Import & Xét Duyệt'}
+                    {importing ? <><span className="m-spinner" aria-hidden="true" /> Đang phân tích...</> : 'Bắt Đầu Import & Xét Duyệt'}
                   </button>
                 </div>
               </form>
@@ -601,7 +601,7 @@ export const EligibilityPage: React.FC = () => {
                     disabled={submittingForce}
                     className="utc-btn-primary"
                   >
-                    {submittingForce ? 'Đang xử lý Force Approve...' : 'Xác Nhận Force Approve'}
+                    {submittingForce ? <><span className="m-spinner" aria-hidden="true" /> Đang xử lý Force Approve...</> : 'Xác Nhận Force Approve'}
                   </button>
                 </div>
               </form>
@@ -675,7 +675,7 @@ export const EligibilityPage: React.FC = () => {
                 <div className="utc-modal-foot">
                   <button type="button" disabled={savingAcademic} onClick={() => setEditProject(null)} className="utc-btn-cancel">Hủy</button>
                   <button type="submit" disabled={savingAcademic} className="utc-btn-primary">
-                    {savingAcademic ? 'Đang lưu...' : '💾 Lưu Điều Chỉnh'}
+                    {savingAcademic ? <><span className="m-spinner" aria-hidden="true" /> Đang lưu...</> : '💾 Lưu Điều Chỉnh'}
                   </button>
                 </div>
               </form>

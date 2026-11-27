@@ -1620,14 +1620,14 @@ export const BatchesPage: React.FC = () => {
                                 color: '#fff',
                               }}
                             >
-                              {enforcingDeadlines ? 'Đang xử lý...' : `🚫 Loại ${deadlinePreview.candidate_count} SV quá hạn khỏi đợt`}
+                              {enforcingDeadlines ? <><span className="m-spinner" aria-hidden="true" /> Đang xử lý...</> : `🚫 Loại ${deadlinePreview.candidate_count} SV quá hạn khỏi đợt`}
                             </button>
                           </div>
                         </div>
 
                         {showDeadlineCandidates && (
                           <div className="utc-classes-table-wrapper" style={{ background: '#fff', borderRadius: '8px' }}>
-                            <table className="utc-classes-table">
+                            <table className="m-stagger utc-classes-table">
                               <thead>
                                 <tr>
                                   <th>MSSV</th>
@@ -1725,7 +1725,7 @@ export const BatchesPage: React.FC = () => {
                           disabled={msSaving || Boolean(currBatch?.is_closed || currBatch?.current_stage === 'COMPLETED')}
                           className="utc-btn-primary"
                         >
-                          {msSaving ? 'Đang lưu...' : editingMilestoneId ? '💾 Cập nhật mốc' : '➕ Thêm mốc'}
+                          {msSaving ? <><span className="m-spinner" aria-hidden="true" /> Đang lưu...</> : editingMilestoneId ? '💾 Cập nhật mốc' : '➕ Thêm mốc'}
                         </button>
                         {editingMilestoneId && (
                           <button type="button" onClick={resetMilestoneForm} className="utc-btn-cancel">
@@ -1741,7 +1741,7 @@ export const BatchesPage: React.FC = () => {
                       <div className="utc-empty-box">Chưa có mốc thời gian nào. Hãy nhấn &quot;Tạo nhanh 6 mốc chuẩn UTC&quot; hoặc thêm thủ công phía trên.</div>
                     ) : (
                       <div className="utc-classes-table-wrapper">
-                        <table className="utc-classes-table">
+                        <table className="m-stagger utc-classes-table">
                           <thead>
                             <tr>
                               <th>GĐ</th>
@@ -1874,7 +1874,7 @@ export const BatchesPage: React.FC = () => {
                       </div>
                     ) : (
                       <div className="utc-table-container">
-                        <table className="utc-classes-table">
+                        <table className="m-stagger utc-classes-table">
                           <thead>
                             <tr>
                               <th>Mã GV</th>
@@ -1925,7 +1925,7 @@ export const BatchesPage: React.FC = () => {
                       </div>
                     ) : (
                       <div className="utc-classes-table-wrapper">
-                        <table className="utc-classes-table">
+                        <table className="m-stagger utc-classes-table">
                           <thead>
                             <tr>
                               <th style={{ width: '50px' }}>STT</th>
@@ -1983,7 +1983,7 @@ export const BatchesPage: React.FC = () => {
                       <div className="utc-empty-classes">Đợt này chưa có dữ liệu lớp học phần. Hãy nhấn nút Import Excel để tạo lớp tự động.</div>
                     ) : (
                       <div className="utc-classes-table-wrapper">
-                        <table className="utc-classes-table">
+                        <table className="m-stagger utc-classes-table">
                           <thead>
                             <tr>
                               <th>Mã Lớp HP</th>
@@ -2229,7 +2229,7 @@ export const BatchesPage: React.FC = () => {
                       <div className="utc-empty-box">Không tìm thấy sinh viên nào trong hồ sơ lưu trữ này.</div>
                     ) : (
                       <div className="utc-table-container">
-                        <table className="utc-modern-table">
+                        <table className="m-stagger utc-modern-table">
                           <thead>
                             <tr>
                               <th>STT</th>
@@ -2279,7 +2279,7 @@ export const BatchesPage: React.FC = () => {
                       <div className="utc-empty-box">Đợt này không có lớp học phần nào.</div>
                     ) : (
                       <div className="utc-table-container">
-                        <table className="utc-modern-table">
+                        <table className="m-stagger utc-modern-table">
                           <thead>
                             <tr>
                               <th>STT</th>
@@ -2610,7 +2610,7 @@ export const BatchesPage: React.FC = () => {
             </div>
 
             <div className="utc-classes-table-wrapper">
-              <table className="utc-classes-table">
+              <table className="m-stagger utc-classes-table">
                 <thead>
                   <tr>
                     <th>Mã GV</th>
@@ -2773,7 +2773,7 @@ export const BatchesPage: React.FC = () => {
                   disabled={savingSupervisors || selectedSupervisorIds.length === 0}
                   style={{ minWidth: '160px', justifyContent: 'center' }}
                 >
-                  {savingSupervisors ? 'Đang lưu...' : 'Lưu Giảng Viên Vào Đợt'}
+                  {savingSupervisors ? <><span className="m-spinner" aria-hidden="true" /> Đang lưu...</> : 'Lưu Giảng Viên Vào Đợt'}
                 </button>
               </div>
             </div>
@@ -2968,7 +2968,7 @@ export const BatchesPage: React.FC = () => {
                 <div className="utc-modal-foot">
                   <button type="button" onClick={() => setEditingBatch(null)} className="utc-btn-cancel">Hủy</button>
                   <button type="submit" disabled={editBatchSaving} className="utc-btn-primary">
-                    {editBatchSaving ? 'Đang lưu...' : '💾 Lưu Thay Đổi'}
+                    {editBatchSaving ? <><span className="m-spinner" aria-hidden="true" /> Đang lưu...</> : '💾 Lưu Thay Đổi'}
                   </button>
                 </div>
               </form>
@@ -3172,7 +3172,7 @@ export const BatchesPage: React.FC = () => {
                 <div className="utc-modal-foot" style={{ padding: '0.75rem 1.5rem', margin: 0, flexShrink: 0 }}>
                   <button type="button" onClick={() => setShowImportModal(false)} className="utc-btn-cancel" style={{ padding: '0.45rem 1rem', fontSize: '0.85rem' }}>Đóng</button>
                   <button type="submit" disabled={importing} className="utc-btn-emerald" style={{ padding: '0.45rem 1rem', fontSize: '0.85rem' }}>
-                    {importing ? 'Đang phân tích & import...' : 'Bắt Đầu Import'}
+                    {importing ? <><span className="m-spinner" aria-hidden="true" /> Đang phân tích & import...</> : 'Bắt Đầu Import'}
                   </button>
                 </div>
               </form>
@@ -3419,7 +3419,7 @@ export const BatchesPage: React.FC = () => {
                     className="utc-btn-primary"
                     disabled={addLoading}
                   >
-                    {addLoading ? 'Đang lưu...' : 'Lưu Sinh Viên'}
+                    {addLoading ? <><span className="m-spinner" aria-hidden="true" /> Đang lưu...</> : 'Lưu Sinh Viên'}
                   </button>
                 </div>
               </form>
@@ -3673,7 +3673,7 @@ export const BatchesPage: React.FC = () => {
                       )}
                     </div>
                   ) : (
-                    <table className="utc-dept-sup-table">
+                    <table className="m-stagger utc-dept-sup-table">
                       <thead>
                         <tr>
                           <th style={{ width: '50px' }}>STT</th>
@@ -3815,7 +3815,7 @@ export const BatchesPage: React.FC = () => {
                 <div className="utc-modal-foot">
                   <button type="button" onClick={() => setShowAssignSupervisorModal(false)} className="utc-btn-cancel">Hủy</button>
                   <button type="submit" className="utc-btn-primary" disabled={assigningLoading || !selectedAssignSupervisorId}>
-                    {assigningLoading ? 'Đang lưu...' : 'Xác Nhận Gán'}
+                    {assigningLoading ? <><span className="m-spinner" aria-hidden="true" /> Đang lưu...</> : 'Xác Nhận Gán'}
                   </button>
                 </div>
               </form>
@@ -4035,7 +4035,7 @@ export const BatchesPage: React.FC = () => {
                       {studentsList.length === 0 ? 'Đợt này chưa có sinh viên nào. Hãy thực hiện Import Excel.' : 'Không tìm thấy sinh viên phù hợp với bộ lọc.'}
                     </div>
                   ) : (
-                    <table className="utc-classes-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                    <table className="m-stagger utc-classes-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                       <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
                         <tr>
                           <th style={{ width: '45px', textAlign: 'center' }}>STT</th>

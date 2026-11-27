@@ -430,7 +430,7 @@ export const AcademicStaffPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="utc-table-scroll">
-                  <table className="utc-table">
+                  <table className="m-stagger utc-table">
                     <thead>
                       <tr>
                         <th>STT</th>
@@ -637,7 +637,7 @@ export const AcademicStaffPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="utc-table-scroll">
-                  <table className="utc-table">
+                  <table className="m-stagger utc-table">
                     <thead>
                       <tr>
                         <th>STT</th>
@@ -746,7 +746,7 @@ export const AcademicStaffPage: React.FC = () => {
                     Đóng
                   </button>
                   <button type="submit" disabled={importing || !importFile} className="btn-primary-utc">
-                    {importing ? 'Đang xử lý...' : 'Bắt Đầu Import'}
+                    {importing ? <><span className="m-spinner" aria-hidden="true" /> Đang xử lý...</> : 'Bắt Đầu Import'}
                   </button>
                 </div>
               </form>
@@ -841,7 +841,7 @@ export const AcademicStaffPage: React.FC = () => {
                   </div>
 
                   {/* Table */}
-                  <table className="print-table">
+                  <table className="m-stagger print-table">
                     <thead>
                       <tr>
                         <th>STT</th>

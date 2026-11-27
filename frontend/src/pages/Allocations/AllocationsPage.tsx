@@ -378,7 +378,7 @@ export const AllocationsPage: React.FC = () => {
               className="utc-btn-gradient-green"
               title={isAllocationPublished ? 'Đợt này đã công bố kết quả phân công' : 'Chạy giải thuật MCMF tối ưu NV1-NV3 và kiểm tra ràng buộc Kỹ sư'}
             >
-              <span>⚡</span> {matching ? 'Đang chạy tối ưu...' : 'Chạy Tối Ưu Phân Công (MCMF)'}
+              <span>⚡</span> {matching ? <><span className="m-spinner" aria-hidden="true" /> Đang chạy tối ưu...</> : 'Chạy Tối Ưu Phân Công (MCMF)'}
             </button>
 
             <button
@@ -423,7 +423,7 @@ export const AllocationsPage: React.FC = () => {
                 style={{ background: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74', padding: '0.55rem 0.9rem', borderRadius: '8px', fontWeight: 700, cursor: 'pointer' }}
                 title="Mở lại đăng ký nguyện vọng bổ sung cho SV chưa có GVHD mà không xáo trộn SV đã có GVHD"
               >
-                <span>🔓</span> {togglingSupplementary ? 'Đang mở...' : 'Mở ĐK Bổ Sung'}
+                <span>🔓</span> {togglingSupplementary ? <><span className="m-spinner" aria-hidden="true" /> Đang mở...</> : 'Mở ĐK Bổ Sung'}
               </button>
             )}
 
@@ -434,7 +434,7 @@ export const AllocationsPage: React.FC = () => {
                 className="utc-btn-gradient-green"
                 title="Chốt đăng ký bổ sung & chạy MCMF ghép cho riêng SV chưa có GVHD"
               >
-                <span>✅</span> {togglingSupplementary ? 'Đang chốt & ghép...' : 'Chốt ĐK Bổ Sung & Ghép SV'}
+                <span>✅</span> {togglingSupplementary ? <><span className="m-spinner" aria-hidden="true" /> Đang chốt & ghép...</> : 'Chốt ĐK Bổ Sung & Ghép SV'}
               </button>
             )}
           </div>
@@ -569,7 +569,7 @@ export const AllocationsPage: React.FC = () => {
               <div className="utc-empty-text">Chưa có sinh viên nào trong đợt này.</div>
             ) : (
               <div className="utc-table-container">
-                <table className="utc-custom-table">
+                <table className="m-stagger utc-custom-table">
                   <thead>
                     <tr>
                       <th>MSSV</th>
@@ -665,7 +665,7 @@ export const AllocationsPage: React.FC = () => {
               <div className="utc-empty-text">Chưa thiết lập Quota cho đợt này.</div>
             ) : (
               <div className="utc-table-container">
-                <table className="utc-custom-table">
+                <table className="m-stagger utc-custom-table">
                   <thead>
                     <tr>
                       <th>Giảng Viên</th>

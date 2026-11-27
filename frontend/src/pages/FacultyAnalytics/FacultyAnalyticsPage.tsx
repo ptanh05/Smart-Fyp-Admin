@@ -132,7 +132,7 @@ export const FacultyAnalyticsPage: React.FC = () => {
             <p>Thống kê tiến độ đồ án tốt nghiệp, phân bổ điểm số, tải hướng dẫn và phát hiện lệch điểm</p>
           </div>
           <button onClick={fetchData} disabled={loading} className="fa-refresh-btn">
-            {loading ? 'Đang tải...' : 'Làm mới'}
+            {loading ? <><span className="m-spinner" aria-hidden="true" /> Đang tải...</> : 'Làm mới'}
           </button>
         </div>
 
@@ -247,7 +247,7 @@ export const FacultyAnalyticsPage: React.FC = () => {
                 <div className="fa-empty">Chưa có dữ liệu.</div>
               ) : (
                 <div className="fa-table-wrap">
-                  <table className="fa-table">
+                  <table className="m-stagger fa-table">
                     <thead>
                       <tr>
                         <th>Họ tên</th>
@@ -296,7 +296,7 @@ export const FacultyAnalyticsPage: React.FC = () => {
               </div>
               {showDiscrepancy && discrepancy && discrepancy.results.length > 0 && (
                 <div className="fa-table-wrap">
-                  <table className="fa-table fa-table--warn">
+                  <table className="m-stagger fa-table fa-table--warn">
                     <thead>
                       <tr>
                         <th>MSSV</th>

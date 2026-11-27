@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useReplayAnimation } from '../../utils/motion';
 import { useAdminAuth } from '../../auth/AdminAuthContext';
 import './AdminLayout.css';
 
@@ -173,6 +174,8 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { pathname } = useLocation();
+  const pageRef = useReplayAnimation<HTMLDivElement>(pathname);
   const { logout, userType, currentUser } = useAdminAuth();
   const navigate = useNavigate();
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
@@ -312,7 +315,7 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
           </div>
         </header>
 
-        <div className="admin-page-container">
+        <div className="admin-page-container" ref={pageRef}>
           {children}
         </div>
       </main>

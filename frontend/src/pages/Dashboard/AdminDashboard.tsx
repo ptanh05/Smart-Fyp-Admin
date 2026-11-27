@@ -303,7 +303,7 @@ export const AdminDashboard: React.FC = () => {
                 </div>
 
                 <div className="utc-table-container">
-                  <table className="utc-audit-table">
+                  <table className="m-stagger utc-audit-table">
                     <thead>
                       <tr>
                         <th>Thời Gian</th>

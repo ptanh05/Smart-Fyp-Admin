@@ -124,7 +124,7 @@ const EmbargoDialog: React.FC<EmbargoDialogProps> = ({ record, onClose, onSaved 
               disabled={saving}
               style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 16px', cursor: 'pointer', fontWeight: 600 }}
             >
-              {saving ? 'Đang lưu...' : 'Đặt Embargo'}
+              {saving ? <><span className="m-spinner" aria-hidden="true" /> Đang lưu...</> : 'Đặt Embargo'}
             </button>
           </div>
         </div>

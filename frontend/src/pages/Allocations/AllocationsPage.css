@@ -615,10 +615,10 @@
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
   min-width: 300px;
   max-width: 450px;
-  animation: slideInToast 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: allocToastIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@keyframes slideInToast {
+@keyframes allocToastIn {
   from {
     opacity: 0;
     transform: translateY(20px) scale(0.95);

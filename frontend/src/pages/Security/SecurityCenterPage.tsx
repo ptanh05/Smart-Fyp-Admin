@@ -110,7 +110,7 @@ export const SecurityCenterPage: React.FC = () => {
             disabled={loading}
             style={{ background: '#0f172a', color: '#fff', border: 'none', padding: '0.55rem 1rem', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}
           >
-            🔄 {loading ? 'Đang tải...' : 'Làm mới'}
+            🔄 {loading ? <><span className="m-spinner" aria-hidden="true" /> Đang tải...</> : 'Làm mới'}
           </button>
         </div>
 
@@ -200,7 +200,7 @@ export const SecurityCenterPage: React.FC = () => {
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.15rem' }}>
               <h4 style={{ margin: '0 0 0.75rem 0', color: '#0f172a' }}>Nhật ký kiểm toán gần đây</h4>
               <div style={{ overflowX: 'auto' }}>
-                <table className="utc-custom-table" style={{ width: '100%' }}>
+                <table className="m-stagger utc-custom-table" style={{ width: '100%' }}>
                   <thead>
                     <tr>
                       <th>Thời gian</th>
@@ -231,7 +231,7 @@ export const SecurityCenterPage: React.FC = () => {
           <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.15rem' }}>
             <h4 style={{ margin: '0 0 0.75rem 0', color: '#0f172a' }}>Phiên đăng nhập JWT được theo dõi trên toàn hệ thống</h4>
             <div style={{ overflowX: 'auto' }}>
-              <table className="utc-custom-table" style={{ width: '100%' }}>
+              <table className="m-stagger utc-custom-table" style={{ width: '100%' }}>
                 <thead>
                   <tr>
                     <th>Tài khoản</th>
@@ -332,7 +332,7 @@ export const SecurityCenterPage: React.FC = () => {
                 disabled={savingPolicies}
                 style={{ background: '#1d4ed8', color: '#fff', border: 'none', padding: '0.6rem 1.25rem', borderRadius: '8px', fontWeight: 700, cursor: 'pointer' }}
               >
-                {savingPolicies ? 'Đang lưu...' : '💾 Lưu Chính Sách Bảo Mật'}
+                {savingPolicies ? <><span className="m-spinner" aria-hidden="true" /> Đang lưu...</> : '💾 Lưu Chính Sách Bảo Mật'}
               </button>
             </div>
           </form>

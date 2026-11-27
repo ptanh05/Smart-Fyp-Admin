@@ -192,10 +192,10 @@
   font-size: 0.74rem;
   font-weight: 600;
   border-radius: 4px;
-  animation: fadeIn 0.3s ease;
+  animation: loginFadeIn 0.3s ease;
 }
 
-@keyframes fadeIn {
+@keyframes loginFadeIn {
   from { opacity: 0; transform: translateY(-3px); }
   to { opacity: 1; transform: translateY(0); }
 }

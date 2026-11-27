@@ -6,6 +6,7 @@
  *  - Admin Portal (Smart-Fyp-Admin)
  *  - Cổng Sinh viên / Cổng Giảng viên (smart-fyp-management)
  */
+import { PopOnChange } from '../utils/motion';
 import React, { useState } from 'react';
 import './BatchProgressBar.css';
 
@@ -233,7 +234,7 @@ export const BatchProgressBar: React.FC<Props> = ({
                 <span className="utc-bpb-step-icon">{stage.icon}</span>
                 <span className="utc-bpb-step-body">
                   <span className="utc-bpb-step-label">{stage.short_label}</span>
-                  <span className="utc-bpb-step-status">{STATUS_LABEL[stage.status]}</span>
+                  <PopOnChange value={stage.status}><span className="utc-bpb-step-status">{STATUS_LABEL[stage.status]}</span></PopOnChange>
                   {(() => {
                     const ms = pickStageMilestone(data.milestones, stage.number);
                     if (!ms) return null;

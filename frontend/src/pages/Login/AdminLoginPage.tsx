@@ -189,7 +189,7 @@ export const AdminLoginPage: React.FC = () => {
           </div>
 
           <button type="submit" className="admin-login-submit" disabled={loading}>
-            {loading ? 'Đang xác thực...' : 'Đăng Nhập Quản Trị'}
+            {loading ? <><span className="m-spinner" aria-hidden="true" /> Đang xác thực...</> : 'Đăng Nhập Quản Trị'}
           </button>
 
           <div style={{ margin: '1rem 0', textAlign: 'center', position: 'relative' }}>
@@ -383,7 +383,7 @@ export const AdminLoginPage: React.FC = () => {
                     cursor: 'pointer',
                   }}
                 >
-                  {ssoLoading ? 'Đang xác thực...' : '🚀 Xác thực & Đăng nhập'}
+                  {ssoLoading ? <><span className="m-spinner" aria-hidden="true" /> Đang xác thực...</> : '🚀 Xác thực & Đăng nhập'}
                 </button>
               </div>
             </div>

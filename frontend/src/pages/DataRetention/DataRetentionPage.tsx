@@ -147,7 +147,7 @@ export const DataRetentionPage: React.FC = () => {
             placeholder="1–20"
           />
           <button type="submit" disabled={loading} className="dr-primary-btn">
-            {loading ? 'Đang tính...' : 'Tính trước'}
+            {loading ? <><span className="m-spinner" aria-hidden="true" /> Đang tính...</> : 'Tính trước'}
           </button>
           <span className="dr-years-hint">Giá trị hợp lệ từ 1 đến 20 năm</span>
         </form>
@@ -264,7 +264,7 @@ export const DataRetentionPage: React.FC = () => {
                     disabled={applyLoading || confirmText !== CONFIRM_TOKEN}
                     className="dr-apply-btn"
                   >
-                    {applyLoading ? 'Đang xử lý...' : 'XÁC NHẬN XÓA DỮ LIỆU'}
+                    {applyLoading ? <><span className="m-spinner" aria-hidden="true" /> Đang xử lý...</> : 'XÁC NHẬN XÓA DỮ LIỆU'}
                   </button>
                 </div>
               </div>

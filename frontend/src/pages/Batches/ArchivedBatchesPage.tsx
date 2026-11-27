@@ -426,7 +426,7 @@ export const ArchivedBatchesPage: React.FC = () => {
                   <div className="utc-empty-box">Không tìm thấy sinh viên nào trong hồ sơ lưu trữ này.</div>
                 ) : (
                   <div className="utc-table-container">
-                    <table className="utc-modern-table">
+                    <table className="m-stagger utc-modern-table">
                       <thead>
                         <tr>
                           <th>STT</th>
@@ -473,7 +473,7 @@ export const ArchivedBatchesPage: React.FC = () => {
                   <div className="utc-empty-box">Đợt này không có lớp học phần nào.</div>
                 ) : (
                   <div className="utc-table-container">
-                    <table className="utc-modern-table">
+                    <table className="m-stagger utc-modern-table">
                       <thead>
                         <tr>
                           <th>STT</th>

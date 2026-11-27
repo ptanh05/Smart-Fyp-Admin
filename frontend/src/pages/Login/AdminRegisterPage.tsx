@@ -174,7 +174,7 @@ export const AdminRegisterPage: React.FC = () => {
           </div>
 
           <button type="submit" className="admin-login-submit" disabled={loading}>
-            {loading ? 'Đang xác thực...' : 'Tạo Tài Khoản Admin'}
+            {loading ? <><span className="m-spinner" aria-hidden="true" /> Đang xác thực...</> : 'Tạo Tài Khoản Admin'}
           </button>
         </form>
 

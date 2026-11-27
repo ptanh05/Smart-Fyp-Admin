@@ -629,7 +629,7 @@ export const CouncilsPage: React.FC = () => {
               }
             >
               <span className="utc-btn-icon">⚡</span>
-              <span>{generating ? 'Đang sinh Hội đồng...' : '1. Sinh Hội Đồng Tự Động'}</span>
+              <span>{generating ? <><span className="m-spinner" aria-hidden="true" /> Đang sinh Hội đồng...</> : '1. Sinh Hội Đồng Tự Động'}</span>
             </button>
             <button
               onClick={handleOpenCreateCouncil}
@@ -647,7 +647,7 @@ export const CouncilsPage: React.FC = () => {
               title="Phân bổ đề tài đủ ĐK bảo vệ vào HĐ & gán phản biện không trùng GVHD"
             >
               <span className="utc-btn-icon">⚖️</span>
-              <span>{assigning ? 'Đang phân bổ...' : 'Tự Động Phân HĐ & Phản Biện'}</span>
+              <span>{assigning ? <><span className="m-spinner" aria-hidden="true" /> Đang phân bổ...</> : 'Tự Động Phân HĐ & Phản Biện'}</span>
             </button>
             {isAllocationLocked ? (
               <button
@@ -657,7 +657,7 @@ export const CouncilsPage: React.FC = () => {
                 title="Mở khóa để tiếp tục điều chỉnh thủ công Hội đồng & Giảng viên phản biện"
               >
                 <span className="utc-btn-icon">🔓</span>
-                <span>{lockingAllocation ? 'Đang xử lý...' : 'Đã Chốt HĐ (Mở Khóa)'}</span>
+                <span>{lockingAllocation ? <><span className="m-spinner" aria-hidden="true" /> Đang xử lý...</> : 'Đã Chốt HĐ (Mở Khóa)'}</span>
               </button>
             ) : (
               <button
@@ -667,7 +667,7 @@ export const CouncilsPage: React.FC = () => {
                 title="Bước 2: Sau khi kiểm tra & điều chỉnh thủ công, bấm Chốt để mở khóa bước Xếp lịch bảo vệ"
               >
                 <span className="utc-btn-icon">🔒</span>
-                <span>{lockingAllocation ? 'Đang chốt...' : '2. Khoa Chốt HĐ & Phản Biện'}</span>
+                <span>{lockingAllocation ? <><span className="m-spinner" aria-hidden="true" /> Đang chốt...</> : '2. Khoa Chốt HĐ & Phản Biện'}</span>
               </button>
             )}
             <button
@@ -937,7 +937,7 @@ export const CouncilsPage: React.FC = () => {
                     className="utc-btn-generate"
                   >
                     <span className="utc-btn-icon">⚡</span>
-                    <span>{generating ? 'Đang sinh Hội đồng...' : 'Sinh Hội Đồng Tự Động Ngay'}</span>
+                    <span>{generating ? <><span className="m-spinner" aria-hidden="true" /> Đang sinh Hội đồng...</> : 'Sinh Hội Đồng Tự Động Ngay'}</span>
                   </button>
                   <button
                     onClick={handleOpenCreateCouncil}
@@ -1118,7 +1118,7 @@ export const CouncilsPage: React.FC = () => {
               </div>
 
               <div className="utc-table-container">
-                <table className="utc-custom-table">
+                <table className="m-stagger utc-custom-table">
                   <thead>
                     <tr>
                       <th>STT</th>
@@ -1328,7 +1328,7 @@ export const CouncilsPage: React.FC = () => {
               </div>
             ) : (
             <div className="utc-table-container">
-              <table className="utc-custom-table">
+              <table className="m-stagger utc-custom-table">
                 <thead>
                   <tr>
                     <th>STT</th>
@@ -1614,7 +1614,7 @@ export const CouncilsPage: React.FC = () => {
                 <div className="utc-modal-foot">
                   <button type="button" onClick={() => setShowScheduleModal(false)} className="utc-btn-cancel">Hủy</button>
                   <button type="submit" disabled={scheduling} className="utc-btn-violet">
-                    {scheduling ? 'Đang phân slot...' : 'Khởi Chạy Xếp Lịch'}
+                    {scheduling ? <><span className="m-spinner" aria-hidden="true" /> Đang phân slot...</> : 'Khởi Chạy Xếp Lịch'}
                   </button>
                 </div>
               </form>
@@ -1752,7 +1752,7 @@ export const CouncilsPage: React.FC = () => {
                 <div className="utc-modal-foot">
                   <button type="button" onClick={() => setShowManualSlotModal(false)} className="utc-btn-cancel">Hủy</button>
                   <button type="submit" disabled={savingSlot} className="utc-btn-primary">
-                    {savingSlot ? 'Đang kiểm tra & lưu...' : '💾 Lưu Slot Bảo Vệ'}
+                    {savingSlot ? <><span className="m-spinner" aria-hidden="true" /> Đang kiểm tra & lưu...</> : '💾 Lưu Slot Bảo Vệ'}
                   </button>
                 </div>
               </form>

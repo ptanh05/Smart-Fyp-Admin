@@ -585,7 +585,7 @@ export const DefenseManagementPage: React.FC = () => {
               className="utc-btn-emerald"
               title={!selectedBatchId ? 'Vui lòng chọn đợt đồ án' : 'Xuất toàn bộ dữ liệu cuối kỳ phục vụ ký số và lưu trữ'}
             >
-              <span>📑</span> {exportingSummary ? 'Đang xuất...' : 'Xuất Dữ Liệu Cuối Kỳ (Ký)'}
+              <span>📑</span> {exportingSummary ? <><span className="m-spinner" aria-hidden="true" /> Đang xuất...</> : 'Xuất Dữ Liệu Cuối Kỳ (Ký)'}
             </button>
 
             <button
@@ -661,7 +661,7 @@ export const DefenseManagementPage: React.FC = () => {
               <div className="utc-empty-text">Không có đồ án nào trong bộ lọc này.</div>
             ) : (
               <div className="utc-table-container">
-                <table className="utc-custom-table">
+                <table className="m-stagger utc-custom-table">
                   <thead>
                     <tr>
                       <th>MSSV</th>
@@ -761,7 +761,7 @@ export const DefenseManagementPage: React.FC = () => {
             </div>
 
             <div className="utc-table-container">
-              <table className="utc-custom-table">
+              <table className="m-stagger utc-custom-table">
                 <thead>
                   <tr>
                     <th>MSSV</th>
@@ -897,7 +897,7 @@ export const DefenseManagementPage: React.FC = () => {
                 <div className="utc-modal-foot">
                   <button type="button" onClick={() => setShowImportFinalModal(false)} className="utc-btn-cancel">Đóng</button>
                   <button type="submit" disabled={importing} className="utc-btn-emerald">
-                    {importing ? 'Đang phân tích...' : 'Bắt Đầu Import & Rà Soát'}
+                    {importing ? <><span className="m-spinner" aria-hidden="true" /> Đang phân tích...</> : 'Bắt Đầu Import & Rà Soát'}
                   </button>
                 </div>
               </form>
@@ -963,7 +963,7 @@ export const DefenseManagementPage: React.FC = () => {
                 <div className="utc-modal-foot">
                   <button type="button" onClick={() => setShowCreateDeferralModal(false)} className="utc-btn-cancel">Đóng</button>
                   <button type="submit" disabled={creatingDeferral} className="utc-btn-primary">
-                    {creatingDeferral ? 'Đang tạo...' : '💾 Tạo Hồ Sơ Bảo Lưu'}
+                    {creatingDeferral ? <><span className="m-spinner" aria-hidden="true" /> Đang tạo...</> : '💾 Tạo Hồ Sơ Bảo Lưu'}
                   </button>
                 </div>
               </form>

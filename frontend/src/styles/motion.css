@@ -1,0 +1,150 @@
+/* =====================================================================
+ * motion.css — hệ thống chuyển động dùng chung (Smart FYP UTC)
+ * File này giống hệt nhau ở cả 2 repo frontend (client & admin).
+ * Nguyên tắc: 150–250ms, ease-out, chỉ animate transform/opacity.
+ * Mọi keyframes dùng tiền tố `m-` để không đụng tên với CSS cũ.
+ * ===================================================================== */
+
+:root {
+  --m-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --m-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --m-dur-fast: 150ms;
+  --m-dur-base: 220ms;
+  --m-dur-slow: 420ms;
+}
+
+/* ---------- Keyframes ---------- */
+@keyframes m-page-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes m-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes m-pop {
+  0% { transform: scale(0.85); opacity: 0.4; }
+  60% { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); }
+}
+@keyframes m-flash {
+  0% { box-shadow: 0 0 0 0 rgba(45, 70, 158, 0.45); }
+  100% { box-shadow: 0 0 0 10px rgba(45, 70, 158, 0); }
+}
+@keyframes m-fill-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes m-ring {
+  0% { box-shadow: 0 0 0 0 rgba(45, 70, 158, 0.5); }
+  70% { box-shadow: 0 0 0 7px rgba(45, 70, 158, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(45, 70, 158, 0); }
+}
+@keyframes m-shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+@keyframes m-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---------- 1. Chuyển trang / chuyển tab ---------- */
+.m-page {
+  animation: m-page-in var(--m-dur-base) var(--m-ease-out) both;
+}
+
+/* ---------- 3. Danh sách / bảng: các dòng hiện so le ---------- */
+.m-stagger > *,
+table.m-stagger tbody > tr {
+  animation: m-rise var(--m-dur-base) var(--m-ease-out) both;
+}
+.m-stagger > *:nth-child(1), table.m-stagger tbody > tr:nth-child(1) { animation-delay: 0ms; }
+.m-stagger > *:nth-child(2), table.m-stagger tbody > tr:nth-child(2) { animation-delay: 30ms; }
+.m-stagger > *:nth-child(3), table.m-stagger tbody > tr:nth-child(3) { animation-delay: 60ms; }
+.m-stagger > *:nth-child(4), table.m-stagger tbody > tr:nth-child(4) { animation-delay: 90ms; }
+.m-stagger > *:nth-child(5), table.m-stagger tbody > tr:nth-child(5) { animation-delay: 120ms; }
+.m-stagger > *:nth-child(6), table.m-stagger tbody > tr:nth-child(6) { animation-delay: 150ms; }
+.m-stagger > *:nth-child(7), table.m-stagger tbody > tr:nth-child(7) { animation-delay: 180ms; }
+.m-stagger > *:nth-child(8), table.m-stagger tbody > tr:nth-child(8) { animation-delay: 210ms; }
+.m-stagger > *:nth-child(n + 9), table.m-stagger tbody > tr:nth-child(n + 9) { animation-delay: 240ms; }
+
+/* ---------- 4. Nhãn trạng thái vừa đổi ---------- */
+.m-pop-host {
+  display: inline-block;
+  border-radius: 999px;
+}
+.m-pop {
+  animation: m-pop 360ms var(--m-ease-spring) both, m-flash 700ms var(--m-ease-out) 120ms;
+}
+
+/* ---------- 2. Thanh tiến trình 6 giai đoạn (BatchProgressBar) ---------- */
+.utc-bpb-overall-fill {
+  transform-origin: left center;
+  animation: m-fill-grow 900ms var(--m-ease-out) both;
+  transition: width 700ms var(--m-ease-out);
+}
+.utc-bpb-step {
+  animation: m-rise var(--m-dur-base) var(--m-ease-out) both;
+}
+.utc-bpb-step:nth-child(2) { animation-delay: 40ms; }
+.utc-bpb-step:nth-child(3) { animation-delay: 80ms; }
+.utc-bpb-step:nth-child(4) { animation-delay: 120ms; }
+.utc-bpb-step:nth-child(5) { animation-delay: 160ms; }
+.utc-bpb-step:nth-child(6) { animation-delay: 200ms; }
+.utc-bpb-step.done .utc-bpb-step-dot {
+  animation: m-pop 380ms var(--m-ease-spring) both;
+}
+.utc-bpb-step.current .utc-bpb-step-dot {
+  animation: m-ring 1.8s var(--m-ease-out) infinite;
+}
+.utc-bpb-step-head {
+  transition: transform var(--m-dur-fast) var(--m-ease-out), box-shadow var(--m-dur-fast) var(--m-ease-out);
+}
+.utc-bpb-step:not(.locked) .utc-bpb-step-head:hover {
+  transform: translateY(-1px);
+}
+
+/* ---------- 7. Nút bấm: phản hồi khi nhấn + spinner khi đang gửi ---------- */
+:where(button:not(:disabled), .btn:not(:disabled), [role='button']) {
+  transition-property: transform, box-shadow, background-color, border-color, color, opacity;
+  transition-duration: var(--m-dur-fast);
+  transition-timing-function: var(--m-ease-out);
+}
+:where(button:not(:disabled), .btn:not(:disabled), [role='button']):active {
+  transform: scale(0.97);
+}
+.m-btn-loading {
+  position: relative;
+  pointer-events: none;
+}
+.m-spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: m-spin 0.7s linear infinite;
+  vertical-align: -0.15em;
+}
+
+/* ---------- Skeleton dùng chung ---------- */
+.m-skeleton {
+  background: linear-gradient(90deg, #eef2f7 25%, #f8fafc 37%, #eef2f7 63%);
+  background-size: 400% 100%;
+  animation: m-shimmer 1.4s ease infinite;
+  border-radius: 8px;
+}
+
+/* ---------- Tôn trọng cài đặt "Giảm chuyển động" của hệ điều hành ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

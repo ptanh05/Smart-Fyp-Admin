@@ -425,7 +425,7 @@ export const SupervisorsPage: React.FC = () => {
             </div>
           ) : (
             <div className="utc-table-wrapper">
-              <table className="utc-sup-table">
+              <table className="m-stagger utc-sup-table">
                 <thead>
                   <tr>
                     <th>Mã GV</th>
@@ -676,7 +676,7 @@ export const SupervisorsPage: React.FC = () => {
                     className="utc-btn-primary"
                     disabled={saving}
                   >
-                    {saving ? 'Đang Lưu...' : '💾 Lưu Hồ Sơ Giảng Viên'}
+                    {saving ? <><span className="m-spinner" aria-hidden="true" /> Đang Lưu...</> : '💾 Lưu Hồ Sơ Giảng Viên'}
                   </button>
                 </div>
               </form>
@@ -749,7 +749,7 @@ export const SupervisorsPage: React.FC = () => {
                 </form>
 
                 <div style={{ maxHeight: '320px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
-                  <table className="utc-custom-table" style={{ width: '100%' }}>
+                  <table className="m-stagger utc-custom-table" style={{ width: '100%' }}>
                     <thead>
                       <tr>
                         <th style={{ whiteSpace: 'nowrap' }}>Mã</th>
