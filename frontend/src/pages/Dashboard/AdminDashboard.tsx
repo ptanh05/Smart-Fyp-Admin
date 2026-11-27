@@ -5,10 +5,14 @@ import { securityApi } from '../../api/security';
 import { batchesApi, type AcademicBatch } from '../../api/batches';
 import type { AdminSecurityMetrics, AuditLog, UserCounts } from '../../types';
 import { AdminLayout } from '../../components/layout/AdminLayout';
+import { useAdminAuth } from '../../auth/AdminAuthContext';
 import { SkeletonTable } from '../../components/common/SkeletonLoader';
 import './AdminDashboard.css';
 
 export const AdminDashboard: React.FC = () => {
+  const { userType } = useAdminAuth();
+  // Security Center chỉ dành cho Admin; Giáo vụ gọi sẽ nhận 403.
+  const canViewSecurity = userType === 'admin';
   const [totalUsers, setTotalUsers] = useState<number>(0);
   const [userCounts, setUserCounts] = useState<UserCounts | null>(null);
   const [metrics, setMetrics] = useState<AdminSecurityMetrics | null>(null);
@@ -21,7 +25,7 @@ export const AdminDashboard: React.FC = () => {
     try {
       const [userData, secData, batchesData] = await Promise.allSettled([
         usersApi.getUsers({ summary_only: true }),
-        securityApi.getSecurityMetrics(),
+        canViewSecurity ? securityApi.getSecurityMetrics() : Promise.reject(new Error('skip')),
         batchesApi.getBatches(),
       ]);
 
@@ -44,7 +48,7 @@ export const AdminDashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [canViewSecurity]);
 
   useEffect(() => {
     fetchOverview();

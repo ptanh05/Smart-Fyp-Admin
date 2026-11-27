@@ -132,10 +132,16 @@ class AcademicBatchPerformanceTestCase(TestCase):
 
     def test_academic_batch_create(self):
         """Verify POST /admin/batches/ creates batch and serializes properly"""
+        from datetime import timedelta
+        from django.utils import timezone
+
+        start_date = timezone.localdate() + timedelta(days=1)
         payload = {
             "batch_code": "PERF_NEW_BATCH",
             "batch_name": "Đợt mới tạo",
-            "program_type": "BACHELOR"
+            "program_type": "BACHELOR",
+            "start_date": start_date.isoformat(),
+            "end_date": (start_date + timedelta(days=125)).isoformat(),
         }
         response = self.client.post("/admin/batches/", data=payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)

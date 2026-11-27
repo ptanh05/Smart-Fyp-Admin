@@ -11,6 +11,10 @@ Neon, nên file này được nhân bản giống hệt ở cả hai bên để 
 
 from django.db import connection
 from django.db.models import Count, Q
+from zoneinfo import ZoneInfo
+
+
+BUSINESS_TIME_ZONE = ZoneInfo("Asia/Ho_Chi_Minh")
 
 # ---------------------------------------------------------------------------
 # Định nghĩa 6 giai đoạn nghiệp vụ của Đợt đồ án
@@ -113,11 +117,22 @@ DEFAULT_STAGE_MILESTONES = [
 ]
 
 
+def _coerce_date(value):
+    """Batch vừa tạo từ request có thể giữ ngày dạng chuỗi 'YYYY-MM-DD'."""
+    if isinstance(value, str):
+        from datetime import date
+        try:
+            return date.fromisoformat(value[:10])
+        except ValueError:
+            return None
+    return value
+
+
 def compute_scaled_stage_offsets(batch):
     """Tính 6 khoảng ngày liên tiếp, không chồng lấn, theo tỉ lệ chuẩn 126 ngày."""
     raw_boundaries = [0] + [item[3] for item in DEFAULT_STAGE_MILESTONES]
-    start_date = getattr(batch, "start_date", None)
-    end_date = getattr(batch, "end_date", None)
+    start_date = _coerce_date(getattr(batch, "start_date", None))
+    end_date = _coerce_date(getattr(batch, "end_date", None))
     if start_date and end_date:
         total_days = (end_date - start_date).days
         total_span = total_days + 1  # tính cả ngày bắt đầu và ngày kết thúc
@@ -209,11 +224,18 @@ def ensure_stage_milestone_exists(batch, stage_number):
 
 
 def milestone_local_date(dt):
-    """Chuyển datetime mốc thời gian về ngày theo múi giờ cục bộ (tránh lệch ngày UTC)."""
+    """Chuyển datetime mốc thời gian về ngày Việt Nam (tránh lệch ngày UTC)."""
     if not dt:
         return None
     from django.utils import timezone
-    return timezone.localtime(dt).date() if timezone.is_aware(dt) else dt.date()
+    return timezone.localtime(dt, BUSINESS_TIME_ZONE).date() if timezone.is_aware(dt) else dt.date()
+
+
+def vietnam_local_date(value=None):
+    """Lấy ngày nghiệp vụ tại Việt Nam, độc lập với TIME_ZONE='UTC' của Django."""
+    from django.utils import timezone
+    value = value or timezone.now()
+    return timezone.localtime(value, BUSINESS_TIME_ZONE).date() if timezone.is_aware(value) else value.date()
 
 
 def compute_milestone_days_left(end_date, today=None):
@@ -222,13 +244,12 @@ def compute_milestone_days_left(end_date, today=None):
     if not end_local:
         return None
     if today is None:
-        from django.utils import timezone
-        today = timezone.localdate()
+        today = vietnam_local_date()
     return (end_local - today).days
 
 
 def compute_milestone_status(m, now=None):
-    """Trạng thái lịch có xét giai đoạn nghiệp vụ, nên mốc tương lai không tự mở sớm."""
+    """Tính trạng thái theo ngày Việt Nam và giai đoạn nghiệp vụ hiện tại."""
     from django.utils import timezone
     if now is None:
         now = timezone.now()
@@ -243,9 +264,15 @@ def compute_milestone_status(m, now=None):
             if stage_number < current_number:
                 return "EXPIRED"
 
-    if m.start_date and m.start_date > now:
+    today = vietnam_local_date(now)
+    start_date = milestone_local_date(m.start_date)
+    end_date = milestone_local_date(m.end_date)
+
+    # Mốc có hiệu lực ngay từ đầu *ngày* bắt đầu. Không so sánh 08:00 với giờ
+    # hiện tại vì UI quản trị chỉ cho nhập ngày, không cho nhập giờ.
+    if start_date and start_date > today:
         return "UPCOMING"
-    if m.end_date and m.end_date < now:
+    if end_date and end_date < today:
         return "EXPIRED"
     if m.start_date or m.end_date:
         return "ACTIVE"
@@ -258,7 +285,7 @@ def serialize_batch_milestone(m, now=None, today=None):
     if now is None:
         now = timezone.now()
     if today is None:
-        today = timezone.localdate()
+        today = vietnam_local_date(now)
 
     m_status = compute_milestone_status(m, now=now)
 

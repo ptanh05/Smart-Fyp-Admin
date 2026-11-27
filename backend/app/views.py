@@ -1180,6 +1180,32 @@ class AcademicBatchDetailAPIView(RetrieveUpdateDestroyAPIView):
                     max_stage=new_stage_num - 1,
                 )
 
+        if requested_stage == "PHASE_4_ELIGIBILITY":
+            batch = self.get_object()
+            from .services.batch_progress import DB_STAGE_TO_NUMBER
+            if DB_STAGE_TO_NUMBER.get(batch.current_stage, 1) < 4:
+                active_projects = list(
+                    GraduationProject.objects.filter(batch=batch)
+                    .exclude(status__in=["DEFERRED", "DISQUALIFIED", "PASSED", "FAILED"])
+                    .select_related("student")
+                )
+                if not active_projects:
+                    return Response(
+                        {"detail": "Đợt chưa có đồ án nào để chuyển sang GĐ4 (Xét điều kiện)."},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                missing = [p for p in active_projects if p.topic_review_status != "APPROVED"]
+                if missing:
+                    sample = ", ".join(p.student.registration_no for p in missing[:10] if p.student_id)
+                    suffix = f" ({sample})" if sample else ""
+                    return Response(
+                        {
+                            "detail": f"Chưa thể mở GĐ4: còn {len(missing)} đồ án chưa được Khoa phê duyệt đề tài{suffix}.",
+                            "missing_approved_topics": len(missing),
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
+
         if requested_stage == "PHASE_5_IN_PROGRESS":
             batch = self.get_object()
             if getattr(batch, "supplementary_open", False):
